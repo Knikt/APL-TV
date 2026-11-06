@@ -49,15 +49,18 @@
     // Regions written before the country ("EU| FR| Sport", "AF| CM| …"): skipped, the country after them counts
     var REGIONS = { SRS: 1, SER: 1, VOD: 1, MOV: 1, EU: 1, EUR: 1, EUROPE: 1, AS: 1, ASIA: 1, AM: 1, AMERICA: 1, LATAM: 1, LATINO: 1, MENA: 1, ME: 1, NA: 1, SA: 1, INT: 1, WORLD: 1, OTT: 1 };
 
+    var KIND_WORDS = { SRS: 1, SER: 1, VOD: 1, MOV: 1, OTT: 1 };
+
     /* "FR| SPORTS", "|FR| Sports", "FR - Sports", "[FR] Sports", "Sports (FR)", "VOD FR Action", "EU| FR| Sports" */
     function readTag(name) {
-        var s = plain(name).replace(DECOR, " ").replace(/\s+/g, " ").trim(), tag = "", m;
+        var s = plain(name).replace(DECOR, " ").replace(/\s+/g, " ").trim(), tag = "", region = "", code0 = "", m;
         for (var step = 0; step < 3; step++) {
             m = s.match(/^\|?\s*\[?([A-Z]{2,7})\]?\s*(\||:|-|–|»|\/|·)\s*/i) || s.match(/^\[([A-Z]{2,7})\]\s*/i);
             if (!m) break;
             var code = m[1].toUpperCase();
             if (!tag && TAGS[code]) { tag = code; s = s.slice(m[0].length); continue; }
-            if (REGIONS[code]) { s = s.slice(m[0].length); continue; }
+            if (REGIONS[code]) { if (!region && !KIND_WORDS[code]) region = code; s = s.slice(m[0].length); continue; }
+            if (!tag && !region && /^[A-Z]{2,3}$/.test(m[1])) code0 = code;      // "NG| Nigeria": a country APL TV does not know
             break;
         }
         var ml = s.match(/^multi[\s-]?lang(ue|uage)?s?\b\s*[-|:]?\s*/i);
@@ -72,20 +75,32 @@
             m = s.match(/^(VOD|SERIES?|SÉRIES?|FILMS?|MOVIES?)\s*[-|:]?\s*([A-Z]{2,3})\s*[-|:]\s*/i);
             if (m && TAGS[m[2].toUpperCase()]) { tag = m[2].toUpperCase(); s = m[1] + " " + s.slice(m[0].length); }
         }
-        return { tag: tag, lang: tag ? TAGS[tag] : "", rest: cleanSpaces(s) };
+        return { tag: tag, lang: tag ? TAGS[tag] : "", rest: cleanSpaces(s), group: GROUP_OF[tag] || tag || GROUP_OF[region] || region || code0 };
     }
+
+    /* The country or region a category belongs to (Settings > Countries and Categories): spellings of one country together */
+    var GROUP_OF = { FRA: "FR", FRANCE: "FR", BEL: "BE", SUI: "CH", QUEBEC: "QC", AFR: "AF", AFRICA: "AF", MAGHREB: "MAG", GB: "UK", ENG: "EN", USA: "US",
+        GER: "DE", SP: "ES", ESP: "ES", ITA: "IT", POR: "PT", ARAB: "AR", ARABIC: "AR", IND: "IN", YU: "EXYU",
+        EUR: "EU", EUROPE: "EU", ASIA: "AS", AMERICA: "AM", LATAM: "LAT", LATINO: "LAT", WORLD: "INT" };
+    var GROUP_NAMES = { FR: "France", BE: "Belgium", CH: "Switzerland", CA: "Canada", QC: "Quebec", AF: "Africa", MAG: "Maghreb", UK: "United Kingdom",
+        EN: "English", US: "United States", IE: "Ireland", AU: "Australia", NZ: "New Zealand", DE: "Germany", AT: "Austria", ES: "Spain", LAT: "Latin America",
+        MX: "Mexico", IT: "Italy", PT: "Portugal", BR: "Brazil", NL: "Netherlands", PL: "Poland", TR: "Turkey", AR: "Arabic", IN: "India", PK: "Pakistan",
+        RU: "Russia", RO: "Romania", GR: "Greece", AL: "Albania", EXYU: "Ex-Yugoslavia", SE: "Sweden", NO: "Norway", DK: "Denmark", FI: "Finland",
+        CN: "China", JP: "Japan", KR: "Korea", IR: "Iran", AFG: "Afghanistan", KU: "Kurdish", MULTI: "Multi-Language", EU: "Europe", AS: "Asia",
+        AM: "America", MENA: "Middle East and North Africa", ME: "Middle East", NA: "North America", INT: "International" };
 
     var RE_SERIES = /\b(s[ée]ries?|tv ?shows?|saisons?|seasons?)\b/i;
     var RE_MOVIES = /\b(vod|films?|movies?|cin[ée]ma|cinema|box ?office|4k ?movies?)\b/i;
 
     TV.smart = {
         isAdult: function (s) { return ADULT.test(String(s || "")); },
+        groupName: function (g) { return GROUP_NAMES[g] ? TV.t(GROUP_NAMES[g]) : g; },
         isSeparator: function (s) { return SEPARATOR.test(String(s || "").trim()); },
 
         category: function (name) {
             var t = readTag(name), clean = readable(t.rest.replace(/\s*[|:]\s*/g, " · "));
             return {
-                raw: name, tag: t.tag, lang: t.lang,
+                raw: name, tag: t.tag, lang: t.lang, group: t.group,
                 name: clean || name || TV.t("Other"),
                 adult: ADULT.test(name || ""),
                 kind: RE_SERIES.test(name || "") ? "series" : (RE_MOVIES.test(name || "") ? "movie" : "")

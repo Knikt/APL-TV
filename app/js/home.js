@@ -160,7 +160,7 @@
         addRow(T("Top Rated Series"), D.itemsIn("series", "top").slice(0, 30), "poster", { genreKey: "topseries" });
         var cat2 = D.catalog();
         if (cat2) {
-            var liveCats = cat2.live.cats.filter(function (c) { return !c.adult && c.count >= 3; }).slice(0, favs.length ? 2 : 4);
+            var liveCats = cat2.live.cats.filter(function (c) { return !c.adult && !c.off && c.count >= 3; }).slice(0, favs.length ? 2 : 4);
             liveCats.forEach(function (c) { addRow(c.name, D.channelsIn(c.id).slice(0, 24), "channel", { sub: T("Live now") }); });
             // Genre rows (TMDB genres found in your catalog): loaded once, then Home is drawn again
             HOME_GENRES.forEach(function (g) {

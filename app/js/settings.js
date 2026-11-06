@@ -73,6 +73,8 @@
         rows.push({ label: T("Age Ratings"), value: TV.pref("ageRegion") && TV.pref("ageRegion") !== "auto" ? countryName(TV.pref("ageRegion")) : T("Automatic") + " (" + countryName(TV.meta.ageCountry()) + ")", acc: "chevron",
             desc: T("Each country has its own ratings (France: -12, -16; United States: PG-13, R…). Automatic: the screen's country."),
             run: function () { choose(T("Age Ratings"), "ageRegion", [["auto", T("Automatic")]].concat(TV.meta.ageCountries.map(function (c) { return [c, countryName(c)]; }))); } });
+        rows.push({ label: T("Countries and Categories"), value: D.offCats() ? T("{n} hidden", { n: D.offCats() }) : T("All Shown"), acc: "chevron", icon: "eyeOff",
+            desc: T("Hide the countries and categories of your playlists you never watch: their channels, movies and series disappear everywhere."), run: function () { push(countriesPage()); } });
         rows.push({ label: T("Hidden Themes"), value: String(D.themesOn().length), acc: "chevron", icon: "eyeOff",
             desc: T("Choose themes you never want to see: the movies and series TMDB tags with them disappear everywhere."), run: function () { push(themesPage()); } });
         rows.push({ label: T("Hidden Titles"), value: String(D.hiddenList().length), acc: "chevron", icon: "eyeOff", desc: T("Movies and series you chose to hide. OK to see them and bring one back."),
@@ -176,6 +178,38 @@
                 } };
         });
         return { title: T("Hidden Themes"), icon: "eyeOff", desc: T("Themes you hide disappear from APL TV."), rows: rows, rebuild: themesPage };
+    }
+    /* Countries and Categories: the countries and regions of your playlists, most channels and titles first */
+    function countriesPage() {
+        var rows = D.offGroups().map(function (g) {
+            var all = g.off === g.cats.length;
+            return { label: g.name + (g.id && g.name !== g.id ? " (" + g.id + ")" : ""), acc: "chevron",
+                value: all ? T("Hidden") : g.off ? T("{n} of {m} hidden", { n: g.off, m: g.cats.length }) : T("Visible"),
+                desc: g.id ? T("{n} categories. OK: hide the whole country, or only some of its categories.", { n: g.cats.length }) : T("{n} categories without a country in their name. OK: choose the ones to hide.", { n: g.cats.length }),
+                run: function () { push(groupPage(g.id)); } };
+        });
+        if (!rows.length) rows.push({ label: T("No playlist yet"), desc: T("Add one in Settings.") });
+        return { title: T("Countries and Categories"), icon: "eyeOff", desc: T("What you hide here disappears from Live TV, the guide, Movies, Series, Home and search. Your favorite channels stay."), rows: rows, rebuild: countriesPage };
+    }
+    function groupPage(id) {
+        var g = D.offGroups().filter(function (x) { return x.id === id; })[0];
+        if (!g) return countriesPage();
+        var whole = (TV.pref("hiddenGroups") || []).indexOf(id) >= 0, rows = [], last = "";
+        var KIND = { live: T("Live TV"), movie: T("Movies"), series: T("Series") };
+        if (id) rows.push({ label: whole ? T("Show Everything from {name}", { name: g.name }) : T("Hide Everything from {name}", { name: g.name }), action: true,
+            desc: whole ? T("All its categories come back.") : T("All its categories disappear, and the ones it adds later too."),
+            run: function () {
+                D.setGroupOff(id, !whole);
+                TV.toast(whole ? T("“{name}” shown again", { name: g.name }) : T("“{name}” is hidden", { name: g.name }));
+                replaceTop(groupPage(id));
+            } });
+        g.cats.forEach(function (c) {
+            if (c.kind !== last) { last = c.kind; rows.push({ section: KIND[c.kind] || "" }); }
+            rows.push({ label: (c.tag ? c.tag + " · " : "") + c.name, value: c.off ? T("Hidden") : T("Visible"),
+                desc: (c.kind === "live" ? T("{n} channels.", { n: c.count }) : c.kind === "movie" ? T("{n} movies.", { n: c.count }) : T("{n} series.", { n: c.count })) + " " + T("OK: hide or show this category."),
+                run: function () { D.setCatOff(c, !c.off); replaceTop(groupPage(id)); } });
+        });
+        return { title: g.name, icon: "eyeOff", desc: T("Hidden categories disappear from APL TV. Your favorite channels stay."), rows: rows, rebuild: function () { return groupPage(id); } };
     }
     function hiddenPage() {
         var rows = D.hiddenList().map(function (h) {

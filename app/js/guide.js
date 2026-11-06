@@ -155,7 +155,7 @@
 
     function pickCategory() {
         var cat = D.catalog(), adult = TV.pref("showAdult");
-        var items = [{ id: "fav", name: T("Favorites") }, { id: "all", name: T("All Channels") }].concat((cat ? cat.live.cats : []).filter(function (c) { return adult || !c.adult; }));
+        var items = [{ id: "fav", name: T("Favorites") }, { id: "all", name: T("All Channels") }].concat((cat ? cat.live.cats : []).filter(function (c) { return (adult || !c.adult) && !c.off; }));
         TV.menu(T("Category"), items.slice(0, 60).map(function (c) {
             return { label: (c.tag ? c.tag + " · " : "") + c.name, check: c.id === catId, run: function () { TV.setPref("liveCat", c.id); load(); zone = "grid"; markFocus(); } };
         }));

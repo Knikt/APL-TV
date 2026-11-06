@@ -252,7 +252,7 @@
                 var part = c[k], counts = {};
                 (k === "live" ? part.chans : part.items).forEach(function (x) { counts[x.cat] = (counts[x.cat] || 0) + 1; });
                 part.cats.forEach(function (ct) {
-                    if (ct.raw) { var info = S.category(ct.raw); ct.name = info.name; ct.tag = info.tag; ct.lang = info.lang; ct.adult = info.adult; }
+                    if (ct.raw) { var info = S.category(ct.raw); ct.name = info.name; ct.tag = info.tag; ct.lang = info.lang; ct.adult = info.adult; ct.group = info.group; }
                     ct.count = counts[ct.id] || 0;
                     ct.srcName = many ? src.name : "";
                     if (ct.count) m[k].cats.push(ct);
@@ -268,6 +268,7 @@
         });
         ["live", "movies", "series"].forEach(function (k) { m[k].cats = S.sortCategories(m[k].cats); });
         merged = m;
+        applyOff();
         groupCache = {}; idxCache = {}; topLists = {}; genreLists = {};
         fire("catalog");
     }
@@ -398,8 +399,8 @@
         var src;
         if (catId === "fav") src = favChannels();
         else if (catId === "recent") src = recentChannels();
-        else if (catId === "all") src = merged ? merged.live.chans.filter(function (c) { return TV.pref("showAdult") || !catOf(c).adult; }) : [];
-        else src = merged && merged.live.byCat[catId] || [];
+        else if (catId === "all") src = merged ? merged.live.chans.filter(function (c) { var ct = catOf(c); return (TV.pref("showAdult") || !ct.adult) && !ct.off; }) : [];
+        else src = merged && !catOf({ cat: catId }).off && merged.live.byCat[catId] || [];
         var out = src;
         if (TV.pref("mergeQuality") && catId !== "fav" && catId !== "recent") {
             var seen = {};
@@ -480,8 +481,69 @@
     /* Titles hidden by you: every version of the title (same name and year) disappears everywhere */
     function hiddenMap() { return TV.load("hidden", {}) || {}; }
     function hideKey(x) { if (!x._hk) x._hk = (x.kind === "series" ? "s:" : "m:") + versionKey(x); return x._hk; }
-    function anyHidden() { if (themeCount || themesOn().length) return true; for (var k in hiddenMap()) return true; return false; }
-    function isHidden(x) { if (!x || !anyHidden()) return false; var k = hideKey(x); return !!(hiddenMap()[k] || themeKeys[k] || catHidden(x)); }
+    function anyTitleHidden() { if (themeCount || themesOn().length) return true; for (var k in hiddenMap()) return true; return false; }
+    function anyHidden() { return offCount > 0 || anyTitleHidden(); }
+    function isHidden(x) {
+        if (!x) return false;
+        if (offCount && catOf(x).off) return true;
+        if (!anyTitleHidden()) return false;
+        var k = hideKey(x); return !!(hiddenMap()[k] || themeKeys[k] || catHidden(x));
+    }
+
+    /* ---------- countries and categories you hide (Settings > Countries and Categories) ----------
+       A hidden category takes its channels, movies and series away from everywhere: the category rows,
+       All Channels, Home, the genres, search, More Like This and voice. Your favorites stay.
+       hiddenGroups: the countries or regions hidden ("AF"), hiddenCats: one category hidden (1) or
+       shown again inside a hidden country (0), by its name in the playlist, so it stays after a refresh. */
+    var offCount = 0;
+    function catKey(c) { return c.kind + ":" + (c.raw || c.name); }
+    function applyOff() {
+        offCount = 0;
+        if (!merged) return;
+        var one = TV.pref("hiddenCats") || {}, groups = TV.pref("hiddenGroups") || [], n = {}, all = [];
+        ["live", "movies", "series"].forEach(function (k) { merged[k].cats.forEach(function (c) { all.push(c); n[c.group || ""] = (n[c.group || ""] || 0) + 1; }); });
+        all.forEach(function (c) {
+            // a code APL TV does not know, seen on a single category ("TNT| Sport"), is not a country: Other Categories
+            c.grp = c.group && (S.groupName(c.group) !== c.group || n[c.group] > 1) ? c.group : "";
+            var key = catKey(c);
+            c.off = key in one ? one[key] === 1 : groups.indexOf(c.grp) >= 0;
+            if (c.off) offCount++;
+        });
+    }
+    function offChanged() { applyOff(); groupCache = {}; fire("hidden"); }
+    function setCatOff(c, on) {
+        var one = TV.pref("hiddenCats") || {}, copy = {}, k;
+        for (k in one) copy[k] = one[k];
+        var inGroup = (TV.pref("hiddenGroups") || []).indexOf(c.grp) >= 0;
+        if (on === inGroup) delete copy[catKey(c)]; else copy[catKey(c)] = on ? 1 : 0;
+        TV.setPref("hiddenCats", copy);
+        offChanged();
+    }
+    function setGroupOff(g, on) {
+        var groups = (TV.pref("hiddenGroups") || []).filter(function (x) { return x !== g; }), one = TV.pref("hiddenCats") || {}, copy = {}, k;
+        if (on) groups.push(g);
+        var mine = {};
+        offGroups().forEach(function (x) { if (x.id === g) x.cats.forEach(function (c) { mine[catKey(c)] = 1; }); });
+        for (k in one) if (!mine[k]) copy[k] = one[k];          // the whole country now: its own exceptions go
+        TV.setPref("hiddenGroups", groups);
+        TV.setPref("hiddenCats", copy);
+        offChanged();
+    }
+    /* The countries and regions of your playlists, each with its categories (adult ones only when shown) */
+    function offGroups() {
+        if (!merged) return [];
+        var adult = TV.pref("showAdult"), by = {}, list = [];
+        [["live", "live"], ["movies", "movie"], ["series", "series"]].forEach(function (k) {
+            merged[k[0]].cats.forEach(function (c) {
+                if (c.adult && !adult) return;
+                var g = by[c.grp];
+                if (!g) { g = by[c.grp] = { id: c.grp, name: c.grp ? S.groupName(c.grp) : T("Other Categories"), cats: [], off: 0, items: 0 }; list.push(g); }
+                g.cats.push(c); g.items += c.count || 0; if (c.off) g.off++;
+            });
+        });
+        return list.sort(function (a, b) { return (!a.id) - (!b.id) || b.items - a.items; });
+    }
+    function offCats() { return offCount; }
     /* A provider category whose name carries a hidden theme ("FR| LGBT", "Horreur"): everything in it is hidden */
     var catThemeCache = {};
     function catNameHidden(name) {
@@ -846,7 +908,7 @@
         myList: myList, inMyList: inMyList, toggleMyList: toggleMyList,
         setResume: setResume, resumeOf: resumeOf, continueWatching: continueWatching, isDone: isDone, markWatched: markWatched, recentlyWatched: recentlyWatched,
         forget: forget, resumeChanged: resumeChanged,
-        isHidden: isHidden, setHidden: setHidden, hiddenList: hiddenList, unhide: unhide, versionKey: versionKey,
+        isHidden: isHidden, setHidden: setHidden, setCatOff: setCatOff, setGroupOff: setGroupOff, offGroups: offGroups, offCats: offCats, hiddenList: hiddenList, unhide: unhide, versionKey: versionKey,
         buildThemes: buildThemes, checkTheme: checkTheme, themesOn: themesOn, catNameHidden: catNameHidden,
         itemsIn: itemsIn, vodUrl: vodUrl, vodInfo: vodInfo, seriesInfo: seriesInfo, search: search,
         xApi: xApi, parseM3U: parseM3U, pack: pack, unpack: unpack, findTitles: findTitles, titleIndex: titleIndex, genreItems: genreItems,

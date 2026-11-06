@@ -38,7 +38,7 @@
             var cat = D.catalog(), adult = TV.pref("showAdult");
             if (providerMode) {
                 chips = [{ id: "back", name: "‹ " + T("Genres") }, { id: "all", name: T("All") }];
-                (cat ? cat[key].cats : []).forEach(function (c) { if ((adult || !c.adult) && !D.catNameHidden(c.name)) chips.push(c); });
+                (cat ? cat[key].cats : []).forEach(function (c) { if ((adult || !c.adult) && !c.off && !D.catNameHidden(c.name)) chips.push(c); });
             } else {
                 chips = [{ id: "recent", name: T("New") }, { id: "top", name: T("Top Rated") }, { id: "mylist", name: T("My List") }];
                 if (D.recentlyWatched(key).length) chips.push({ id: "watched", name: T("Recently Watched") });
@@ -55,7 +55,7 @@
             selectChip(TV.pref(key + "Cat") || "recent");
         }
         function selectChip(want) {
-            chipIndex = 0;
+            chipIndex = providerMode && chips.length > 1 ? 1 : 0;           // not "‹ Genres": that would leave the provider's categories
             for (var i = 0; i < chips.length; i++) if (chips[i].id === want) { chipIndex = i; break; }
         }
         function paintChips() {
@@ -76,16 +76,17 @@
             if (String(id).indexOf("g:") === 0) return !D.genreReady(key, id.slice(2));
             return id === "top" && !D.topReady(key);
         }
-        function load(id) {
+        function load(id, keep) {
             if (id === "provider" || id === "back") {          // switch the chip row between genres and the provider's categories
                 providerMode = id === "provider";
                 buildChips(); chipIndex = providerMode ? 1 : 0; paintChips();
                 id = chips[chipIndex].id;
             }
+            keep = keep && id === catId && grid.items.length;
             catId = id;
             TV.setPref(key + "Cat", id);
             var items = D.itemsIn(key, id);
-            grid.set(items, 0);
+            if (keep) grid.update(items); else grid.set(items, 0);
             grid.setActive(zone === "grid" && TV.shell.focusOn() === "view");
             
             if (!items.length) {
@@ -95,7 +96,21 @@
             paintChips();
         }
 
-        function render() {
+        /* A genre (Netflix, Anime…) or Top Rated still being found in the background grows while you browse it:
+           the new titles join once you stop pressing keys, and you stay on the title you were on
+           (before, the whole list started over from the first title: "it keeps jumping up"). */
+        var refreshJob = null;
+        function refreshSoon() {
+            TV.uncalm(refreshJob);
+            refreshJob = TV.calm(function () {
+                if (!visible) { dirty = true; return; }
+                if (!grid.items.length) { load(catId); return; }        // was showing "Finding these titles…"
+                grid.update(D.itemsIn(key, catId));
+            }, 1200);
+        }
+
+        /* keep: the same category drawn again (a title hidden, the playlist refreshed): you stay where you were */
+        function render(keep) {
             dirty = false;
             if (!D.catalog() || !D.sources().length) {
                 chipStrip.innerHTML = ""; grid.set([], 0);
@@ -104,14 +119,14 @@
                 return;
             }
             buildChips();
-            load(chips[chipIndex] ? chips[chipIndex].id : "recent");
+            load(chips[chipIndex] ? chips[chipIndex].id : "recent", keep);
         }
 
         var view = {
             show: function () {
                 if (!root) build();
                 visible = true;
-                if (dirty) render(); else { paintChips(); if (coverStale) grid.refreshCard(grid.index); grid.draw(); }
+                if (dirty) render(true); else { paintChips(); if (coverStale) grid.refreshCard(grid.index); grid.draw(); }
                 coverStale = false;
                 TV.bg("", "dark");
             },
@@ -146,17 +161,23 @@
                 var it = grid.current();
                 if (it) TV.detail.open(it);
             },
-            canHold: function () { return zone === "grid" && !!grid.current(); },
+            canHold: function () { return zone === "grid" ? !!grid.current() : zone === "chips" && !!(chips[chipIndex] && chips[chipIndex].kind); },
             longOk: function () {
+                if (zone === "chips") {             // OK held on one of the provider's categories: hide it, or its whole country
+                    TV.categoryMenu(chips[chipIndex], function () {
+                        var i = chipIndex; buildChips(); chipIndex = Math.min(i, chips.length - 1); load(chips[chipIndex].id); zone = "chips"; paintChips();
+                    });
+                    return;
+                }
                 var it = grid.current();
-                TV.titleMenu(it, function () { var i = grid.index; load(catId); grid.focus(Math.min(i, grid.items.length - 1)); });
+                TV.titleMenu(it, function () { load(catId, true); grid.refreshCard(grid.index); grid.draw(); });
             },
-            invalidate: function () { dirty = true; if (visible) render(); }
+            invalidate: function () { dirty = true; if (visible) render(true); }
         };
         D.onChange(function (w) {
             if (w === "catalog" || w === "hidden") view.invalidate();
             else if (w === "resume") { if (catId === "watched") dirty = true; else coverStale = true; }
-            else if ((w === "top" && catId === "top") || (w === "genre" && String(catId).indexOf("g:") === 0)) { if (visible) load(catId); else dirty = true; }
+            else if ((w === "top" && catId === "top") || (w === "genre" && String(catId).indexOf("g:") === 0)) { if (visible) refreshSoon(); else dirty = true; }
         });
         return view;
     }

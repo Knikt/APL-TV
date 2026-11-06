@@ -1,8 +1,8 @@
 {
- "version": "1.0.1",
+ "version": "1.0.2",
  "loader": 1,
  "reinstall": "1.0.1",
- "notes": "APL TV now updates itself from GitHub",
+ "notes": "Hide countries and categories, and Movies and Series keep your place",
  "scripts": [
   "js/lang-fr.js",
   "js/i18n.js",

@@ -373,6 +373,29 @@
     };
     Grid.prototype.setActive = function (on) { this.active = on; if (this.cards[this.index]) this.cards[this.index].classList.toggle("is-focused", on); this.draw(); if (on) this.onFocus(this.index, this.items[this.index], this.cards[this.index]); };
     Grid.prototype.current = function () { return this.items[this.index]; };
+    /* The same list with titles added or removed in the background (a genre such as Netflix still being
+       found on TMDB): the focused title stays focused, on the same line of the screen, and the covers
+       that did not move stay. Returns false when nothing changed. */
+    Grid.prototype.update = function (items) {
+        items = items || [];
+        var old = this.items, cur = old[this.index], oldRow = Math.floor(this.index / this.cols), i;
+        if (items.length === old.length) {
+            for (i = 0; i < items.length && items[i] === old[i]; i++) {}
+            if (i === items.length) return false;
+        }
+        var idx = cur ? items.indexOf(cur) : -1;
+        if (idx < 0 && cur) for (i = 0; i < items.length; i++) if (items[i] && items[i].id === cur.id) { idx = i; break; }
+        if (idx < 0) idx = Math.min(this.index, items.length - 1);
+        if (this.cards[this.index]) this.cards[this.index].classList.remove("is-focused");
+        for (var k in this.cards) if (items[k] !== old[k]) { this.inner.removeChild(this.cards[k]); delete this.cards[k]; }
+        this.items = items;
+        this.index = Math.max(0, idx);
+        this.scroll = Math.max(0, this.scroll + (Math.floor(this.index / this.cols) - oldRow) * this.ch);
+        this.inner.style.height = Math.ceil(items.length / this.cols) * this.ch + "px";
+        this.marked = -1;
+        this.draw();
+        return true;
+    };
     /* One cover made again (watched, progress): the others stay */
     Grid.prototype.refreshCard = function (i) {
         var c = this.cards[i];
@@ -539,6 +562,28 @@
                 { label: T("Hide"), run: function () { D.setHidden(it, true); TV.toast(T("“{name}” is hidden", { name: name })); done(); } }
             ] });
         } });
+        TV.menu(name, items);
+    };
+    /* OK held on a category of the playlist (Live TV, Movies, Series): hide it, or everything from its country */
+    TV.categoryMenu = function (c, after) {
+        if (!c || !c.kind) return;
+        var D = TV.data, name = (c.tag ? c.tag + " · " : "") + c.name;
+        function done() { if (after) after(); }
+        var items = [{ label: T("Hide This Category"), icon: "eyeOff", run: function () {
+            TV.alert({ title: T("Hide “{name}”?", { name: name }), message: T("Its channels, movies and series will no longer appear anywhere in APL TV. You can bring it back in Settings, Countries and Categories."), buttons: [
+                { label: T("Cancel") },
+                { label: T("Hide"), run: function () { D.setCatOff(c, true); TV.toast(T("“{name}” is hidden", { name: name })); done(); } }
+            ] });
+        } }];
+        if (c.grp) {
+            var g = D.offGroups().filter(function (x) { return x.id === c.grp; })[0], country = TV.smart.groupName(c.grp);
+            items.push({ label: T("Hide Everything from {name}", { name: country }), icon: "eyeOff", run: function () {
+                TV.alert({ title: T("Hide everything from {name}?", { name: country }), message: T("Its {n} categories will no longer appear anywhere in APL TV, nor the ones it adds later. You can bring them back in Settings, Countries and Categories.", { n: g ? g.cats.length : 1 }), buttons: [
+                    { label: T("Cancel") },
+                    { label: T("Hide"), run: function () { D.setGroupOff(c.grp, true); TV.toast(T("“{name}” is hidden", { name: country })); done(); } }
+                ] });
+            } });
+        }
         TV.menu(name, items);
     };
     TV.menu = function (title, items) {

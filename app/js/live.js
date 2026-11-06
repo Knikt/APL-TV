@@ -48,9 +48,9 @@
         var list = [
             { id: "fav", name: T("Favorites"), count: D.favIds().length },
             { id: "recent", name: T("Recent"), count: (TV.load("recent", []) || []).length },
-            { id: "all", name: T("All Channels"), count: cat ? cat.live.chans.length : 0 }
+            { id: "all", name: T("All Channels"), count: 0 }
         ];
-        (cat ? cat.live.cats : []).forEach(function (c) { if (adult || !c.adult) list.push(c); });
+        (cat ? cat.live.cats : []).forEach(function (c) { if ((adult || !c.adult) && !c.off) { list.push(c); list[2].count += c.count; } });
         return list;
     }
     function buildChips() {
@@ -295,8 +295,16 @@
             var ch = cards.current();
             if (ch) fullScreen(ch);
         },
-        canHold: function () { return zone === "cards" && !!cards.current(); },
-        longOk: function () { var ch = cards.current(); if (ch) channelMenu(ch); },
+        canHold: function () { return zone === "cards" ? !!cards.current() : zone === "chips" && !!(cats[catIndex] && cats[catIndex].kind); },
+        longOk: function () {
+            if (zone === "chips") {                 // OK held on a category: hide it, or its whole country
+                TV.categoryMenu(cats[catIndex], function () {
+                    cats = categories(); catIndex = Math.min(catIndex, cats.length - 1); buildChips(); paintChips(); loadCategory();
+                });
+                return;
+            }
+            var ch = cards.current(); if (ch) channelMenu(ch);
+        },
         refresh: function () {
             if (!visible || TV.osd.isOpen() || TV.multiview.isOpen() || !cards) return;
             TV.uncalm(refreshJob);

@@ -11,7 +11,7 @@
     "use strict";
 
     var TV = global.TV, el = TV.el, esc = TV.esc, T = TV.t, D = TV.data;
-    TV.VERSION = "1.0.1";
+    TV.VERSION = "1.0.2";
     var TABS = [
         { id: "home", label: T("Home") },
         { id: "live", label: T("Live TV") },
