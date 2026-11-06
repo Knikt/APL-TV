@@ -408,5 +408,21 @@ window.TV_LANG_FR = {
     "With your own APL TV skill for Alexa (see the README): “Alexa, ask APL TV to search Dragon Ball”. Pause, play and next episode work without it.": "Avec ta propre skill APL TV pour Alexa (voir le README) : « Alexa, demande à APL TV de chercher Dragon Ball ». Pause, lecture et épisode suivant marchent sans.",
     "New Code": "Nouveau code",
     "Turn On": "Activer",
-    "Turn Off": "Désactiver"
+    "Turn Off": "Désactiver",
+    "Updates": "Mises à jour",
+    "Automatic Updates": "Mises à jour automatiques",
+    "APL TV checks GitHub every 6 hours and updates itself, then restarts when nothing is playing. Your playlists and settings stay.": "APL TV regarde sur GitHub toutes les 6 heures et se met à jour tout seul, puis redémarre quand rien n'est en lecture. Tes playlists et tes réglages restent.",
+    "Check for Updates": "Rechercher une mise à jour",
+    "Back to the Installed Version": "Revenir à la version installée",
+    "Runs the version installed with APL Launcher Setup again, until the next update.": "Relance la version installée avec APL Launcher Setup, jusqu'à la prochaine mise à jour.",
+    "not enough space on the screen": "pas assez de place sur l'écran",
+    "Updates happen on the screen.": "Les mises à jour se font sur l'écran.",
+    "Checking for an update…": "Recherche d'une mise à jour…",
+    "APL TV is up to date (version {v})": "APL TV est à jour (version {v})",
+    "APL TV {v} is out: install it once with APL Launcher Setup on the PC": "APL TV {v} est sorti : installe-le une fois avec APL Launcher Setup sur le PC",
+    "APL TV {v} is ready: {notes}": "APL TV {v} est prêt : {notes}",
+    "APL TV {v} is ready": "APL TV {v} est prêt",
+    "Update failed: {error}. Try again later.": "La mise à jour a échoué : {error}. Réessaie plus tard.",
+    "no network": "pas de réseau",
+    "Going back to the installed version…": "Retour à la version installée…"
 };

@@ -4,8 +4,8 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=1920, height=1080, user-scalable=no">
     <title>APL TV</title>
-    <link rel="stylesheet" href="css/tv.css">
-    <link rel="stylesheet" href="css/tv2.css">
+    <link rel="stylesheet" href="css/tv.css" data-app-css>
+    <link rel="stylesheet" href="css/tv2.css" data-app-css>
 </head>
 <body class="perf is-booting">
     <!-- The video plane sits under the page: wherever the page is transparent, the picture shows -->
@@ -42,32 +42,11 @@
     <div id="boot" class="boot"><div class="boot__logo"><span class="boot__mark">APL</span><span class="boot__tv">TV</span></div><div id="bootMsg" class="boot__msg"></div></div>
     <input id="ime" class="ime" type="text" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
 
+    <!-- Samsung API (AVPlay, product info, voice): provided by the screen -->
     <script src="$WEBAPIS/webapis/webapis.js"></script>
-    <script src="js/lang-fr.js"></script>
-    <script src="js/i18n.js"></script>
-    <script src="js/keys.local.js"></script>
-    <script src="js/dev.local.js"></script>
-    <script src="js/core.js"></script>
-    <script src="js/nav.js"></script>
-    <script src="js/qr.js"></script>
-    <script src="js/helper.js"></script>
-    <script src="js/smart.js"></script>
-    <script src="js/data.js"></script>
-    <script src="js/epg.js"></script>
-    <script src="js/meta.js"></script>
-    <script src="js/player.js"></script>
-    <script src="js/ui.js"></script>
-    <script src="js/home.js"></script>
-    <script src="js/live.js"></script>
-    <script src="js/guide.js"></script>
-    <script src="js/vod.js"></script>
-    <script src="js/detail.js"></script>
-    <script src="js/person.js"></script>
-    <script src="js/search.js"></script>
-    <script src="js/settings.js"></script>
-    <script src="js/multiview.js"></script>
-    <script src="js/osd.js"></script>
-    <script src="js/voice.js"></script>
-    <script src="js/app.js"></script>
+    <!-- What this version contains, then start-up: boot.js loads the rest,
+         or the newer version downloaded by the automatic update (js/updater.js) -->
+    <script src="js/build.js"></script>
+    <script id="tv-boot" src="js/boot.js"></script>
 </body>
 </html>

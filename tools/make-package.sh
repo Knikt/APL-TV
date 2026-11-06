@@ -75,7 +75,7 @@ cp "$WGT" "$OUT/$NAME"
 # One listing, then a here-string: grep -q on a pipe would kill unzip with SIGPIPE (pipefail).
 LIST="$(unzip -l "$OUT/$NAME")"
 echo "$LIST" | grep -v -E " images/"
-for f in config.xml index.html icon.png service/service.js js/app.js js/keys.local.js js/dev.local.js \
+for f in config.xml index.html icon.png version.json service/service.js js/boot.js js/build.js js/updater.js js/app.js js/keys.local.js js/dev.local.js \
          js/lang-fr.js css/tv.css css/tv2.css author-signature.xml signature1.xml; do
     grep -q " $f\$" <<<"$LIST" || { echo "$f is missing from $NAME" >&2; exit 1; }
 done

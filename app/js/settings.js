@@ -118,6 +118,11 @@
                 if (code) items.push({ label: T("Turn Off"), danger: true, run: function () { TV.voice.setRelayCode(""); redraw(); } });
                 TV.menu(T("Alexa Skill"), items);
             } });
+        rows.push({ section: T("Updates") });
+        rows.push(toggleRow(T("Automatic Updates"), "autoUpdate", T("APL TV checks GitHub every 6 hours and updates itself, then restarts when nothing is playing. Your playlists and settings stay.")));
+        rows.push({ label: T("Check for Updates"), icon: "refresh", run: function () { if (TV.updater) TV.updater.check(true); } });
+        if (TV.updater && TV.updater.fromBundle()) rows.push({ label: T("Back to the Installed Version"), value: TV.updater.installed(), acc: "chevron",
+            desc: T("Runs the version installed with APL Launcher Setup again, until the next update."), run: function () { TV.updater.reset(); } });
         rows.push({ section: T("About") });
         rows.push({ label: T("Refresh All Playlists"), icon: "refresh", run: function () { refreshAll(); } });
         rows.push({ label: "APL TV", value: T("Version {v}", { v: TV.VERSION }), desc: T("Created by Knikt (Gero Corp.)") + "\n" + T("A player for your own playlists. APL TV comes with no channels.") });

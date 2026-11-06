@@ -50,6 +50,18 @@ v_svc = re.search(r'VERSION = "([^"]+)"', read(os.path.join(APP, "service", "ser
 if not (v_config == v_app == v_svc):
     errors.append("versions differ: config.xml %s, app.js %s, service.js %s" % (v_config, v_app, v_svc))
 
+# ---- automatic updates: app/version.json and app/js/build.js match the code (tools/make-build.py) ----
+import importlib.util, json as _json
+_spec = importlib.util.spec_from_file_location("make_build", os.path.join(ROOT, "tools", "make-build.py"))
+_mb = importlib.util.module_from_spec(_spec); _spec.loader.exec_module(_mb)
+try:
+    _cur = _json.load(open(os.path.join(APP, "version.json"), encoding="utf-8"))
+    _v, _manifest, _build_js = _mb.build(_cur.get("notes", ""))
+    if _cur != _manifest or read(os.path.join(APP, "js", "build.js")) != _build_js:
+        errors.append("app/version.json or app/js/build.js is out of date: run python tools/make-build.py --notes \"...\"")
+except (OSError, ValueError) as e:
+    errors.append("app/version.json missing or broken (" + str(e) + "): run python tools/make-build.py")
+
 # ---- personal files ----
 try:
     tracked = subprocess.run(["git", "ls-files"], cwd=ROOT, capture_output=True, text=True).stdout.split()

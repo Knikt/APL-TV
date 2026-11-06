@@ -33,6 +33,7 @@ Created by **Knikt** (Gero Corp.), the maker of [APL Launcher](https://github.co
 - **Voice, with the screen's Alexa:** "Alexa, pause", play, skip, next episode reach APL TV directly. For searches, which Samsung's Alexa keeps for its own panel, the small [APL TV skill](alexa-skill/) brings them to APL TV: "Alexa, ask APL TV to search Dragon Ball movies" and the results are on screen; "Alexa, ask APL TV to put on M6" and the channel starts. With Bixby, searches should reach APL TV without the skill (not tested yet).
 - **Set up from your phone.** The screen shows a QR code; your phone opens a page served by the screen itself on your Wi-Fi (no outside website), protected by a one-time code. The remote works too.
 - **APL Launcher integration.** On APL Launcher's Home Screen, APL TV's Top Shelf shows what you were watching and your last channel, and OK opens it right there (APL Launcher 1.0.20 or newer).
+- **Automatic updates.** APL TV checks this repository every 6 hours and updates itself (code, look, texts), then restarts when nothing is playing. Your playlists and settings stay. An update that changes the app's permissions asks once for APL Launcher Setup. Settings › Updates.
 - English and French (it follows the screen's language).
 
 ## Screenshots
@@ -109,7 +110,7 @@ If you like APL TV, have a look at APL Launcher, and a star on either repository
 ## Privacy and security
 
 - Your playlists and accounts stay on the screen, in APL TV's own storage. They are only sent to your provider, and never written in logs.
-- APL TV only talks to your provider, to TMDB and Stremio's Cinemeta (to look titles up), to the guide sources, to OpenSubtitles through Stremio's public add-on (only when you look for subtitles), and, only if you turn on the Alexa skill, to your private ntfy.sh topic (the searched words only).
+- APL TV only talks to your provider, to TMDB and Stremio's Cinemeta (to look titles up), to the guide sources, to OpenSubtitles through Stremio's public add-on (only when you look for subtitles), to GitHub every 6 hours to look for an update (Settings › Updates turns it off), and, only if you turn on the Alexa skill, to your private ntfy.sh topic (the searched words only).
 - The helper service on the screen (port 8765) only answers APL TV itself, and the phone page while a setup code is shown. Websites opened in the screen's browser are refused. The code is random, changes each time, and too many wrong codes close it.
 - No account, no analytics, no ads.
 

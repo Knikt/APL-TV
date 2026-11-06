@@ -33,6 +33,7 @@ Créé par **Knikt** (Gero Corp.), l'auteur d'[APL Launcher](https://github.com/
 - **À la voix, avec l'Alexa de l'écran :** « Alexa, pause », lecture, avance, épisode suivant arrivent directement dans APL TV. Pour les recherches, que l'Alexa de Samsung garde pour son propre panneau, la petite [skill APL TV](alexa-skill/) les amène dans APL TV : « Alexa, demande à APL TV de chercher les films Dragon Ball » et les résultats sont à l'écran ; « Alexa, demande à APL TV de mettre M6 » et la chaîne démarre. Avec Bixby, les recherches devraient arriver dans APL TV sans la skill (pas encore testé).
 - **Configuration depuis le téléphone.** L'écran affiche un QR code ; ton téléphone ouvre une page servie par l'écran lui-même sur ton Wi-Fi (aucun site extérieur), protégée par un code à usage unique. La télécommande marche aussi.
 - **Intégration à APL Launcher.** Sur l'écran d'accueil d'APL Launcher, le Top Shelf d'APL TV montre ce que tu regardais et ta dernière chaîne, et OK l'ouvre directement là (APL Launcher 1.0.20 ou plus récent).
+- **Mises à jour automatiques.** APL TV regarde ce dépôt toutes les 6 heures et se met à jour tout seul (code, style, textes), puis redémarre quand rien n'est en lecture. Tes playlists et tes réglages restent. Une mise à jour qui change les permissions de l'app demande une fois APL Launcher Setup. Réglages › Mises à jour.
 - En français et en anglais (suit la langue de l'écran).
 
 ## Captures d'écran
@@ -109,7 +110,7 @@ Si APL TV te plaît, jette un œil à APL Launcher, et une étoile sur l'un ou l
 ## Vie privée et sécurité
 
 - Tes playlists et tes comptes restent sur l'écran, dans le stockage d'APL TV. Ils ne sont envoyés qu'à ton fournisseur et ne sont jamais écrits dans les journaux.
-- APL TV ne parle qu'à ton fournisseur, à TMDB et à Cinemeta de Stremio (pour reconnaître les titres), aux sources du guide TV, à OpenSubtitles par l'add-on public de Stremio (seulement quand tu cherches des sous-titres), et, seulement si tu actives la skill Alexa, à ton sujet ntfy.sh privé (uniquement les mots cherchés).
+- APL TV ne parle qu'à ton fournisseur, à TMDB et à Cinemeta de Stremio (pour reconnaître les titres), aux sources du guide TV, à OpenSubtitles par l'add-on public de Stremio (seulement quand tu cherches des sous-titres), à GitHub toutes les 6 heures pour chercher une mise à jour (Réglages › Mises à jour pour l'éteindre), et, seulement si tu actives la skill Alexa, à ton sujet ntfy.sh privé (uniquement les mots cherchés).
 - Le service d'assistance sur l'écran (port 8765) ne répond qu'à APL TV, et à la page du téléphone tant qu'un code de configuration est affiché. Les sites ouverts dans le navigateur de l'écran sont refusés. Le code est aléatoire, change à chaque fois, et trop de mauvais codes le ferment.
 - Pas de compte, pas de statistiques, pas de pub.
 

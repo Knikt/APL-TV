@@ -22,7 +22,7 @@ var zlib = require("zlib");
 var os = require("os");
 var crypto = require("crypto");
 
-var PORT = 8765, VERSION = "1.0.0";
+var PORT = 8765, VERSION = "1.0.1";
 var IDLE_MS = 15 * 60 * 1000, SESSION_MS = 20 * 60 * 1000;
 var UA = "APL TV/" + VERSION + " (Tizen)";
 
@@ -457,6 +457,14 @@ function devHandler(req, res) {
         return true;
     }
     if (path === "/dev/keys" && isLocal(req)) { var k = devKeys; devKeys = []; send(res, 200, { keys: k }); return true; }
+    // Test of the automatic updates (development builds only): a version put in /tmp/apltv-update from the PC
+    var um = /^\/dev\/update\/((?:js|css)\/[\w.-]+\.(?:js|css)|version\.json)$/.exec(path);
+    if (um && devLog && req.method === "GET" && isLocal(req)) {
+        require("fs").readFile("/tmp/apltv-update/" + um[1], "utf8", function (err, txt) {
+            if (err) send(res, 404, { error: "not found" }); else send(res, 200, txt, "text/plain; charset=utf-8");
+        });
+        return true;
+    }
     return false;
 }
 var devKeys = [];

@@ -11,7 +11,7 @@
     "use strict";
 
     var TV = global.TV, el = TV.el, esc = TV.esc, T = TV.t, D = TV.data;
-    TV.VERSION = "1.0.0";
+    TV.VERSION = "1.0.1";
     var TABS = [
         { id: "home", label: T("Home") },
         { id: "live", label: T("Live TV") },
@@ -213,7 +213,7 @@
         buildTabs();
         var bootMsg = TV.$("bootMsg");
         TV.pushNav(screen);
-        TV.log("APL TV " + TV.VERSION + " starting, " + (TV.PREVIEW ? "preview" : "screen") + ", avplay " + (TV.player.native ? "yes" : "no"));
+        TV.log("APL TV " + TV.VERSION + (global.TV_UPDATE && global.TV_UPDATE.fromBundle ? " (downloaded update, installed " + global.TV_UPDATE.installed + ")" : "") + " starting, " + (TV.PREVIEW ? "preview" : "screen") + ", avplay " + (TV.player.native ? "yes" : "no"));
         TV.heap("start");
         try { if (TV.DEV && navigator.storage && navigator.storage.estimate) navigator.storage.estimate().then(function (e) { TV.log("storage " + Math.round(e.usage / 1048576) + " MB used of " + Math.round(e.quota / 1048576) + " MB"); }); } catch (e) {}
         D.start(function (m) { bootMsg.textContent = m; }).then(function () {
@@ -222,13 +222,14 @@
             if (tab === "settings" || tab === "search" || !TV.views[tab]) tab = "home";
             go(hasData ? tab : "home", true);
             if (hasData) setTimeout(offerResume, 1200);
-            setTimeout(function () { TV.$("boot").classList.add("is-hidden"); document.body.classList.remove("is-booting"); }, 150);
+            setTimeout(function () { TV.$("boot").classList.add("is-hidden"); document.body.classList.remove("is-booting"); global.TV_BOOT_OK = true; }, 150);
             readRequest();
             if (TV.voice) TV.voice.start();
             TV.heap("catalog loaded");
             setTimeout(function () { TV.epg.loadAll(); }, 1500);
         }, function (e) {
             TV.log("start failed: " + e.message);
+            global.TV_BOOT_OK = true;
             go("home", true);
             TV.$("boot").classList.add("is-hidden");
         });
