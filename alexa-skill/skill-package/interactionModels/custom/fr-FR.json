@@ -1,0 +1,63 @@
+{
+  "interactionModel": {
+    "languageModel": {
+      "invocationName": "a. p. l. t. v.",
+      "intents": [
+        {
+          "name": "AMAZON.CancelIntent",
+          "samples": []
+        },
+        {
+          "name": "AMAZON.HelpIntent",
+          "samples": []
+        },
+        {
+          "name": "AMAZON.StopIntent",
+          "samples": []
+        },
+        {
+          "name": "AMAZON.NavigateHomeIntent",
+          "samples": []
+        },
+        {
+          "name": "AMAZON.FallbackIntent",
+          "samples": []
+        },
+        {
+          "name": "SearchIntent",
+          "slots": [
+            {
+              "name": "query",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "cherche {query}",
+            "chercher {query}",
+            "de chercher {query}",
+            "recherche {query}",
+            "rechercher {query}",
+            "de rechercher {query}",
+            "trouve {query}",
+            "trouver {query}",
+            "de trouver {query}",
+            "mets {query}",
+            "mettre {query}",
+            "de mettre {query}",
+            "montre moi {query}",
+            "de me montrer {query}",
+            "ouvre {query}",
+            "ouvrir {query}",
+            "d'ouvrir {query}",
+            "lance {query}",
+            "lancer {query}",
+            "de lancer {query}",
+            "je veux regarder {query}",
+            "je veux voir {query}"
+          ]
+        }
+      ],
+      "types": []
+    }
+  }
+}

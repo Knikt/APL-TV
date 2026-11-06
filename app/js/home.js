@@ -1,0 +1,301 @@
+/* ============================================================
+   home.js: Home, Apple TV / Netflix style.
+   A large featured title at the top (backdrop, logo, IMDb rating, plot,
+   Play / More Info; a new one every 10 s), then rows: Continue Watching,
+   Favorite Channels (what's on now), My List, New Movies, New Series,
+   Top Rated. The backdrop follows the title you are on.
+   ============================================================ */
+(function (global) {
+    "use strict";
+
+    var TV = global.TV, el = TV.el, esc = TV.esc, T = TV.t, D = TV.data;
+    var HOME_GENRES = [{ kind: "movies", id: 28 }, { kind: "movies", id: 35 }, { kind: "series", id: 18 }, { kind: "series", id: "x:anime" }, { kind: "movies", id: 53 },
+                       { kind: "movies", id: 878 }, { kind: "series", id: "x:kdrama" }, { kind: "movies", id: 16 }, { kind: "series", id: 35 }, { kind: "movies", id: 27 },
+                       { kind: "series", id: "x:netflix" }, { kind: "movies", id: "x:anime" }];
+    var genreNames = {}, genresAsked = false;
+    var root, page, heroEl, rowsEl, heroNav, strips = [], zone = -1, featured = [], heroIndex = 0, heroTimer = null, visible = false, dirty = true;
+
+    function build() {
+        root = TV.$("v-home");
+        root.innerHTML = "";
+        page = el("div", "home");
+        heroEl = el("div", "hero");
+        rowsEl = el("div", "rows");
+        page.appendChild(heroEl); page.appendChild(rowsEl);
+        root.appendChild(page);
+    }
+
+    function empty() {
+        page.innerHTML = "";
+        var e = el("div", "empty");
+        e.style.top = "300px";
+        e.innerHTML = "<div class='empty__title'>" + esc(T("Welcome to APL TV")) + "</div><div class='empty__text'>" +
+            esc(T("Add your M3U playlist or your Xtream account: scan a QR code with your phone, or type it with the remote.")) + "</div>";
+        var b1 = el("div", "btn btn--primary", TV.icon("phone", 30) + esc(T("Add from Your Phone")));
+        var b2 = el("div", "btn", TV.icon("keyboard", 30) + esc(T("Use the Remote")));
+        e.appendChild(b1); e.appendChild(b2);
+        page.appendChild(e);
+        heroNav = new TV.Nav({ onSelect: function (i) { if (i === 0) TV.setup.phone(); else TV.setup.remote(); } });
+        heroNav.setTiles([b1, b2]);
+        heroNav.blur();
+        strips = [];
+        TV.bg("");
+    }
+
+    /* ---------- featured ---------- */
+    function pickFeatured() {
+        var m = D.itemsIn("movies", "recent").slice(0, 12), s = D.itemsIn("series", "recent").slice(0, 8), out = [];
+        for (var i = 0; i < Math.max(m.length, s.length); i++) { if (m[i]) out.push(m[i]); if (s[i] && out.length % 3 === 2) out.push(s[i]); }
+        return out.slice(0, 12);
+    }
+    function drawHero(item) {
+        heroEl.innerHTML = "";
+        if (!item) return;
+        var kicker = el("div", "hero__kicker", esc(item.kind === "series" ? T("New Series") : T("New Movie")));
+        var title = el("div", "hero__title", esc(item.title || item.name));
+        var meta = el("div", "hero__meta", item.year ? "<span>" + item.year + "</span>" : "");
+        var desc = el("div", "hero__desc", esc(item.plot || ""));
+        var btns = el("div", "hero__btns");
+        var r = D.resumeOf(item.id);
+        var play = el("div", "btn btn--primary", TV.icon("play", 28) + esc(r && r.pos > 60 ? T("Resume") : (item.kind === "series" ? T("Episodes") : T("Play"))));
+        var more = el("div", "btn", TV.icon("info", 28) + esc(T("More Info")));
+        btns.appendChild(play); btns.appendChild(more);
+        [kicker, title, meta, desc, btns].forEach(function (n) { heroEl.appendChild(n); });
+        var dots = el("div", "hero__dots");
+        featured.forEach(function (f, i) { dots.appendChild(el("i", i === heroIndex ? "is-on" : "")); });
+        heroEl.appendChild(dots);
+        heroNav = new TV.Nav({ onSelect: function (i) { if (i === 0 && item.kind === "movie") TV.detail.play(item); else TV.detail.open(item); } });
+        heroNav.setTiles([play, more], heroNav && zone === -1 ? 0 : 0);
+        if (zone !== -1) heroNav.blur();
+        if (item.backdrop) TV.bg(item.backdrop);
+        TV.meta.lookup(item).then(function (m) {
+            if (!m || featured[heroIndex] !== item) return;
+            if (m.logo) { var im = el("img", "hero__logo"); im.src = m.logo; im.onload = function () { if (title.parentNode) title.parentNode.replaceChild(im, title); }; }
+            var bits = [];
+            if (m.imdb) bits.push(TV.meta.imdbBadge(m.imdb));
+            if (m.year || item.year) bits.push("<span>" + (m.year || item.year) + "</span>");
+            if (m.genres.length) bits.push("<span>" + esc(m.genres.slice(0, 2).join(", ")) + "</span>");
+            if (m.runtime && item.kind === "movie") bits.push("<span>" + esc(TV.runtime(m.runtime)) + "</span>");
+            if (m.seasons) bits.push("<span>" + esc(m.seasons > 1 ? T("{n} seasons", { n: m.seasons }) : T("1 season")) + "</span>");
+            meta.innerHTML = bits.join("<span class='dot'></span>");
+            TV.meta.certs(item.kind === "series" ? "tv" : "movie", m.tmdbId).then(function (c) {
+                var age = TV.meta.certBadge(c);
+                if (age && featured[heroIndex] === item) meta.innerHTML = [age].concat(bits).join("<span class='dot'></span>");
+            });
+            if (m.overview) desc.textContent = m.overview;
+            if (m.backdrop && visible && zone === -1) TV.bg(m.backdrop);
+        });
+    }
+    function rotate() {
+        clearInterval(heroTimer);
+        heroTimer = setInterval(function () {
+            if (!visible || zone !== -1 || !featured.length || TV.topNav() !== TV.shell.screen || TV.shell.focusOn() !== "view") return;
+            heroIndex = (heroIndex + 1) % featured.length;
+            drawHero(featured[heroIndex]);
+            heroNav.refocus();
+        }, 10000);
+    }
+
+    /* ---------- rows ---------- */
+    var rowQueue = [], rowTimer = null;
+    function addRow(title, items, kind, opts) {
+        if (!items.length) return;
+        if (strips.length >= 3 && !(opts && opts.now)) {             // below the fold: a moment later
+            rowQueue.push([title, items, kind, opts]);
+            if (!rowTimer) rowTimer = setTimeout(nextRow, 30);
+            return;
+        }
+        makeRow(title, items, kind, opts);
+    }
+    function nextRow() {
+        rowTimer = null;
+        var r = rowQueue.shift();
+        if (!r) return;
+        makeRow(r[0], r[1], r[2], r[3]);
+        if (rowQueue.length) rowTimer = setTimeout(nextRow, 30);
+    }
+    function makeRow(title, items, kind, opts) {
+        opts = opts || {};
+        var s = new TV.Strip({
+            title: title, sub: opts.sub, items: items, kind: kind, height: kind === "poster" ? 440 : kind === "channel" ? 290 : 300,
+            make: opts.make || function (it) { return kind === "channel" ? TV.card.channel(it) : TV.card.poster(it); },
+            onFocus: function (i, it) { focusItem(it, kind); }
+        });
+        s.kindOf = kind; s.opts = opts;
+        strips.push(s);
+        rowsEl.appendChild(s.root);
+    }
+    var bgSoon = TV.debounce(function (it) {
+        if (!visible || !it) return;
+        if (it.kind === "movie" || it.kind === "series") {
+            if (it.backdrop) TV.bg(it.backdrop);
+            TV.meta.lookup(it).then(function (m) { if (m && m.backdrop && visible && strips[zone] && strips[zone].current() === it) TV.bg(m.backdrop); });
+        }
+    }, 800);
+    function focusItem(it, kind) { if (kind === "channel") return; bgSoon(it.item || it); }
+
+    function buildRows() {
+        rowsEl.innerHTML = "";
+        strips = []; rowQueue = []; clearTimeout(rowTimer); rowTimer = null;
+        var cw = D.continueWatching();
+        addRow(T("Continue Watching"), cw, "wide", {
+            make: function (x) {
+                var r = x.resume, sub = r.upNext ? T("Up Next") + " · " + (r.epLabel || "") : (r.epLabel || (r.dur ? T("{n} min left", { n: Math.max(1, Math.round((r.dur - r.pos) / 60)) }) : ""));
+                return TV.card.wide(x.item, { sub: sub, progress: r.upNext ? 0 : (r.dur ? r.pos / r.dur : 0) });
+            }
+        });
+        var favs = D.favChannels();
+        if (favs.length) addRow(T("Favorite Channels"), favs.slice(0, 40), "channel", { sub: T("Live now") });
+        else {
+            var rec = D.recentChannels();
+            if (rec.length) addRow(T("Recently Watched Channels"), rec.slice(0, 20), "channel");
+
+        }
+        var ml = D.itemsIn("movies", "mylist").concat(D.itemsIn("series", "mylist"));
+        addRow(T("My List"), ml, "poster");
+        addRow(T("Recently Watched"), D.recentlyWatched().slice(0, 30), "poster");
+        addRow(T("New Movies"), D.itemsIn("movies", "recent").slice(0, 30), "poster");
+        addRow(T("New Series"), D.itemsIn("series", "recent").slice(0, 30), "poster");
+        addRow(T("Top Rated Movies"), D.itemsIn("movies", "top").slice(0, 30), "poster", { genreKey: "topmovies" });
+        addRow(T("Top Rated Series"), D.itemsIn("series", "top").slice(0, 30), "poster", { genreKey: "topseries" });
+        var cat2 = D.catalog();
+        if (cat2) {
+            var liveCats = cat2.live.cats.filter(function (c) { return !c.adult && c.count >= 3; }).slice(0, favs.length ? 2 : 4);
+            liveCats.forEach(function (c) { addRow(c.name, D.channelsIn(c.id).slice(0, 24), "channel", { sub: T("Live now") }); });
+            // Genre rows (TMDB genres found in your catalog): loaded once, then Home is drawn again
+            HOME_GENRES.forEach(function (g) {
+                var items = D.itemsIn(g.kind, "g:" + g.id).slice(0, 30);
+                if (items.length && genreNames[g.kind + g.id]) addRow(genreNames[g.kind + g.id], items, "poster", { sub: g.kind === "series" ? T("Series") : "", genreKey: g.kind + g.id });
+            });
+            if (!genresAsked) {
+                genresAsked = true;
+                Promise.all([TV.meta.genres("movie"), TV.meta.genres("tv")]).then(function (r) {
+                    r[0].forEach(function (g) { genreNames["movies" + g.id] = g.name; });
+                    r[1].forEach(function (g) { genreNames["series" + g.id] = g.name; });
+                    return Promise.all(HOME_GENRES.map(function (g) { return D.genreItems(g.kind, g.id, true); }));
+                }).then(function () { addGenreRows(); });
+            }
+        }
+    }
+
+    function addGenreRows() {
+        if (!rowsEl || !D.catalog()) return;
+        var have = {};
+        strips.forEach(function (s) { if (s.opts && s.opts.genreKey) have[s.opts.genreKey] = 1; });
+        [["movies", T("Top Rated Movies")], ["series", T("Top Rated Series")]].forEach(function (t) {
+            if (have["top" + t[0]]) return;
+            var items = D.itemsIn(t[0], "top").slice(0, 30);
+            if (items.length) addRow(t[1], items, "poster", { genreKey: "top" + t[0] });
+        });
+        HOME_GENRES.forEach(function (g) {
+            var k = g.kind + g.id;
+            if (have[k] || !genreNames[k]) return;
+            var items = D.itemsIn(g.kind, "g:" + g.id).slice(0, 30);
+            if (items.length) addRow(genreNames[k], items, "poster", { sub: g.kind === "series" ? T("Series") : "", genreKey: k });
+        });
+        if (visible) paint();
+    }
+    function render() {
+        dirty = false;
+        var cat = D.catalog();
+        if (!D.sources().length || !cat) { empty(); return; }
+        page.innerHTML = ""; page.appendChild(heroEl); page.appendChild(rowsEl);
+        var had = featured.length;
+        featured = pickFeatured();
+        if (featured.length && !had) zone = -1;
+        heroIndex = Math.min(heroIndex, Math.max(0, featured.length - 1));
+        if (featured.length) { heroEl.style.display = ""; rowsEl.style.paddingTop = "0"; drawHero(featured[heroIndex]); }
+        else { heroEl.style.display = "none"; rowsEl.style.paddingTop = "170px"; heroNav = null; }
+        buildRows();
+        if (!featured.length && zone === -1) zone = 0;
+        rotate();
+        paint();
+    }
+
+    function scrollTo() {
+        var inRows = zone >= 0 && !!strips[zone];
+        page.classList.toggle("is-rows", inRows && featured.length > 0);
+        document.body.classList.toggle("in-rows", inRows && visible);
+        if (!inRows) { page.style.transform = "translateY(0)"; return; }
+        var top = strips[zone].root.offsetTop;
+        page.style.transform = "translateY(" + Math.min(0, -(top - (featured.length ? 360 : 170))) + "px)";
+    }
+    function paint(active) {
+        if (active === undefined) active = TV.shell && TV.shell.focusOn() === "view" && visible;
+        strips.forEach(function (s, i) { s.setActive(active && i === zone); });
+        if (heroNav) { if (active && zone === -1) heroNav.refocus(); else heroNav.blur(); }
+        scrollTo();
+        if (active && zone === -1 && featured[heroIndex]) TV.meta.lookup(featured[heroIndex]).then(function (m) { if (m && m.backdrop && visible && zone === -1) TV.bg(m.backdrop); });
+    }
+
+    function activate(it, kind) {
+        if (!it) return;
+        if (kind === "channel") { TV.live.play(it, strips[zone].items); return; }
+        if (it.item) {                                // continue watching
+            if (it.item.kind === "movie") TV.detail.play(it.item, it.resume.pos);
+            else TV.detail.open(it.item, { resume: true });
+            return;
+        }
+        TV.detail.open(it);
+    }
+
+    var view = {
+        show: function () {
+            if (!root) build();
+            visible = true;
+            if (dirty || !strips.length) render(); else { strips.forEach(function (s) { s.cards.forEach(function (c) { if (c._update) c._update(); }); }); paint(); }
+            TV.bg(featured[heroIndex] && featured[heroIndex].backdrop || "");
+        },
+        hide: function () { visible = false; clearInterval(heroTimer); TV.meta.clearQueue(); document.body.classList.remove("in-rows"); },
+        enter: function () { paint(true); },
+        blur: function () { if (featured.length) zone = -1; paint(false); },
+        key: function (code) {
+            var K = TV.KEY;
+            if (!D.sources().length || !D.catalog()) { if (code === K.UP) return false; return heroNav ? (heroNav.key(code), true) : false; }
+            if (code === K.UP) {
+                if (zone === -1 || (zone === 0 && !featured.length)) return false;
+                zone--; TV.sound.tick(); paint(true); return true;
+            }
+            if (code === K.DOWN) {
+                if (zone < strips.length - 1) { zone++; TV.sound.tick(); paint(true); } else TV.sound.edge();
+                return true;
+            }
+            if (code === K.LEFT || code === K.RIGHT) {
+                var d = code === K.LEFT ? -1 : 1;
+                if (zone === -1) { heroNav.move(d < 0 ? "left" : "right"); return true; }
+                if (!strips[zone].move(d)) TV.sound.edge();
+                return true;
+            }
+            return false;
+        },
+        ok: function () {
+            if (!D.sources().length || !D.catalog()) { if (heroNav) heroNav.ok(); return; }
+            if (zone === -1) { if (heroNav) heroNav.ok(); return; }
+            var s = strips[zone];
+            activate(s.current(), s.kindOf);
+        },
+        canHold: function () { return zone >= 0 && strips[zone] && (strips[zone].kindOf === "channel" || strips[zone].kindOf === "poster" || strips[zone].kindOf === "wide"); },
+        longOk: function () {
+            var s = strips[zone], it = s && s.current();
+            if (!it) return;
+            if (s.kindOf === "channel") {
+                var fav = D.isFav(it.id);
+                TV.menu(it.name, [
+                    { label: fav ? T("Remove from Favorites") : T("Add to Favorites"), icon: fav ? "starLine" : "star", run: function () { D.toggleFav(it.id); } },
+                    { label: T("Watch in Multiview"), icon: "grid", run: function () { TV.multiview.open([it]); } }
+                ]);
+            } else {
+                TV.titleMenu(it.item || it, function () { view.invalidate(); }, { continueRow: !!it.item });
+            }
+        },
+        invalidate: function () { dirty = true; if (visible && TV.topNav() === TV.shell.screen) { var z = zone; render(); zone = Math.min(z, strips.length - 1); paint(); } }
+    };
+
+    D.onChange(function (w) {
+        if (w === "top" || w === "genre") { if (visible) addGenreRows(); else dirty = true; return; }
+        view.invalidate();
+    });
+    TV.epg.onUpdate(function () { if (visible && !TV.osd.isOpen()) strips.forEach(function (s) { s.cards.forEach(function (c) { if (c._update) c._update(); }); }); });
+    TV.views = TV.views || {};
+    TV.views.home = view;
+})(window);

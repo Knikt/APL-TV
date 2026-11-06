@@ -1,0 +1,14 @@
+# Build output
+dist/
+*.wgt
+
+# Personal files, never published
+app/js/keys.local.js
+app/js/dev.local.js
+app/fonts/*.OTF
+app/fonts/*.otf
+app/sounds/*.wav
+
+# Samsung certificates
+*.p12
+*.pwd

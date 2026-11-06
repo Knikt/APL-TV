@@ -1,0 +1,56 @@
+{
+  "interactionModel": {
+    "languageModel": {
+      "invocationName": "a. p. l. t. v.",
+      "intents": [
+        {
+          "name": "AMAZON.CancelIntent",
+          "samples": []
+        },
+        {
+          "name": "AMAZON.HelpIntent",
+          "samples": []
+        },
+        {
+          "name": "AMAZON.StopIntent",
+          "samples": []
+        },
+        {
+          "name": "AMAZON.NavigateHomeIntent",
+          "samples": []
+        },
+        {
+          "name": "AMAZON.FallbackIntent",
+          "samples": []
+        },
+        {
+          "name": "SearchIntent",
+          "slots": [
+            {
+              "name": "query",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "search {query}",
+            "search for {query}",
+            "to search {query}",
+            "to search for {query}",
+            "find {query}",
+            "to find {query}",
+            "look for {query}",
+            "to look for {query}",
+            "show me {query}",
+            "to show me {query}",
+            "open {query}",
+            "to open {query}",
+            "put on {query}",
+            "to put on {query}",
+            "i want to watch {query}"
+          ]
+        }
+      ],
+      "types": []
+    }
+  }
+}

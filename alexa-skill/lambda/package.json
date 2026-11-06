@@ -1,0 +1,11 @@
+{
+  "name": "apl-tv-alexa-skill",
+  "version": "1.0.0",
+  "description": "APL TV skill for Alexa: voice search sent to APL TV on your screen",
+  "main": "index.js",
+  "license": "MIT",
+  "dependencies": {
+    "ask-sdk-core": "^2.14.0",
+    "ask-sdk-model": "^1.86.0"
+  }
+}
