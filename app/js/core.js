@@ -11,6 +11,39 @@
     var T = TV.t;
     TV.PREVIEW = !global.tizen;
     if (TV.PREVIEW) { document.body.classList.add("is-preview"); document.documentElement.style.background = "#000"; }
+    /* Tizen 6.0 (2021 TVs, Chromium 76) has no flex gap: the items of a row would touch.
+       There the class no-gap spaces them with margins instead (rules generated at the end of tv2.css). */
+    (function () {
+        var f = document.createElement("div");
+        f.style.display = "flex"; f.style.flexDirection = "column"; f.style.rowGap = "1px"; f.style.position = "absolute";
+        f.appendChild(document.createElement("div")); f.appendChild(document.createElement("div"));
+        document.body.appendChild(f);
+        var works = f.scrollHeight === 1;
+        document.body.removeChild(f);
+        if (works && !global.TV_NO_GAP) return;
+        document.documentElement.classList.add("no-gap");
+        /* A margin can only space elements: a bare text next to an icon ("<svg>Play", "IMDb 7,7") is put in a
+           span, so the icon and its text keep their space too. Only on these screens. */
+        if (!global.MutationObserver) return;
+        function isIcon(n) { return n && (n.nodeName === "svg" || n.nodeName === "SVG" || n.nodeName === "IMG"); }
+        function wrap(t) {
+            if (!t || t.nodeType !== 3 || !t.parentNode || !/\S/.test(t.nodeValue)) return;
+            if (!isIcon(t.previousSibling) && !isIcon(t.nextSibling)) return;
+            var s = document.createElement("span");
+            t.parentNode.insertBefore(s, t); s.appendChild(t);
+        }
+        function scan(n) {
+            if (n.nodeType === 3) { wrap(n); return; }
+            if (n.nodeType !== 1) return;
+            if (isIcon(n)) { wrap(n.previousSibling); wrap(n.nextSibling); }
+            var icons = n.querySelectorAll("svg, img");
+            for (var i = 0; i < icons.length; i++) { wrap(icons[i].previousSibling); wrap(icons[i].nextSibling); }
+        }
+        new MutationObserver(function (list) {
+            for (var i = 0; i < list.length; i++) for (var j = 0; j < list[i].addedNodes.length; j++) scan(list[i].addedNodes[j]);
+        }).observe(document.body, { childList: true, subtree: true });
+        scan(document.body);
+    })();
 
     /* ---------- DOM ---------- */
     TV.$ = function (id) { return document.getElementById(id); };
@@ -46,7 +79,7 @@
     };
     TV.drop = function (key) { delete memo[key]; try { global.localStorage.removeItem(PFX + key); } catch (e) {} };
 
-    var DEFAULTS = { language: "auto", sounds: true, showAdult: false, mergeQuality: true, autoPreview: false, motion: true, startTab: "home", lastChannel: null, timeFormat: "24",
+    var DEFAULTS = { pictureMode: "fit", language: "auto", sounds: true, showAdult: false, mergeQuality: true, autoPreview: false, motion: true, startTab: "home", lastChannel: null, timeFormat: "24",
                      audioLang: "auto", audioLang2: "orig", subLang: "auto", subLang2: "off", subSize: "m", subColor: "white", subBg: "outline", subPos: "low", autoNext: false, resumePrompt: true, autoUpdate: true };
     var prefs = TV.load("prefs", {}) || {};
     var prefListeners = [];
@@ -311,6 +344,8 @@
         trash: '<path d="M4 7h16M10 11v6M14 11v6M5.5 7l1 12.5A2 2 0 0 0 8.5 21h7a2 2 0 0 0 2-1.5L18.5 7M9 7V4.5h6V7"/>',
         refresh: '<path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/>',
         list: '<path d="M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01"/>',
+        sort: '<path d="M7 4v16M3 8l4-4 4 4M17 20V4M13 16l4 4 4-4"/>',
+        aspect: '<rect x="2.5" y="5" width="19" height="14" rx="2.5"/><path d="M6 9.5V8h2.5M18 14.5V16h-2.5"/>',
         info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5h.01"/>',
         speaker: '<path d="M4 9.5v5h3.5L12 18.5v-13L7.5 9.5z" fill="currentColor"/><path d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11"/>',
         link: '<path d="M10 14a4.5 4.5 0 0 0 6.4 0l3-3a4.5 4.5 0 0 0-6.4-6.4l-1 1M14 10a4.5 4.5 0 0 0-6.4 0l-3 3a4.5 4.5 0 0 0 6.4 6.4l1-1"/>',

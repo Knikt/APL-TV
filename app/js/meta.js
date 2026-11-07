@@ -530,7 +530,8 @@
 
     /* "7.8" with a decimal comma in French */
     function fmt(n) { return n ? n.toFixed(1).replace(".", TV.lang === "fr" ? "," : ".") : ""; }
-    function imdbBadge(n) { return n ? '<span class="imdb"><b>IMDb</b>' + fmt(n) + "</span>" : ""; }
+    function known(item) { return memo[cacheKey(item)] || null; }      // what is already known, without asking TMDB
+    function imdbBadge(n) { return n ? '<span class="imdb"><b>IMDb</b><span>' + fmt(n) + "</span></span>" : ""; }
 
     function setKey(k) {
         KEY = String(k || "").trim() || (global.TV_KEYS && global.TV_KEYS.tmdb) || "";
@@ -539,5 +540,5 @@
     function testKey(k) {
         return TV.fetchJSON(API + "/configuration?api_key=" + encodeURIComponent(String(k || "").trim()), { timeout: 12000, noProxy: true }).then(function (j) { return !!(j && j.images); }, function () { return false; });
     }
-    TV.meta = { setKey: setKey, testKey: testKey, keySource: function () { return global.TV_KEYS && global.TV_KEYS.tmdb ? "setup" : (TV.load("tmdbKey", "") ? "settings" : ""); }, certs: certs, certBadge: certBadge, ageCountries: COUNTRIES, ageCountry: ageCountry, themeWords: themeWords, themes: themes, themeMatch: themeMatch, themeTitles: themeTitles, similar: similar, byPerson: byPerson, collection: collection, genres: genres, genreTitles: genreTitles, topRated: topRated, person: person, lookup: lookup, want: want, clearQueue: clearQueue, season: season, img: img, fmt: fmt, imdbBadge: imdbBadge, enabled: function () { return !!KEY; } };
+    TV.meta = { setKey: setKey, testKey: testKey, keySource: function () { return global.TV_KEYS && global.TV_KEYS.tmdb ? "setup" : (TV.load("tmdbKey", "") ? "settings" : ""); }, certs: certs, certBadge: certBadge, ageCountries: COUNTRIES, ageCountry: ageCountry, themeWords: themeWords, themes: themes, themeMatch: themeMatch, themeTitles: themeTitles, similar: similar, byPerson: byPerson, collection: collection, genres: genres, genreTitles: genreTitles, topRated: topRated, person: person, lookup: lookup, want: want, clearQueue: clearQueue, season: season, img: img, fmt: fmt, imdbBadge: imdbBadge, known: known, enabled: function () { return !!KEY; } };
 })(window);

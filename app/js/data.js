@@ -70,7 +70,8 @@
         var u = src.server + "/player_api.php?username=" + encodeURIComponent(src.user) + "&password=" + encodeURIComponent(src.pass);
         if (action) u += "&action=" + action;
         if (extra) u += "&" + extra;
-        return TV.fetchJSON(u, { timeout: action ? 90000 : 20000 });
+        // the full lists of a big account (100,000 movies) can take minutes to arrive on a TV
+        return TV.fetchJSON(u, { timeout: !action ? 20000 : /_streams$|^get_series$/.test(action) ? 240000 : 90000 });
     }
     function xAuth(src) {
         return xApi(src, "").then(function (j) {
@@ -96,7 +97,15 @@
     }
 
     function loadXtream(src, progress) {
-        var out = { id: src.id, v: CATALOG_V, at: Date.now(), type: "xtream", live: { cats: [], chans: [] }, movies: { cats: [], items: [] }, series: { cats: [], items: [] } };
+        var out = { id: src.id, v: CATALOG_V, at: Date.now(), type: "xtream", live: { cats: [], chans: [] }, movies: { cats: [], items: [] }, series: { cats: [], items: [] }, failed: {} };
+        function lists(what) {
+            return function (r) {
+                if (!Array.isArray(r[1])) throw new Error(r[1] && r[1].error ? String(r[1].error) : T("no list"));
+                if (!Array.isArray(r[0])) r[0] = [];
+                return r;
+            };
+        }
+        function lost(what) { return function (e) { TV.log(what + ": " + e.message); out.failed[what] = e.message; return [[], []]; }; }
         progress(T("Connecting to {name}…", { name: src.name }));
         return xAuth(src).then(function (auth) {
             out.account = { exp: auth.user_info.exp_date ? auth.user_info.exp_date * 1000 : 0, max: auth.user_info.max_connections, formats: auth.user_info.allowed_output_formats || [] };
@@ -115,7 +124,7 @@
                 });
             });
             progress(T("Loading movies…"));
-            return Promise.all([xApi(src, "get_vod_categories"), xApi(src, "get_vod_streams")]).catch(function (e) { TV.log("movies: " + e.message); return [[], []]; });
+            return Promise.all([xApi(src, "get_vod_categories"), xApi(src, "get_vod_streams")]).then(lists("movies")).catch(lost("movies"));
         }).then(function (r) {
             out.movies.cats = catList(r[0], src.id, "movie");
             (r[1] || []).forEach(function (m) {
@@ -127,7 +136,7 @@
                 });
             });
             progress(T("Loading series…"));
-            return Promise.all([xApi(src, "get_series_categories"), xApi(src, "get_series")]).catch(function (e) { TV.log("series: " + e.message); return [[], []]; });
+            return Promise.all([xApi(src, "get_series_categories"), xApi(src, "get_series")]).then(lists("series")).catch(lost("series"));
         }).then(function (r) {
             out.series.cats = catList(r[0], src.id, "series");
             (r[1] || []).forEach(function (s) {
@@ -273,8 +282,25 @@
         fire("catalog");
     }
 
+    var retryTimers = {};
     function loadSource(src, progress) {
         return (src.type === "xtream" ? loadXtream(src, progress) : loadM3U(src, progress)).then(function (c) {
+            /* The movies or the series did not come (the provider too slow, an error): the ones from before stay,
+               instead of an empty Movies tab until the next refresh, and APL TV asks again in 10 minutes. */
+            var prev = cats[src.id], failed = c.failed || {}, missed = [];
+            delete c.failed;
+            ["movies", "series"].forEach(function (k) {
+                var had = prev && prev[k] && prev[k].items && prev[k].items.length || 0;
+                if (failed[k] || (had >= 50 && !c[k].items.length)) {
+                    missed.push(k);
+                    if (had) { c[k] = prev[k]; TV.log(k + " of " + src.name + " not received (" + (failed[k] || "empty") + "): the " + had + " from before stay"); }
+                }
+            });
+            if (missed.length) {
+                if (!retryTimers[src.id]) retryTimers[src.id] = setTimeout(function () { delete retryTimers[src.id]; refresh([src]); }, 10 * 60000);
+                if (missed.indexOf("movies") >= 0 && !c.movies.items.length) TV.toast(T("{name}: the movies did not arrive ({error}). APL TV tries again in 10 minutes.", { name: src.name, error: failed.movies || T("no list") }), true);
+                if (missed.indexOf("series") >= 0 && !c.series.items.length) TV.toast(T("{name}: the series did not arrive ({error}). APL TV tries again in 10 minutes.", { name: src.name, error: failed.series || T("no list") }), true);
+            }
             cats[src.id] = c;
             updateSource(src.id, { error: "", at: c.at, counts: { live: c.live.chans.length, movies: c.movies.items.length, series: c.series.items.length }, account: c.account || null });
             return saveCatalog(c).then(function () { return c; });
@@ -686,15 +712,50 @@
         var mine = list.filter(function (x) { var c = catOf(x); return c.lang === TV.lang || c.lang === "multi"; });
         return mine.length >= 40 ? mine : list;
     }
+    /* The version you chose on a title's page (4K, VOSTFR, another provider…) is the one shown and played next time */
+    function versionPrefs() { return TV.load("prefVersion", {}) || {}; }
+    function prefKey(x) { return (x.kind === "series" ? "s:" : "m:") + versionKey(x); }
+    function preferVersion(x) {
+        var p = versionPrefs(), keys = Object.keys(p);
+        if (keys.length > 3000) keys.slice(0, keys.length - 3000).forEach(function (k) { delete p[k]; });
+        delete p[prefKey(x)]; p[prefKey(x)] = x.id;
+        TV.save("prefVersion", p);
+        groupCache = {};
+    }
+    /* Without a choice of yours: the version in the screen's language (dubbed before subtitled), in the best quality
+       the screen can show (4K only on a 4K screen). Before, the provider's first one: often HD when FHD or 4K was there. */
+    var uhdScreen = null;
+    function bestVersion(list) {
+        if (uhdScreen === null) { try { uhdScreen = !global.webapis || !!global.webapis.productinfo.isUdPanelSupported(); } catch (e) { uhdScreen = true; } }
+        var best = list[0], bestScore = -1;
+        list.forEach(function (x) {
+            var c = catOf(x), text = (x.name || "") + " " + (c.name || "") + " " + (c.raw || "");
+            var lang = c.lang === TV.lang ? 3 : c.lang === "multi" ? 2 : !c.lang ? 1 : 0;
+            if (lang === 3 && /\b(VOSTFR|VOST|VOSTA|SUBS?|VO)\b/i.test(text)) lang = 2.5;
+            var q = /\b(4K|UHD|2160P?)\b/i.test(text) ? (uhdScreen ? 4 : 2.5) : /\b(FHD|1080P?)\b/i.test(text) ? 3 : /\b(SD|480P?|576P?)\b/i.test(text) ? 1 : 2;
+            var score = lang * 10 + q;
+            if (score > bestScore) { bestScore = score; best = x; }
+        });
+        return best;
+    }
     function groupVersions(list) {
-        var seen = {}, out = [];
+        var seen = {}, out = [], pref = null;
         list.forEach(function (x) {
             var k = versionKey(x), g = seen[k];
             if (g) { g.versions.push(x); return; }
             seen[k] = { item: x, versions: [x] };
             out.push(seen[k]);
         });
-        return out.map(function (g) { g.item.versions = g.versions.length > 1 ? g.versions : null; return g.item; });
+        return out.map(function (g) {
+            if (g.versions.length > 1) {
+                pref = pref || versionPrefs();
+                var want = pref[prefKey(g.item)], chosen = null;
+                if (want) for (var i = 0; i < g.versions.length; i++) if (g.versions[i].id === want) { chosen = g.versions[i]; break; }
+                g.item = chosen || bestVersion(g.versions);
+            }
+            g.item.versions = g.versions.length > 1 ? g.versions : null;
+            return g.item;
+        });
     }
     function itemsIn(kind, catId) { return catId === "top" || String(catId).indexOf("g:") === 0 ? itemsInRaw(kind, catId) : groupVersions(itemsInRaw(kind, catId)); }
 
@@ -908,7 +969,7 @@
         myList: myList, inMyList: inMyList, toggleMyList: toggleMyList,
         setResume: setResume, resumeOf: resumeOf, continueWatching: continueWatching, isDone: isDone, markWatched: markWatched, recentlyWatched: recentlyWatched,
         forget: forget, resumeChanged: resumeChanged,
-        isHidden: isHidden, setHidden: setHidden, setCatOff: setCatOff, setGroupOff: setGroupOff, offGroups: offGroups, offCats: offCats, hiddenList: hiddenList, unhide: unhide, versionKey: versionKey,
+        isHidden: isHidden, setHidden: setHidden, preferVersion: preferVersion, setCatOff: setCatOff, setGroupOff: setGroupOff, offGroups: offGroups, offCats: offCats, hiddenList: hiddenList, unhide: unhide, versionKey: versionKey,
         buildThemes: buildThemes, checkTheme: checkTheme, themesOn: themesOn, catNameHidden: catNameHidden,
         itemsIn: itemsIn, vodUrl: vodUrl, vodInfo: vodInfo, seriesInfo: seriesInfo, search: search,
         xApi: xApi, parseM3U: parseM3U, pack: pack, unpack: unpack, findTitles: findTitles, titleIndex: titleIndex, genreItems: genreItems,

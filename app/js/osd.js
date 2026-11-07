@@ -319,10 +319,20 @@
             } };
         });
     }
+    /* Picture Size: the whole picture (black bars if needed), stretched to the whole screen, or the shape the video asks for */
+    function pictureItems() {
+        var cur = TV.pref("pictureMode") || "fit";
+        return [["fit", T("Fit to Screen"), T("The whole picture, with black bars if it is not 16:9")],
+                ["fill", T("Fill the Screen"), T("Stretched to the whole screen, no black bars")],
+                ["auto", T("Original Shape"), T("The shape the video asks for: for old 4:3 channels that look squeezed")]].map(function (m) {
+            return { label: m[1], sub: m[2], check: m[0] === cur, run: function () { TV.setPref("pictureMode", m[0]); TV.player.setPicture(m[0]); closePop(); } };
+        });
+    }
+    function itemsFor(kind) { return kind === "subs" ? subsItems() : kind === "picture" ? pictureItems() : audioItems(); }
     function openPop(kind) {
         pop = { kind: kind, index: 0 };
         if (kind !== "sync") {
-            var items = kind === "subs" ? subsItems() : audioItems();
+            var items = itemsFor(kind);
             for (var i = 0; i < items.length; i++) if (items[i].check) { pop.index = i; break; }
             if (items[pop.index] && items[pop.index].head) pop.index++;
         }
@@ -342,10 +352,10 @@
             popEl.className = "osd__pop is-on is-sync";
             return;
         }
-        var items = pop.items = pop.kind === "subs" ? subsItems() : audioItems();
+        var items = pop.items = itemsFor(pop.kind);
         if (pop.index >= items.length) pop.index = items.length - 1;
         while (items[pop.index] && items[pop.index].head) pop.index++;
-        var html = "<div class='osd__pophead'>" + esc(pop.kind === "subs" ? T("Subtitles") : T("Audio")) + "</div><div class='osd__poplist'>";
+        var html = "<div class='osd__pophead'>" + esc(pop.kind === "subs" ? T("Subtitles") : pop.kind === "picture" ? T("Picture Size") : T("Audio")) + "</div><div class='osd__poplist'>";
         items.forEach(function (it, i) {
             if (it.head) { html += "<div class='osd__popsec'>" + esc(it.head) + "</div>"; return; }
             html += "<div class='osd__popitem" + (i === pop.index ? " is-focused" : "") + "' data-i='" + i + "'><span class='osd__popcheck'>" + (it.check ? TV.icon("check", 24) : "") + "</span>" +
@@ -400,6 +410,7 @@
         var out = [];
         if (s) out.push("subs");
         if (a > 1) out.push("audio");
+        out.push("picture");
         return out;
     }
     function drawLive() {
@@ -419,7 +430,7 @@
         var icons = liveIcons();
         if (icons.length) {
             var box = el("div", "pv__icons osd__liveicons");
-            icons.forEach(function (k, i) { box.appendChild(el("div", "pv__btn" + (zone === "icons" && i === iconIndex ? " is-focused" : ""), TV.icon(k === "subs" ? "cc" : "speaker", 30))); });
+            icons.forEach(function (k, i) { box.appendChild(el("div", "pv__btn" + (zone === "icons" && i === iconIndex ? " is-focused" : ""), TV.icon(k === "subs" ? "cc" : k === "audio" ? "speaker" : "aspect", 30))); });
             bar.appendChild(box);
         }
     }
@@ -533,7 +544,7 @@
     function buildVodBar() {
         var tabs = vodTabs();
         bar.innerHTML = "<div class='pv'><div class='pv__top'><div class='pv__titles'><div class='pv__subline'><span class='pv__age'></span><span class='pv__sub'></span></div><div class='pv__title'></div></div>" +
-            "<div class='pv__icons'><div class='pv__btn'>" + TV.icon("cc", 30) + "</div><div class='pv__btn'>" + TV.icon("speaker", 30) + "</div></div></div>" +
+            "<div class='pv__icons'><div class='pv__btn'>" + TV.icon("cc", 30) + "</div><div class='pv__btn'>" + TV.icon("speaker", 30) + "</div><div class='pv__btn'>" + TV.icon("aspect", 30) + "</div></div></div>" +
             "<div class='osd__seek'><div class='bar'><i></i><em></em><b class='osd__bubble'><span></span><small></small></b><u></u></div></div>" +
             "<div class='pv__times'><span class='osd__now'></span><span class='pv__pp'></span><span class='pv__end'></span><span class='osd__left'></span></div>" +
             "<div class='pv__tabs'>" + tabs.map(function (t) { return "<div class='pv__tab'>" + esc(t.label) + "</div>"; }).join("") + "</div></div>";
@@ -824,7 +835,7 @@
                 return;
             }
             if (zone === "next") { goEpisode(vod.next); return; }
-            if (zone === "icons") { openPop(iconIndex === 0 ? "subs" : "audio"); return; }
+            if (zone === "icons") { openPop(["subs", "audio", "picture"][iconIndex] || "subs"); return; }
             if (zone === "tabs") {
                 var t = vb.tabDefs[tabIndex];
                 if (t && t.id === "prev") goEpisode(vod.prev);

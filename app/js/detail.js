@@ -220,7 +220,16 @@
             add("", TV.icon("quality", 28) + esc(T("Versions ({n})", { n: it.versions.length })), function () {
                 TV.menu(T("Versions"), it.versions.map(function (v) {
                     var c = D.catOf(v), q = (String(v.name).match(/\b(4K|UHD|FHD|HD|MULTI|VOSTFR|VF|VO|HDR)\b/gi) || []).join(" ");
-                    return { label: [c.tag, q, c.name].filter(Boolean).join(" · ") || v.name, check: v === item, run: function () { var vs = it.versions; item = v; v.versions = vs; draw(); } };
+                    return { label: [c.tag, q, c.name].filter(Boolean).join(" · ") || v.name, check: v === item, run: function () {
+                        if (v === item) return;
+                        // the page opens again on this version: its own episodes, plot and links (before, a series kept
+                        // the episodes of the first version, so that one played), and it is remembered for next time
+                        var vs = it.versions; v.versions = vs;
+                        D.preferVersion(v);
+                        token++;
+                        open(v, { back: true, onClose: onCloseCb });
+                        TV.toast(T("Version changed: {name}", { name: [c.tag, q].filter(Boolean).join(" · ") || c.name || v.name }));
+                    } };
                 }));
             });
         }

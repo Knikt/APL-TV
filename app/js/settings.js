@@ -63,6 +63,9 @@
         rows.push(toggleRow(T("Autoplay Next Episode"), "autoNext", T("Off: near the end of an episode, the next one is only offered (with the series' picture, never a spoiler).")));
         rows.push({ label: T("Live Stream Format"), value: TV.pref("liveFormat") === "m3u8" ? "HLS (m3u8)" : "MPEG-TS", desc: T("For Xtream accounts. Try HLS if channels stutter or do not start."),
             run: function () { TV.setPref("liveFormat", TV.pref("liveFormat") === "m3u8" ? "ts" : "m3u8"); redraw(); } });
+        rows.push({ label: T("Picture Size"), value: { fit: T("Fit to Screen"), fill: T("Fill the Screen"), auto: T("Original Shape") }[TV.pref("pictureMode")] || T("Fit to Screen"), acc: "chevron", icon: "aspect",
+            desc: T("How movies, series and channels fill the screen. Also in the player, third button at the top right."),
+            run: function () { choose(T("Picture Size"), "pictureMode", [["fit", T("Fit to Screen")], ["fill", T("Fill the Screen")], ["auto", T("Original Shape")]]); } });
         rows.push({ section: T("Display") });
         rows.push({ label: T("Adult Content"), value: TV.pref("showAdult") ? T("Shown") : T("Hidden"), desc: T("Categories and channels for adults are hidden everywhere."),
             run: function () {

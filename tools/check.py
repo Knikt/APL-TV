@@ -57,6 +57,9 @@ _mb = importlib.util.module_from_spec(_spec); _spec.loader.exec_module(_mb)
 try:
     _cur = _json.load(open(os.path.join(APP, "version.json"), encoding="utf-8"))
     _v, _manifest, _build_js = _mb.build(_cur.get("notes", ""))
+    _css = read(os.path.join(APP, _mb.STYLES[-1]))
+    if _mb.COMPAT_BEGIN not in _css or _css[_css.index(_mb.COMPAT_BEGIN):] != _mb.compat_css():
+        errors.append("the generated spacing at the end of " + _mb.STYLES[-1] + " is out of date: run python tools/make-build.py")
     if _cur != _manifest or read(os.path.join(APP, "js", "build.js")) != _build_js:
         errors.append("app/version.json or app/js/build.js is out of date: run python tools/make-build.py --notes \"...\"")
 except (OSError, ValueError) as e:

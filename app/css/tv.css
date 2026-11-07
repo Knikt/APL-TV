@@ -119,6 +119,7 @@ body.is-preview { cursor: default; }
 .chip { display: inline-flex; align-items: center; height: 58px; padding: 0 28px; border-radius: 29px; font-size: 24px; font-weight: 600; color: rgba(255,255,255,0.86); white-space: nowrap;
     background: var(--glass), rgba(40, 43, 54, 0.66); box-shadow: var(--glass-shadow); transition: transform 220ms var(--spring), background 150ms ease, color 150ms ease; }
 .chip.is-current { background: rgba(255,255,255,0.22); color: #fff; }
+.chip.is-on { color: #fff; box-shadow: inset 0 0 0 2px rgba(255,255,255,0.45); }
 .chip.is-focused { background: var(--focus-bg); color: var(--focus-fg); transform: scale(1.08); box-shadow: 0 14px 30px rgba(0,0,0,0.4); z-index: 2; }
 .chip__n { margin-left: 12px; font-size: 20px; opacity: 0.6; }
 .chip.is-focused .lrow__flag { background: rgba(0,0,0,0.08); color: #3a3a3c; }
@@ -452,10 +453,11 @@ body.is-preview { cursor: default; }
 .search__field span { flex: 1; white-space: nowrap; overflow: hidden; }
 .search__field .caret { display: inline-block; width: 3px; height: 44px; background: var(--blue); vertical-align: middle; animation: pulse 1s steps(1) infinite; margin-left: 2px; }
 .search__ph { color: var(--faint); font-weight: 500; }
-.kb { position: absolute; left: 96px; top: 270px; display: grid; grid-template-columns: repeat(14, 98px); gap: 12px 25px; }
-.kb__key { height: 70px; border-radius: 20px; display: flex; align-items: center; justify-content: center; font-size: 29px; font-weight: 600; background: rgba(255,255,255,0.09);
+/* 14 keys a row with margins, not a CSS grid: TVs without grid support showed the letters in one column */
+.kb { position: absolute; left: 96px; top: 270px; width: 1722px; display: flex; flex-wrap: wrap; }
+.kb__key { flex: none; width: 98px; margin: 0 25px 12px 0; height: 70px; border-radius: 20px; display: flex; align-items: center; justify-content: center; font-size: 29px; font-weight: 600; background: rgba(255,255,255,0.09);
     transition: transform 200ms var(--spring), background 120ms ease, color 120ms ease; }
-.kb__key--wide { grid-column: span 2; font-size: 23px; }
+.kb__key--wide { width: 221px; font-size: 23px; }
 .kb__key.is-focused { background: var(--focus-bg); color: var(--focus-fg); transform: scale(1.12); box-shadow: 0 10px 24px rgba(0,0,0,0.4); z-index: 2; }
 .search__results { position: absolute; left: 0; right: 0; top: 540px; bottom: 0; overflow: hidden; }
 .search__results .rows { padding-bottom: 0; }

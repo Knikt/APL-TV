@@ -1,8 +1,8 @@
 {
- "version": "1.0.2",
+ "version": "1.0.3",
  "loader": 1,
  "reinstall": "1.0.1",
- "notes": "Hide countries and categories, and Movies and Series keep your place",
+ "notes": "Movies stay when the provider is slow, versions switch for real, best quality, Sort, Picture Size, keyboard fixes",
  "scripts": [
   "js/lang-fr.js",
   "js/i18n.js",

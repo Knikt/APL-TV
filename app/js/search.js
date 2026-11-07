@@ -25,7 +25,8 @@
         [["space", T("Space")], ["del", "⌫ " + T("Delete")], ["clear", T("Clear")]].forEach(function (k) {
             var t = el("div", "kb__key kb__key--wide", esc(k[1])); t._k = k[0]; kbEl.appendChild(t); tiles.push(t);
         });
-        kbNav = new TV.Nav({ onSelect: function (i, t) { type(t._k); } });
+        // cross 20: Right and Left stay on the row (Right on Space went up to X instead of Delete)
+        kbNav = new TV.Nav({ cross: 20, onSelect: function (i, t) { type(t._k); } });
         kbNav.setTiles(tiles);
         kbNav.blur();
         drawField();

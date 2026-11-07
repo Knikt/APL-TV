@@ -43,6 +43,19 @@
         }
     }
 
+    /* Picture Size (Settings > Playback, or the player's third button) */
+    var METHODS = { fit: "PLAYER_DISPLAY_MODE_LETTER_BOX", fill: "PLAYER_DISPLAY_MODE_FULL_SCREEN", auto: "PLAYER_DISPLAY_MODE_AUTO_ASPECT_RATIO" };
+    function applyPicture() {
+        var mode = METHODS[TV.pref("pictureMode")] ? TV.pref("pictureMode") : "fit";
+        if (useAv) {
+            try { av.setDisplayMethod(METHODS[mode]); } catch (e) {
+                TV.log("picture " + mode + ": " + e.message);
+                try { av.setDisplayMethod(METHODS.fit); } catch (e2) {}
+            }
+        } else if (video) video.style.objectFit = mode === "fill" ? "fill" : "contain";
+    }
+    function setPicture(mode) { TV.setPref("pictureMode", mode); if (cur) applyPicture(); }
+
     function closeAv() {
         if (!useAv) return;
         var t0 = Date.now(), t1 = t0;
@@ -134,6 +147,7 @@
         if (!useAv) {
             var v = ensureVideo();
             place(opts.rect);
+            applyPicture();
             v.src = url;
             if (opts.start) v.addEventListener("loadedmetadata", function once() { v.removeEventListener("loadedmetadata", once); v.currentTime = opts.start; });
             var pr = v.play(); if (pr && pr.catch) pr.catch(function (e) { emit("onError", e.message); });
@@ -176,8 +190,13 @@
                 ondrmevent: function () {}
             });
             place(opts.rect);
-            try { av.setDisplayMethod("PLAYER_DISPLAY_MODE_LETTER_BOX"); } catch (e) {}
+            applyPicture();
             if (opts.uhd && canUhd()) { try { av.setStreamingProperty("SET_MODE_4K", "TRUE"); } catch (e) { TV.log("4K mode: " + e.message); } }
+            // A stream with several qualities (HLS, DASH): the best one from the start, never the lowest
+            // (by default the TV starts low and can stay there: the picture looked compressed)
+            if (/\.(m3u8|mpd)(\?|$)|\/hls\/|format=m3u8/i.test(url)) {
+                try { av.setStreamingProperty("ADAPTIVE_INFO", "STARTBITRATE=HIGHEST|SKIPBITRATE=LOWEST"); } catch (e) { TV.log("adaptive: " + e.message); }
+            }
             // A cushion against small network hiccups: 3 s before starting, 8 s after a pause in the stream
             try {
                 av.setBufferingParam("PLAYER_BUFFER_FOR_PLAY", "PLAYER_BUFFER_SIZE_IN_SECOND", opts.live ? 3 : 4);
@@ -266,7 +285,7 @@
 
     TV.player = {
         play: play, stop: stop, state: state, pause: pause, resume: resume, toggle: toggle, position: position, duration: duration, seekTo: seekTo,
-        tracks: tracks, currentTrack: currentTrack, selectTrack: selectTrack, subtitlesOff: subtitlesOff, subtitleDelay: subtitleDelay, setRect: setRect,
+        tracks: tracks, currentTrack: currentTrack, selectTrack: selectTrack, subtitlesOff: subtitlesOff, subtitleDelay: subtitleDelay, setRect: setRect, setPicture: setPicture,
         current: function () { return cur; }, isBuffering: function () { return buffering; }, FULL: FULL, native: useAv,
         streamInfo: function () { return useAv && cur ? streamInfo() : null; }
     };
