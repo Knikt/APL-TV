@@ -210,7 +210,8 @@
             live: true, rect: rect || FULL, uhd: ch.q === "4K",
             onBuffering: function (b) { if (TV.osd.isOpen()) TV.osd.buffering(b); else wait.classList.toggle("is-hidden", !b); },
             onPlaying: function () { wait.classList.add("is-hidden"); if (TV.osd.isOpen()) TV.osd.buffering(false); },
-            onTime: function () { if (!wait.classList.contains("is-hidden")) wait.classList.add("is-hidden"); },
+            // the picture moves: no spinner left, in Live TV or full screen
+            onTime: function () { if (!wait.classList.contains("is-hidden")) wait.classList.add("is-hidden"); if (TV.osd.isOpen()) TV.osd.buffering(false); },
             onReconnect: function () { if (TV.osd.isOpen()) TV.osd.buffering(true); else wait.classList.remove("is-hidden"); },
             onError: function (e) {
                 TV.log("channel " + ch.name + " failed: " + e);
@@ -223,13 +224,14 @@
 
     function fullScreen(ch, ctx) {
         if (!built) build();
-        if (!playing || playing.id !== ch.id) playChannel(ch, FULL);
+        // the same channel opened again after it was stopped (from Home, the Guide…): it starts again
+        if (!playing || playing.id !== ch.id || TV.player.state() === "NONE") playChannel(ch, FULL);
         else TV.player.setRect(FULL);
         if (!ctx) ctx = visible && cards.items.length ? cards.items : (D.isFav(ch.id) ? D.favChannels() : D.channelsIn(ch.cat));
         TV.osd.live(ch, ctx, function onClose(last) {
             // Back from full screen: the interface comes back over the same picture
             if (last) { playing = last; select(last.id); markPlaying(); }
-            if (!visible) TV.player.stop();
+            if (!visible) { TV.player.stop(); playing = null; }
         }, function onZap(c) { playing = c; });
     }
     function select(id) {

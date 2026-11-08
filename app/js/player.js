@@ -211,7 +211,7 @@
                 TV.log("start timeout");
                 if (again || opts.live) reconnect("start timeout"); else emit("onError", "timeout");
             }
-        }, 25000);
+        }, opts.live ? 25000 : 40000);                     // a movie or an episode: some providers are slow to start them
         if (!useAv) {
             var v = ensureVideo();
             v._token = my;

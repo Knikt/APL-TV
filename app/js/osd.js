@@ -439,6 +439,8 @@
         ch = c; ctx = context && context.length ? context : [c]; onClose = closeCb; onZap = zapCb;
         vod = null;
         openOsd("live");
+        // the spinner as the channel is now (it may have started while the preview was loading), not the last time
+        stateBox.classList.toggle("is-on", !!(TV.player.isBuffering() && TV.player.state() !== "PLAYING"));
         drawLive();
         show();
         TV.epg.ensure([c]);
@@ -497,8 +499,9 @@
             onReady: function () { setTimeout(applyTrackPrefs, 0); },
             onReconnect: function () { stateBox.classList.add("is-on"); tracksDone = false; },
             onBuffering: function (b) { stateBox.classList.toggle("is-on", !!b); },
-            onPlaying: function () { stateBox.classList.remove("is-on"); if (!tracksDone) setTimeout(applyTrackPrefs, 600); },
-            onTime: function () { stateBox.classList.remove("is-on"); },
+            // the picture moves: no spinner and no error left over it (a slow start had shown "timeout" first)
+            onPlaying: function () { stateBox.classList.remove("is-on"); errBox.classList.remove("is-on"); if (!tracksDone) setTimeout(applyTrackPrefs, 600); },
+            onTime: function () { stateBox.classList.remove("is-on"); errBox.classList.remove("is-on"); },
             onSubtitle: function (s) { if (subsOn && !ext) showSub(s); },
             onEnded: function () { save(true); if (o.next && o.onEpisode && TV.pref("autoNext")) { var n = o.next.ep, cb = o.onEpisode; finish(true); cb(n); } else finish(); },
             onError: function (e) {
