@@ -11,7 +11,7 @@
     "use strict";
 
     var TV = global.TV, el = TV.el, esc = TV.esc, T = TV.t, D = TV.data;
-    TV.VERSION = "1.0.9";
+    TV.VERSION = "1.0.10";
     TV.DONATE = "https://ko-fi.com/knikt";     // the Ko-fi page for donations (Settings > About, README, .github/FUNDING.yml)
     var TABS = [
         { id: "home", label: T("Home") },
@@ -239,7 +239,9 @@
             var tab = TV.pref("startTab") || "home";
             if (tab === "settings" || tab === "search" || !TV.views[tab]) tab = "home";
             go(hasData ? tab : "home", true);
-            if (hasData) setTimeout(offerResume, 1200);
+            // the first start (or the first after this update): how to show the playlist, then the rest
+            if (TV.pref("setupDone") !== 1 && TV.playlistSetup) setTimeout(function () { TV.playlistSetup(function () { if (hasData) setTimeout(offerResume, 800); }); }, 700);
+            else if (hasData) setTimeout(offerResume, 1200);
             setTimeout(function () { TV.$("boot").classList.add("is-hidden"); document.body.classList.remove("is-booting"); global.TV_BOOT_OK = true; }, 150);
             readRequest();
             if (TV.voice) TV.voice.start();

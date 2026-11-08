@@ -100,7 +100,7 @@
     TV.drop = function (key) { delete memo[key]; try { global.localStorage.removeItem(PFX + key); } catch (e) {} };
 
     var DEFAULTS = { pictureMode: "fit", language: "auto", sounds: true, showAdult: false, mergeQuality: true, autoPreview: false, motion: true, startTab: "home", lastChannel: null, timeFormat: "24",
-                     audioLang: "auto", audioLang2: "orig", subLang: "auto", subLang2: "off", subSize: "m", subColor: "white", subBg: "outline", subPos: "low", autoNext: false, resumePrompt: true, autoUpdate: true, screenSaver: "auto" };
+                     audioLang: "auto", audioLang2: "orig", subLang: "auto", subLang2: "off", subSize: "m", subColor: "white", subBg: "outline", subPos: "low", autoNext: false, resumePrompt: true, autoUpdate: true, screenSaver: "auto", tidyCats: true, tidyNames: true };
     var prefs = TV.load("prefs", {}) || {};
     var prefListeners = [];
     TV.pref = function (k) { return Object.prototype.hasOwnProperty.call(prefs, k) ? prefs[k] : DEFAULTS[k]; };

@@ -49,6 +49,8 @@
         rows.push({ label: T("Add a Playlist"), acc: "chevron", icon: "plus", desc: T("Your M3U playlist or your Xtream account (server, username, password)."), run: function () { push(addPage()); } });
         rows.push({ section: T("Playback") });
         rows.push(toggleRow(T("Automatic Preview"), "autoPreview", T("In Live TV, staying on a channel plays it behind the list. Off: a channel only plays when you press OK.")));
+        rows.push(toggleRow(T("Sort the Categories"), "tidyCats", T("Your screen's language first, adult ones last. Off: the order of your playlist."), function () { D.rebuild(); }));
+        rows.push(toggleRow(T("Tidy the Names"), "tidyNames", T("Country and quality tags (FR|, FHD, 4K…) taken out of the names. Off: the names of your playlist."), function () { D.rebuild(); }));
         rows.push(toggleRow(T("Group HD, FHD and 4K"), "mergeQuality", T("One line per channel, the best quality first. Hold OK on it to choose another."), function () { D.rebuild(); }));
         rows.push({ label: T("Audio Language"), value: langLabel(TV.pref("audioLang")), acc: "chevron", desc: T("The language movies and series start in, when the video has it."),
             run: function () { choose(T("Audio Language"), "audioLang", [["auto", T("Screen Language")], ["orig", T("Original Version")]].concat(langChoices())); } });
@@ -497,6 +499,50 @@
             if (name === "phone") pages.push(phonePage());
             if (name === "remote") pages.push(formPage({ type: "xtream" }));
         }
+    };
+
+    /* ---------- the first start: how APL TV shows your playlist ----------
+       Asked once (also for those who update). The three choices are also in Settings > Playback. Leaving the
+       page (Back) or "Keep My Playlist As It Is": everything off, the playlist exactly as the provider made it. */
+    TV.playlistSetup = function (done) {
+        var opts = [
+            { key: "tidyCats", label: T("Sort the Categories"), desc: T("Your screen's language first, adult ones last."), on: true },
+            { key: "tidyNames", label: T("Tidy the Names"), desc: T("Country and quality tags (FR|, FHD, 4K…) taken out."), on: true },
+            { key: "mergeQuality", label: T("Group HD, FHD and 4K"), desc: T("One card per channel, the best quality first."), on: true }
+        ];
+        var root = TV.$("alert");
+        root.innerHTML = "";
+        var box = el("div", "alert__box setup");
+        box.appendChild(el("h2", "alert__title", esc(T("How should APL TV show your playlist?"))));
+        box.appendChild(el("p", "alert__msg", esc(T("APL TV can tidy your playlist for you, or keep it exactly as your provider made it. You can change this later in Settings."))));
+        var list = el("div", "setup__list"), tiles = [];
+        opts.forEach(function (o) {
+            var r = el("div", "setup__row");
+            function paint() { r.innerHTML = "<span class='setup__txt'><b>" + esc(o.label) + "</b><small>" + esc(o.desc) + "</small></span><em>" + esc(o.on ? T("Yes") : T("No")) + "</em>"; }
+            paint();
+            r._toggle = function () { o.on = !o.on; paint(); TV.sound.tick(); };
+            list.appendChild(r); tiles.push(r);
+        });
+        box.appendChild(list);
+        var btns = el("div", "alert__buttons"), ok = el("div", "alert__btn", esc(T("Continue"))), keep = el("div", "alert__btn", esc(T("Keep My Playlist As It Is")));
+        btns.appendChild(ok); btns.appendChild(keep);
+        box.appendChild(btns);
+        tiles.push(ok, keep);
+        root.appendChild(box);
+        root.classList.add("is-open");
+        var nav;
+        function finish(apply) {
+            root.classList.remove("is-open");
+            TV.popNav(nav);
+            opts.forEach(function (o) { TV.setPref(o.key, apply ? o.on : false); });
+            TV.setPref("setupDone", 1);
+            TV.log("playlist setup: " + opts.map(function (o) { return o.key + "=" + (apply ? o.on : false); }).join(" "));
+            D.rebuild();
+            if (done) done();
+        }
+        nav = new TV.Nav({ onSelect: function (i) { if (i < opts.length) { tiles[i]._toggle(); return; } finish(i === opts.length); }, onBack: function () { finish(false); } });
+        TV.pushNav(nav);
+        nav.setTiles(tiles, opts.length);                   // on Continue
     };
 
     TV.views = TV.views || {};

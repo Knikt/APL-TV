@@ -56,7 +56,7 @@
         var c = chosen(ch);
         if (c && c.id) return (c.src || ch.src) + "|" + c.id;
         if (ch.epg) { var k = ch.src + "|" + ch.epg; if (progs[k]) return k; }
-        var n = byName[ch.src + "|" + S.fold(ch.name)];
+        var n = byName[ch.src + "|" + S.fold(ch.cname || ch.name)];
         return n || (ch.epg ? ch.src + "|" + ch.epg : null);
     }
     /* Whether a channel has programmes, without unpacking them */
@@ -124,8 +124,8 @@
                 Object.keys(j.names || {}).forEach(function (id) { names[S.fold(j.names[id])] = id; });
                 chans.forEach(function (c) {
                     if (c.epg && keep[c.epg] && keep[c.epg].length) return;
-                    var id = names[S.fold(c.name)];
-                    if (id) { nameMap[S.fold(c.name)] = id; extra[id] = 1; }
+                    var id = names[S.fold(c.cname || c.name)];
+                    if (id) { nameMap[S.fold(c.cname || c.name)] = id; extra[id] = 1; }
                 });
                 var more = Object.keys(extra).filter(function (id) { return !keep[id]; });
                 if (!more.length) return { keep: keep, nameMap: nameMap, total: j.total, all: j.names };
@@ -203,10 +203,11 @@
         return s.replace(/\b(uhd|fhd|hd|sd|4k|hevc|h265|raw|backup|\d{3,4}p)\b/g, " ").replace(/\+/g, "plus").replace(/[^a-z0-9]+/g, "");
     }
     function countriesOf(ct) {
-        if (TAG_COUNTRY[ct.tag]) return TAG_COUNTRY[ct.tag];
+        var tg = ct.ctag || ct.tag;
+        if (TAG_COUNTRY[tg]) return TAG_COUNTRY[tg];
         var n = compact(ct.name);
         for (var k in NAME_COUNTRY) if (n.indexOf(k) !== -1) return [NAME_COUNTRY[k]];
-        if (!ct.tag && LANG_COUNTRY[TV.lang]) return [LANG_COUNTRY[TV.lang]];      // no country: the screen's
+        if (!tg && LANG_COUNTRY[TV.lang]) return [LANG_COUNTRY[TV.lang]];      // no country: the screen's
         return [];
     }
     function loadExtra() {
@@ -232,7 +233,7 @@
                     var still = by[code].filter(function (c) { return !has(c); });
                     if (!still.length) return;
                     var names = {}, byName = {};
-                    still.forEach(function (c) { var k = compact(c.name); if (k) { names[k] = 1; (byName[k] = byName[k] || []).push(c); } });
+                    still.forEach(function (c) { var k = compact(c.cname || c.name); if (k) { names[k] = 1; (byName[k] = byName[k] || []).push(c); } });
                     return TV.helper.epgMatch(url, Object.keys(names), from, to).then(function (j) {
                         var n = 0;
                         Object.keys(j.chans || {}).forEach(function (k) { var l = slim(j.chans[k]); (byName[k] || []).forEach(function (c) { extra[c.id] = l; n++; }); });

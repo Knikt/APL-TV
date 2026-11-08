@@ -548,3 +548,13 @@ body.is-preview { cursor: default; }
 /* ===================== A SHORT TEXT TO TYPE (TV.prompt: a group's name) ===================== */
 .alert__field { margin: 6px auto 26px; max-width: 640px; min-height: 76px; padding: 18px 28px; border-radius: 22px; background: rgba(255,255,255,0.12); font-size: 34px; font-weight: 600; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .alert__ph { color: rgba(255,255,255,0.4); font-weight: 500; }
+
+/* ===================== THE FIRST START: HOW TO SHOW THE PLAYLIST (TV.playlistSetup) ===================== */
+.alert__box.setup { width: 1000px; }
+.setup__list { margin: 0 0 30px; text-align: left; }
+.setup__row { display: flex; align-items: center; gap: 24px; padding: 20px 30px; margin-bottom: 12px; border-radius: 24px; background: rgba(255,255,255,0.08); transition: background 160ms ease, color 160ms ease, transform 200ms ease; }
+.setup__row.is-focused { background: #fff; color: #000; transform: scale(1.02); }
+.setup__txt { flex: 1; min-width: 0; }
+.setup__txt b { display: block; font-size: 30px; font-weight: 600; }
+.setup__txt small { display: block; margin-top: 6px; font-size: 22px; opacity: 0.7; }
+.setup__row em { font-style: normal; font-size: 28px; font-weight: 600; opacity: 0.85; }

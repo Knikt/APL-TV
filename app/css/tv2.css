@@ -390,6 +390,8 @@
 .no-gap .boot > * + * { margin-top: 40px; }
 .no-gap .boot__logo > * + * { margin-left: 14px; }
 .no-gap .boot__logo > .dot { margin-left: calc(14px + 14px); }
+.no-gap .setup__row > * + * { margin-left: 24px; }
+.no-gap .setup__row > .dot { margin-left: calc(14px + 24px); }
 .no-gap .lv__brand > * + * { margin-left: 22px; }
 .no-gap .lv__brand > .dot { margin-left: calc(14px + 22px); }
 .no-gap .lv__meta > * + * { margin-left: 18px; }

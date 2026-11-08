@@ -1,8 +1,8 @@
 {
- "version": "1.0.9",
+ "version": "1.0.10",
  "loader": 1,
  "reinstall": "1.0.1",
- "notes": "No spinner or error message left over a playing video, and channels opened again start again",
+ "notes": "Keep your playlist as it is (your order, your names) or let APL TV tidy it: asked once, and in Settings",
  "platforms": {
   "tizen": {
    "reinstall": "1.0.1"

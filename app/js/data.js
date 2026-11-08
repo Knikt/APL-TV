@@ -260,6 +260,8 @@
 
     function rebuild() {
         var list = sources(), many = list.length > 1;
+        // Settings > Sort the Categories / Tidy the Names (asked at the first start): off = your playlist as it is
+        var tidyNames = TV.pref("tidyNames") !== false, tidyCats = TV.pref("tidyCats") !== false;
         var m = { live: { cats: [], chans: [], byId: {}, byCat: {} }, movies: { cats: [], items: [], byId: {}, byCat: {} }, series: { cats: [], items: [], byId: {}, byCat: {} }, epg: [] };
         list.forEach(function (src) {
             var c = cats[src.id];
@@ -269,11 +271,14 @@
                 (k === "live" ? part.chans : part.items).forEach(function (x) { counts[x.cat] = (counts[x.cat] || 0) + 1; });
                 part.cats.forEach(function (ct) {
                     if (ct.raw) { var info = S.category(ct.raw); ct.name = info.name; ct.tag = info.tag; ct.lang = info.lang; ct.adult = info.adult; ct.group = info.group; }
+                    ct.ctag = ct.tag;                                  // the country, for the guides, whatever is shown
+                    if (!tidyNames && ct.raw) { ct.name = ct.raw; ct.tag = ""; }
                     ct.count = counts[ct.id] || 0;
                     ct.srcName = many ? src.name : "";
                     if (ct.count) m[k].cats.push(ct);
                 });
                 (k === "live" ? part.chans : part.items).forEach(function (x) {
+                    if (k === "live") { if (x.cname === undefined) x.cname = x.name; x.name = tidyNames ? x.cname : (x.raw || x.cname); }   // cname: the clean name, for the guide
                     (k === "live" ? m.live.chans : m[k].items).push(x);
                     m[k].byId[x.id] = x;
                     (m[k].byCat[x.cat] = m[k].byCat[x.cat] || []).push(x);
@@ -282,7 +287,7 @@
             var epg = src.epg || c.epgUrl || (src.type === "xtream" ? src.server + "/xmltv.php?username=" + encodeURIComponent(src.user) + "&password=" + encodeURIComponent(src.pass) : "");
             if (epg) m.epg.push({ src: src.id, url: epg, xtream: src.type === "xtream" });
         });
-        ["live", "movies", "series"].forEach(function (k) { m[k].cats = S.sortCategories(m[k].cats); });
+        if (tidyCats) ["live", "movies", "series"].forEach(function (k) { m[k].cats = S.sortCategories(m[k].cats); });
         merged = m;
         applyOff();
         groupCache = {}; idxCache = {}; topLists = {}; genreLists = {}; trendLists = {};
