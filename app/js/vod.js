@@ -182,12 +182,17 @@
                     if (code === K.LEFT || code === K.RIGHT) {
                         var n = chipIndex + (code === K.LEFT ? -1 : 1);
                         if (n < 0 || n >= chips.length) { TV.sound.edge(); return true; }
+                        // moving along the row opens nothing: the category you are on stays until OK or Down
+                        // (before, each category passed loaded itself, so going back to Sort left yours)
                         chipIndex = n; TV.sound.tick(); paintChips();
-                        clearTimeout(loadTimer);
-                        if (chips[chipIndex].id !== "sort") loadTimer = setTimeout(function () { load(chips[chipIndex].id); }, 450);
                         return true;
                     }
-                    if (code === K.DOWN) { if (grid.items.length) { zone = "grid"; TV.sound.tick(); paintChips(); grid.setActive(true); } else TV.sound.edge(); return true; }
+                    if (code === K.DOWN) {
+                        var c = chips[chipIndex];
+                        if (c && c.id !== "sort" && c.id !== catId) load(c.id);
+                        if (grid.items.length) { zone = "grid"; TV.sound.tick(); paintChips(); grid.setActive(true); } else TV.sound.edge();
+                        return true;
+                    }
                     if (code === K.UP) return false;
                     return true;
                 }

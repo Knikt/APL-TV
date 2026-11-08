@@ -1,8 +1,8 @@
 {
- "version": "1.0.7",
+ "version": "1.0.8",
  "loader": 1,
  "reinstall": "1.0.1",
- "notes": "Your own channel groups, a channel's TV guide by hand, Stalker portals, and a family-friendly Home banner",
+ "notes": "Sort in Movies and Series keeps the category you chose",
  "platforms": {
   "tizen": {
    "reinstall": "1.0.1"
