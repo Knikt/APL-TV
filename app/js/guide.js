@@ -113,7 +113,7 @@
         describe(c ? c._p : null, chans[row]);
     }
     function describe(p, ch) {
-        var cat = catId === "fav" ? { name: T("Favorites") } : catId === "all" ? { name: T("All Channels") } : D.catOf({ cat: catId });
+        var cat = catId === "fav" ? { name: T("Favorites") } : catId === "all" ? { name: T("All Channels") } : String(catId).indexOf("grp:") === 0 ? (D.chanGroupOf(catId) || {}) : D.catOf({ cat: catId });
         top.innerHTML = "";
         var cr = el("div", "guide__cat");
         catBtn = el("div", "chip" + (zone === "cat" && TV.shell.focusOn() === "view" ? " is-focused" : ""), TV.icon("list", 24) + "&nbsp;&nbsp;" + esc(cat.name || T("Channels")));
@@ -156,7 +156,7 @@
     /* Every category (no longer only the first 60), by country when there are many: the same list as Live TV */
     function pickCategory() {
         TV.live.pickCategory(catId, function (c) { TV.setPref("liveCat", c.id); load(); zone = "grid"; markFocus(); },
-                             [{ id: "fav", name: T("Favorites") }, { id: "all", name: T("All Channels") }]);
+                             [{ id: "fav", name: T("Favorites") }, { id: "all", name: T("All Channels") }].concat(D.chanGroups().map(function (g) { return { id: "grp:" + g.id, name: g.name, count: g.ids.length }; })));
     }
 
     var view = {
@@ -220,7 +220,8 @@
             TV.menu(ch.num + "  " + ch.name, [
                 { label: T("Watch"), icon: "play", run: function () { TV.live.play(ch, chans); } },
                 { label: fav ? T("Remove from Favorites") : T("Add to Favorites"), icon: fav ? "starLine" : "star", run: function () { D.toggleFav(ch.id); } },
-                { label: T("Watch in Multiview"), icon: "grid", run: function () { TV.multiview.open([ch]); } }
+                { label: T("Watch in Multiview"), icon: "grid", run: function () { TV.multiview.open([ch]); } },
+                { label: T("TV Guide for This Channel"), icon: "list", run: function () { TV.live.guideMenu(ch); } }
             ]);
         }
     };

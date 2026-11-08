@@ -101,13 +101,25 @@
         var D = TV.data, items = [];
         try {
             ["movies", "series"].forEach(function (k) { items = items.concat(D.itemsIn(k, "trend").slice(0, 20), D.itemsIn(k, "new").slice(0, 10)); });
+            // nothing trending or new in this catalog (a small playlist, no TMDB lists): any of its titles
+            if (items.length < 8) ["movies", "series"].forEach(function (k) {
+                var all = (D.catalog() || {})[k], list = all && all.items || [];
+                for (var n = 0; n < 40 && list.length; n++) {
+                    var x = list[Math.floor(Math.random() * list.length)];
+                    if (x && !D.isHidden(x) && !D.catOf(x).adult && items.indexOf(x) < 0) items.push(x);
+                }
+            });
         } catch (e) {}
         items.sort(function () { return Math.random() - 0.5; });
         items.slice(0, 24).forEach(function (it) {
             if (!TV.meta || !TV.meta.lookup) return;
             TV.meta.lookup(it).then(function (m) {
                 var url = (m && m.backdrop) || it.backdrop;
-                if (url && !pics.some(function (p) { return p.url === url; })) pics.push({ url: url, title: (m && m.title) || it.title || it.name || "" });
+                if (!url) return;
+                // the same rule as Home's banner: no adult-rated title here either
+                (TV.meta.bannerSafe ? TV.meta.bannerSafe(it) : Promise.resolve(true)).then(function (ok) {
+                    if (ok && !pics.some(function (p) { return p.url === url; })) pics.push({ url: url, title: (m && m.title) || it.title || it.name || "" });
+                });
             }).catch(function () {});
         });
     }

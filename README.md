@@ -24,7 +24,7 @@ Created by **Knikt** (Gero Corp.), the maker of [APL Launcher](https://github.co
 The same app on every TV: same look, same features, same updates.
 
 - **Home, Apple TV style.** A large featured title from what everyone watches this week (backdrop, title logo, age rating, IMDb rating, plot), then Continue Watching, Up Next for your series, Favorite Channels with what's on now, My List, Trending Movies and Series, new releases, Top Rated and genre rows (anime, K-drama, studios like Ghibli or Pixar, series from Netflix, HBO…).
-- **Live TV.** The channel you are on plays full screen behind the interface, with its programme, time left and what comes next. Categories (Favorites, Recent, then yours, your language first), number keys, previous channel, and the 4K / FHD / HD versions of one channel on one card.
+- **Live TV.** The channel you are on plays full screen behind the interface, with its programme, time left and what comes next. Categories (Favorites, Recent, your own groups, then your provider's, your language first, and all of them in a list by country), number keys, previous channel, and the 4K / FHD / HD versions of one channel on one card. Hold OK on a channel to add it to a group of your own or to choose its TV guide.
 - **TV guide** as a grid, from your provider's XMLTV guide (or Xtream's short guide), with epg.pw and iptv-epg.org for channels without one.
 - **Movies and series.** Your provider's categories, covers with their IMDb rating, and a page for each title: the real plot in your language (TMDB), seasons and episodes with the ones you watched ticked, the movie's saga, More Like This from your own catalog, the director and the cast, and a page for each actor. Versions of one title (languages, 4K) are grouped together: the one in your language in the best quality your screen shows is picked, and the one you choose is remembered. A Sort button (recently added, A to Z, year, rating).
 - **The player.** Subtitles and Audio menus during playback (movies, series and live channels), OpenSubtitles download with a delay adjustment (never chosen by default), subtitle style, precise seeking (10 s steps, faster when you hold), previous and next episode, a next episode card with a picture that spoils nothing, a sleep timer, Picture Size (fit, fill the screen, original shape). Streams with several qualities start at the best one. Nothing plays by itself unless you turn Autoplay on.
@@ -128,7 +128,7 @@ Layout: `app/` is the app itself, the same on every TV (ES5 web app); `app/js/co
 
 ## Add your playlist
 
-APL TV › Settings › Playlists › Add a Playlist › **From Your Phone**: scan the QR code with your phone (on the same Wi-Fi as the TV), type or paste your M3U link, or your Xtream server, username and password, and tap Send to the screen. Several playlists can be added. An M3U link that is really an Xtream one (`get.php?username=…`) is read as Xtream, with covers, plots and the TV guide.
+APL TV › Settings › Playlists › Add a Playlist › **From Your Phone**: scan the QR code with your phone (on the same Wi-Fi as the TV), type or paste your M3U link, your Xtream server, username and password, or your Stalker portal and MAC address, and tap Send to the screen. Several playlists can be added. An M3U link that is really an Xtream one (`get.php?username=…`) is read as Xtream, with covers, plots and the TV guide.
 
 ## From the maker of APL Launcher
 
@@ -141,6 +141,20 @@ On Samsung, the two are made to go together:
 - APL Launcher Setup installs APL TV with one switch, with your TMDB key, and keeps it up to date.
 
 If you like APL TV, have a look at APL Launcher, and a star on either repository is always appreciated.
+
+## Questions
+
+**Which playlists work?** M3U links, Xtream logins and Stalker portals (MAG / Ministra: the portal's address and a MAC address). Add as many as you want: when there are several, each category shows its playlist's name.
+
+**Can I make my own groups of channels?** Yes: hold OK on a channel › Add to a Group › New Group. Your groups come right after Favorites in Live TV and the Guide. Hold OK on a group to rename or delete it, and on one of its channels to move it up or down.
+
+**What about prefixes and suffixes in channel names?** They're removed automatically: country tags (`FR|`, `UK:`), quality tags (FHD, 4K, HEVC…) and decorations, and the 4K / FHD / HD versions of a channel are grouped on one card.
+
+**Can I choose the TV guide?** For each playlist, put your own XMLTV address in its settings (on top of your provider's guide and the public guides matched automatically). For one channel, hold OK on it › TV Guide for This Channel: search your provider's guide by name, or take the programmes of another channel (the HD version of a 4K channel, for example).
+
+**Stalker portal on Samsung or LG?** A portal wants headers a TV's browser can't send, so APL TV's helper sends them: run APL Launcher Setup again (Samsung) or install the latest `.ipk` (LG) once. On Android, install the latest `.apk` once.
+
+**Install on Fire TV or Android TV quickly?** In the Downloader app, type the code **9141513**.
 
 ## Privacy and security
 

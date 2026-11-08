@@ -22,7 +22,7 @@ var zlib = require("zlib");
 var os = require("os");
 var crypto = require("crypto");
 
-var PORT = 8765, VERSION = "1.0.6";
+var PORT = 8765, VERSION = "1.0.7";
 var IDLE_MS = 15 * 60 * 1000, SESSION_MS = 20 * 60 * 1000;
 var UA = "APL TV/" + VERSION + " (" + (global.APLTV_PLATFORM || "Tizen") + ")";
 
@@ -102,20 +102,22 @@ function redact(s) {
 
 /* ---------- outgoing requests (redirects, gzip) ---------- */
 var TLS_RETRY = /CERT|SELF_SIGNED|UNABLE_TO_VERIFY|ERR_TLS|DEPTH_ZERO/i;
-function get(target, timeoutMs, cb, hops, insecure) {
+function get(target, timeoutMs, cb, hops, insecure, extra) {
     hops = hops || 0;
     var lib = /^https:/i.test(target) ? https : http, finished = false;
     function finish(err, res) { if (finished) return; finished = true; clearTimeout(timer); cb(err, res); }
     var timer = setTimeout(function () { try { rq.destroy(); } catch (e) {} finish(new Error("timeout")); }, timeoutMs || 60000);
     var rq;
     try {
-        rq = lib.get(target, { headers: { "User-Agent": UA, "Accept-Encoding": "gzip", "Accept": "*/*" }, rejectUnauthorized: !insecure }, function (res) {
+        var hd = { "User-Agent": UA, "Accept-Encoding": "gzip", "Accept": "*/*" };
+        if (extra) Object.keys(extra).forEach(function (k) { hd[k] = extra[k]; });         // a Stalker portal's own headers
+        rq = lib.get(target, { headers: hd, rejectUnauthorized: !insecure }, function (res) {
             if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location && hops < 6) {
                 res.resume();
                 clearTimeout(timer); finished = true;
                 var next = res.headers.location;
                 if (!/^https?:/i.test(next)) next = new URL(next, target).toString();
-                get(next, timeoutMs, cb, hops + 1, insecure);
+                get(next, timeoutMs, cb, hops + 1, insecure, extra);
                 return;
             }
             var stream = res, enc = String(res.headers["content-encoding"] || "");
@@ -136,7 +138,7 @@ function get(target, timeoutMs, cb, hops, insecure) {
                 if (finished) return;
                 finished = true; clearTimeout(timer);
                 log("certificate not valid (" + (e.code || e.message) + "), retried without the check: " + redact(target).replace(/^(https?:\/\/[^\/]+).*$/, "$1"));
-                get(target, timeoutMs, cb, hops, true);
+                get(target, timeoutMs, cb, hops, true, extra);
                 return;
             }
             finish(e);
@@ -387,22 +389,26 @@ function phonePage(lang, token, ok) {
     }
     return "<!doctype html><html><head><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'><title>APL TV</title><style>" + css + "</style></head><body>" +
         "<div id=form><h1>APL <span>TV</span></h1><p class=sub>" + t("Send your playlist to the screen. It goes straight to it on your Wi-Fi, through no other website.", "Envoie ta playlist à l'écran. Elle y va directement par ton Wi-Fi, sans passer par aucun site.") + "</p>" +
-        "<div class=seg><button id=bx class=on type=button>Xtream</button><button id=bm type=button>" + t("M3U link", "Lien M3U") + "</button></div>" +
+        "<div class=seg><button id=bx class=on type=button>Xtream</button><button id=bm type=button>" + t("M3U link", "Lien M3U") + "</button><button id=bs type=button>" + t("Stalker", "Stalker") + "</button></div>" +
         "<div id=fx><div class=card><label>" + t("Server", "Serveur") + "</label><input id=server inputmode=url autocapitalize=off autocorrect=off placeholder='http://exemple.com:8080'>" +
         "<div class=row><label>" + t("Username", "Identifiant") + "</label><input id=user autocapitalize=off autocorrect=off></div>" +
         "<div class=row><label>" + t("Password", "Mot de passe") + "</label><input id=pass type=password autocapitalize=off autocorrect=off></div></div>" +
         "<p class=hint>" + t("The three details your provider gave you. A get.php link pasted in Server works too.", "Les trois infos données par ton fournisseur. Un lien get.php collé dans Serveur marche aussi.") + "</p></div>" +
         "<div id=fm class=hide><div class=card><label>" + t("Playlist address (M3U)", "Adresse de la playlist (M3U)") + "</label><input id=url inputmode=url autocapitalize=off autocorrect=off placeholder='http://…/playlist.m3u'></div>" +
         "<p class=hint>" + t("Paste the link of your M3U playlist.", "Colle le lien de ta playlist M3U.") + "</p></div>" +
+        "<div id=fs class=hide><div class=card><label>" + t("Portal address", "Adresse du portail") + "</label><input id=portal inputmode=url autocapitalize=off autocorrect=off placeholder='http://exemple.com:8080/c/'>" +
+        "<div class=row><label>" + t("MAC address", "Adresse MAC") + "</label><input id=mac autocapitalize=characters autocorrect=off placeholder='00:1A:79:12:34:56'></div></div>" +
+        "<p class=hint>" + t("The portal (MAG, Ministra) and the MAC address your provider registered.", "Le portail (MAG, Ministra) et l'adresse MAC enregistrée par ton fournisseur.") + "</p></div>" +
         "<div class=card><label>" + t("Name (optional)", "Nom (facultatif)") + "</label><input id=name placeholder='" + t("My TV", "Ma TV") + "'>" +
         "<div class=row><label>" + t("TV guide address, XMLTV (optional)", "Adresse du guide TV, XMLTV (facultatif)") + "</label><input id=epg inputmode=url autocapitalize=off autocorrect=off></div></div>" +
         "<button class=go id=go type=button>" + t("Send to the screen", "Envoyer à l'écran") + "</button><div class=msg id=msg></div></div>" +
         "<div id=done class='done hide'><div class=big>✓</div><h2>" + t("Sent!", "C'est envoyé !") + "</h2><p>" + t("Look at your screen: APL TV is loading your playlist.", "Regarde ton écran : APL TV charge ta playlist.") + "</p></div>" +
         "<script>var K=" + JSON.stringify(token).replace(/</g, "\\u003c") + ",mode='xtream';function $(i){return document.getElementById(i)}" +
-        "function sw(m){mode=m;$('bx').className=m=='xtream'?'on':'';$('bm').className=m=='m3u'?'on':'';$('fx').className=m=='xtream'?'':'hide';$('fm').className=m=='m3u'?'':'hide'}" +
-        "$('bx').onclick=function(){sw('xtream')};$('bm').onclick=function(){sw('m3u')};" +
+        "function sw(m){mode=m;$('bx').className=m=='xtream'?'on':'';$('bm').className=m=='m3u'?'on':'';$('bs').className=m=='stalker'?'on':'';$('fx').className=m=='xtream'?'':'hide';$('fm').className=m=='m3u'?'':'hide';$('fs').className=m=='stalker'?'':'hide'}" +
+        "$('bx').onclick=function(){sw('xtream')};$('bm').onclick=function(){sw('m3u')};$('bs').onclick=function(){sw('stalker')};" +
         "$('go').onclick=function(){var b={k:K,type:mode,name:$('name').value,epg:$('epg').value};" +
         "if(mode=='xtream'){b.server=$('server').value;b.user=$('user').value;b.pass=$('pass').value;if(!b.server||(!/get\\.php/i.test(b.server)&&(!b.user||!b.pass))){$('msg').textContent=" + JSON.stringify(t("Fill in the server, the username and the password.", "Remplis le serveur, l'identifiant et le mot de passe.")) + ";return}}" +
+        "else if(mode=='stalker'){b.portal=$('portal').value;b.mac=$('mac').value;if(!b.portal||b.mac.replace(/[^0-9a-f]/gi,'').length!=12){$('msg').textContent=" + JSON.stringify(t("Fill in the portal and a MAC address like 00:1A:79:12:34:56.", "Remplis le portail et une adresse MAC comme 00:1A:79:12:34:56.")) + ";return}}" +
         "else{b.url=$('url').value;if(!b.url){$('msg').textContent=" + JSON.stringify(t("Paste the playlist's link.", "Colle le lien de la playlist.")) + ";return}}" +
         "$('go').disabled=true;$('msg').textContent='';var x=new XMLHttpRequest();x.open('POST','/submit');x.setRequestHeader('Content-Type','application/json');" +
         "x.onload=function(){if(x.status==200){$('form').className='hide';$('done').className='done'}else{$('go').disabled=false;$('msg').textContent=x.status==403?" + JSON.stringify(t("This code has expired: scan the new one on the screen.", "Ce code a expiré : scanne le nouveau sur l'écran.")) + ":" + JSON.stringify(t("The screen did not answer. Is the phone on the same Wi-Fi?", "L'écran n'a pas répondu. Le téléphone est-il sur le même Wi-Fi ?")) + "}};" +
@@ -440,8 +446,9 @@ function handler(req, res) {
             var b = null;
             try { b = JSON.parse(body); } catch (e) {}
             if (!b || !sessionOk(b.k)) { wrongCode(); send(res, 403, { ok: 0 }); return; }
-            var item = { type: b.type === "m3u" ? "m3u" : "xtream", name: String(b.name || "").slice(0, 80), epg: String(b.epg || "").slice(0, 2000) };
+            var item = { type: b.type === "m3u" ? "m3u" : b.type === "stalker" ? "stalker" : "xtream", name: String(b.name || "").slice(0, 80), epg: String(b.epg || "").slice(0, 2000) };
             if (item.type === "m3u") item.url = String(b.url || "").slice(0, 4000);
+            else if (item.type === "stalker") { item.portal = String(b.portal || "").slice(0, 400); item.mac = String(b.mac || "").slice(0, 40); }
             else { item.server = String(b.server || "").slice(0, 400); item.user = String(b.user || "").slice(0, 200); item.pass = String(b.pass || "").slice(0, 200); }
             pending.push(item);
             if (pending.length > 5) pending.shift();
@@ -465,6 +472,25 @@ function handler(req, res) {
         if (!sessionOk(q.k)) { send(res, 200, { items: [], expired: true }); return; }
         var items = pending; pending = [];
         send(res, 200, { items: items });
+        return;
+    }
+    /* A request with the headers a Stalker (MAG) portal wants: the TV's browser refuses to send a Cookie or
+       a User-Agent of its own. Body: { url, headers }. Local only, like everything here. */
+    if (path === "/sget" && req.method === "POST") {
+        readBody(req, 20000, function (body) {
+            var b = null;
+            try { b = JSON.parse(body); } catch (e) {}
+            if (!b || !/^https?:\/\//i.test(b.url || "")) { send(res, 400, { error: "bad request" }); return; }
+            var hd = {};
+            Object.keys(b.headers || {}).forEach(function (k) { if (/^(cookie|user-agent|x-user-agent|authorization|referer|accept-language)$/i.test(k)) hd[k] = String(b.headers[k]).slice(0, 2000); });
+            get(b.url, parseInt(b.t, 10) || 60000, function (err, r) {
+                if (err) { log("stalker request failed " + redact(b.url) + ": " + err.message); send(res, 502, { error: err.message }); return; }
+                cors(res);
+                res.writeHead(r.status, { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" });
+                r.body.pipe(res);
+                r.body.on("error", function () { try { res.end(); } catch (e) {} });
+            }, 0, false, hd);
+        });
         return;
     }
     if (path === "/fetch") {

@@ -50,6 +50,7 @@
             { id: "recent", name: T("Recent"), count: (TV.load("recent", []) || []).length },
             { id: "all", name: T("All Channels"), count: 0 }
         ];
+        D.chanGroups().forEach(function (g) { list.push({ id: "grp:" + g.id, name: g.name, count: g.ids.length, mine: true }); });   // your own groups
         (cat ? cat.live.cats : []).forEach(function (c) { if ((adult || !c.adult) && !c.off) { list.push(c); list[2].count += c.count; } });
         // first: every category in a list (a big account has hundreds: too many to scroll through here)
         list.unshift({ id: "pick", name: T("Categories"), count: 0 });
@@ -83,7 +84,7 @@
     function buildChips() {
         chipStrip.innerHTML = "";
         chipEls = cats.map(function (c) {
-            var icon = c.id === "fav" ? TV.icon("star", 22) + "&nbsp;&nbsp;" : c.id === "pick" ? TV.icon("list", 22) + "&nbsp;&nbsp;" : "";
+            var icon = c.id === "fav" ? TV.icon("star", 22) + "&nbsp;&nbsp;" : c.id === "pick" ? TV.icon("list", 22) + "&nbsp;&nbsp;" : c.mine ? TV.icon("tv", 22) + "&nbsp;&nbsp;" : "";
             var e = el("div", "chip", icon + (c.tag ? "<span class='lrow__flag'>" + esc(c.tag) + "</span>" : "") + esc(c.name) + (c.count ? "<span class='chip__n'>" + c.count + "</span>" : ""));
             chipStrip.appendChild(e);
             return e;
@@ -248,9 +249,18 @@
             { label: T("Watch in Multiview"), icon: "grid", run: function () { TV.multiview.open([ch]); } },
             { label: T("Full Screen"), icon: "tv", run: function () { fullScreen(ch); } }
         ];
+        items.splice(1, 0, { label: T("Add to a Group"), icon: "plus", run: function () { groupMenu(ch); } },
+                              { label: T("TV Guide for This Channel"), icon: "list", run: function () { guideMenu(ch); } });
         if (inFav && fav) {
             items.push({ label: T("Move Up"), icon: "chevron", run: function () { if (D.moveFav(ch.id, -1)) loadCategory(ch.id); } });
             items.push({ label: T("Move Down"), icon: "chevron", run: function () { if (D.moveFav(ch.id, 1)) loadCategory(ch.id); } });
+        }
+        var curCat = cats[catIndex];
+        if (curCat && curCat.mine) {
+            var gid = curCat.id.replace(/^grp:/, "");
+            items.push({ label: T("Remove from “{group}”", { group: curCat.name }), icon: "trash", run: function () { D.toggleChanGroup(gid, ch.id); afterGroups(); } });
+            items.push({ label: T("Move Up"), icon: "chevron", run: function () { if (D.moveInChanGroup(gid, ch.id, -1)) loadCategory(ch.id); } });
+            items.push({ label: T("Move Down"), icon: "chevron", run: function () { if (D.moveInChanGroup(gid, ch.id, 1)) loadCategory(ch.id); } });
         }
         if (ch.variants && ch.variants.length > 1) items.push({ label: T("Quality"), icon: "quality", run: function () {
             TV.menu(T("Quality"), ch.variants.map(function (v) {
@@ -258,6 +268,80 @@
             }));
         } });
         TV.menu(ch.num + "  " + ch.name, items);
+    }
+    /* The channel's TV guide: automatic, a channel of the provider's guide, or another channel's programmes */
+    function guideMenu(ch) {
+        var cur = TV.epg.chosen(ch), S = TV.smart;
+        function done(msg) { TV.toast(msg); if (cards) { cards.refresh(); showInfo(cards.current()); } }
+        var items = [{ label: T("Automatic"), check: !cur, run: function () { TV.epg.setChannelGuide(ch, null); done(T("TV guide: automatic")); } }];
+        if (TV.epg.hasGuideList()) items.push({ label: T("Find It in the Guide"), icon: "search", check: !!(cur && cur.id), run: function () {
+            TV.prompt({ title: T("Find It in the Guide"), value: ch.name, onDone: function (q) {
+                var found = TV.epg.guideSearch(q);
+                if (!found.length) { TV.toast(T("Nothing in the guide for “{q}”", { q: q })); return; }
+                TV.menu(T("TV Guide for This Channel"), found.map(function (g) {
+                    return { label: g.name + (g.name !== g.id ? "  ·  " + g.id : ""), check: !!(cur && cur.id === g.id), run: function () {
+                        TV.epg.setChannelGuide(ch, { src: g.src, id: g.id });
+                        TV.toast(T("Updating the TV guide…"));
+                        TV.epg.loadAll(true).then(function () { done(T("TV guide updated")); });
+                    } };
+                }));
+            } });
+        } });
+        items.push({ label: T("Same as Another Channel"), icon: "tv", check: !!(cur && cur.ch), run: function () {
+            // channels with programmes whose name looks like this one (the HD version of a 4K channel…)
+            var me = S.fold(ch.name).replace(/\b(uhd|fhd|hd|sd|4k|hevc|backup|raw)\b/g, " ").replace(/[^a-z0-9]+/g, " ").trim(), first = me.split(" ")[0] || me, list = [];
+            (D.catalog() ? D.catalog().live.chans : []).forEach(function (c) {
+                if (c.id === ch.id || list.length >= 200 || !TV.epg.has(c)) return;
+                var f = S.fold(c.name);
+                if (first && f.indexOf(first) >= 0) list.push(c);
+            });
+            list.sort(function (a, b) { return Math.abs(a.name.length - ch.name.length) - Math.abs(b.name.length - ch.name.length); });
+            if (!list.length) { TV.toast(T("No channel with a guide has a name like this one.")); return; }
+            TV.menu(T("Same as Another Channel"), list.slice(0, 40).map(function (c) {
+                var p = TV.epg.now(c);
+                return { label: c.name + (p && p.cur ? "  ·  " + p.cur[2] : ""), check: !!(cur && cur.ch === c.id), run: function () { TV.epg.setChannelGuide(ch, { ch: c.id }); done(T("TV guide: the one of {name}", { name: c.name })); } };
+            }));
+        } });
+        TV.menu(T("TV Guide for This Channel"), items);
+    }
+    /* Your groups: add the channel to one, or to a new one */
+    function groupMenu(ch) {
+        var items = D.chanGroups().map(function (g) {
+            var on = g.ids.indexOf(ch.id) >= 0;
+            return { label: g.name, check: on, run: function () {
+                var now = D.toggleChanGroup(g.id, ch.id);
+                TV.toast(now ? T("“{name}” added to {group}", { name: ch.name, group: g.name }) : T("“{name}” removed from {group}", { name: ch.name, group: g.name }));
+                afterGroups(ch.id);
+            } };
+        });
+        items.push({ label: T("New Group"), icon: "plus", run: function () {
+            TV.prompt({ title: T("New Group"), placeholder: T("Sport, Kids, News…"), onDone: function (v) {
+                var id = D.addChanGroup(v);
+                D.toggleChanGroup(id, ch.id);
+                TV.toast(T("“{name}” added to {group}", { name: ch.name, group: v }));
+                afterGroups(ch.id);
+            } });
+        } });
+        TV.menu(T("Add to a Group"), items);
+    }
+    function groupChipMenu(c) {
+        var gid = c.id.replace(/^grp:/, "");
+        TV.menu(c.name, [
+            { label: T("Rename"), icon: "keyboard", run: function () { TV.prompt({ title: T("Rename"), value: c.name, onDone: function (v) { D.renameChanGroup(gid, v); afterGroups(); } }); } },
+            { label: T("Delete the Group"), icon: "trash", danger: true, run: function () {
+                TV.alert({ title: T("Delete “{group}”?", { group: c.name }), message: T("Its channels stay in their categories."), buttons: [
+                    { label: T("Cancel") }, { label: T("Delete"), danger: true, run: function () { D.deleteChanGroup(gid); afterGroups(); } }] });
+            } }
+        ]);
+    }
+    function afterGroups(keepId) {
+        var cur = cats[catIndex] && cats[catIndex].id;
+        cats = categories();
+        var found = -1;
+        for (var i = 0; i < cats.length; i++) if (cats[i].id === cur) { found = i; break; }
+        if (found < 0) { catIndex = Math.min(catIndex, cats.length - 1); buildChips(); paintChips(); loadCategory(); return; }
+        catIndex = found; buildChips(); paintChips();
+        if (String(cur).indexOf("grp:") === 0) loadCategory(keepId); else { cards.refresh(); showInfo(cards.current()); }
     }
     function findNumber(n) {
         var cat = D.catalog();
@@ -324,15 +408,16 @@
                     for (var i = 0; i < cats.length; i++) if (cats[i].id === c.id) { catIndex = i; break; }
                     loadCategory();
                     zone = cards.items.length ? "cards" : "chips"; cards.setActive(zone === "cards"); paintChips();
-                }, cats.slice(1, 4));
+                }, cats.filter(function (x) { return x.id === "fav" || x.id === "recent" || x.id === "all" || x.mine; }));
                 return;
             }
             if (zone === "chips") { clearTimeout(chipTimer); loadCategory(); if (cards.items.length) { zone = "cards"; cards.setActive(true); paintChips(); } return; }
             var ch = cards.current();
             if (ch) fullScreen(ch);
         },
-        canHold: function () { return zone === "cards" ? !!cards.current() : zone === "chips" && !!(cats[catIndex] && cats[catIndex].kind); },
+        canHold: function () { return zone === "cards" ? !!cards.current() : zone === "chips" && !!(cats[catIndex] && (cats[catIndex].kind || cats[catIndex].mine)); },
         longOk: function () {
+            if (zone === "chips" && cats[catIndex] && cats[catIndex].mine) { groupChipMenu(cats[catIndex]); return; }
             if (zone === "chips") {                 // OK held on a category: hide it, or its whole country
                 TV.categoryMenu(cats[catIndex], function () {
                     cats = categories(); catIndex = Math.min(catIndex, cats.length - 1); buildChips(); paintChips(); loadCategory();
@@ -359,5 +444,5 @@
     setInterval(function () { view.refresh(); }, 60000);
     TV.views = TV.views || {};
     TV.views.live = view;
-    TV.live = { play: function (ch, ctx) { fullScreen(ch, ctx); }, findNumber: findNumber, playChannel: function (ch, rect) { playChannel(ch, rect); }, pickCategory: pickCategory };
+    TV.live = { play: function (ch, ctx) { fullScreen(ch, ctx); }, findNumber: findNumber, playChannel: function (ch, rect) { playChannel(ch, rect); }, pickCategory: pickCategory, guideMenu: guideMenu };
 })(window);

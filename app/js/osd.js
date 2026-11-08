@@ -272,6 +272,7 @@
     function stopExt(keep) { clearInterval(extTimer); extTimer = null; if (!keep) ext = null; }
     function setDelay(d) {
         delayMs = Math.max(-60000, Math.min(60000, d));
+        TV.log("subtitle delay " + delayMs + " ms" + (ext ? " (OpenSubtitles)" : subsOn ? " (the video's own)" : ""));   // to follow it on the LG
         TV.player.subtitleDelay(delayMs);                  // the video's own subtitles move too
         refreshPop();
     }

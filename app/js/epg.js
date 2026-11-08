@@ -22,17 +22,51 @@
     function onUpdate(fn) { listeners.push(fn); }
     var fire = TV.debounce(function () { if (TV.mark) TV.mark("guide"); listeners.forEach(function (fn) { try { fn(); } catch (e) {} }); }, 1500);
 
+    /* A channel's guide chosen by hand (hold OK on a channel > TV Guide): { src, id } a channel of the
+       provider's guide, or { ch } the programmes of another channel of your lists. Kept in the settings. */
+    var guideNames = {};          // srcId -> { epgId: name }: every channel of the provider's guide, to choose from
+    function epgMap() { return TV.pref("epgMap") || {}; }
+    function chosen(ch) { return (ch && epgMap()[ch.id]) || null; }
+    function setChannelGuide(ch, v) {
+        var o = epgMap(), m = {}, k;
+        for (k in o) m[k] = o[k];
+        if (v) m[ch.id] = v; else delete m[ch.id];
+        TV.setPref("epgMap", m);
+        fire();
+    }
+    function viaOther(ch) {
+        var c = chosen(ch);
+        if (c && c.ch && c.ch !== ch.id) { var other = TV.data.channel(c.ch); if (other) return other; }
+        return ch;
+    }
+    function guideSearch(text) {
+        var words = S.fold(text).split(/\s+/).filter(Boolean), out = [];
+        Object.keys(guideNames).forEach(function (src) {
+            var names = guideNames[src];
+            Object.keys(names).forEach(function (id) {
+                if (out.length >= 60) return;
+                var f = S.fold(names[id] + " " + id);
+                for (var i = 0; i < words.length; i++) if (f.indexOf(words[i]) < 0) return;
+                out.push({ src: src, id: id, name: names[id] });
+            });
+        });
+        return out.sort(function (a, b) { return a.name.length - b.name.length; });
+    }
     function keyOf(ch) {
+        var c = chosen(ch);
+        if (c && c.id) return (c.src || ch.src) + "|" + c.id;
         if (ch.epg) { var k = ch.src + "|" + ch.epg; if (progs[k]) return k; }
         var n = byName[ch.src + "|" + S.fold(ch.name)];
         return n || (ch.epg ? ch.src + "|" + ch.epg : null);
     }
     /* Whether a channel has programmes, without unpacking them */
     function has(ch) {
+        if (ch) ch = viaOther(ch);
         var k = ch && keyOf(ch), c = (k && progs[k]) || (ch && (progs["id|" + ch.id] || extra[ch.id])) || null;
         return !!c && (c.n !== undefined ? c.n > 0 : c.length > 0);
     }
     function list(ch) {
+        if (ch) ch = viaOther(ch);
         var k = ch && keyOf(ch), c = (k && progs[k]) || (ch && (progs["id|" + ch.id] || extra[ch.id])) || null;
         if (!c) return null;
         return c.n !== undefined ? (c.n ? expand(c) : null) : c;
@@ -80,6 +114,8 @@
             if (saved && saved.url === e.url) apply(src.id, saved);          // the old one meanwhile
             var ids = {}, chans = cat.live.chans.filter(function (c) { return c.src === src.id; });
             chans.forEach(function (c) { if (c.epg) ids[c.epg] = 1; });
+            var map = epgMap();
+            Object.keys(map).forEach(function (k) { if (map[k].id && (map[k].src || src.id) === src.id) ids[map[k].id] = 1; });   // the guides chosen by hand
             TV.log("guide: asking the helper for " + Object.keys(ids).length + " channels");
             var from = Date.now() - 4 * 3600 * 1000, to = Date.now() + 26 * 3600 * 1000;
             return TV.helper.epg(e.url, Object.keys(ids), from, to, true).then(function (j) {
@@ -92,14 +128,14 @@
                     if (id) { nameMap[S.fold(c.name)] = id; extra[id] = 1; }
                 });
                 var more = Object.keys(extra).filter(function (id) { return !keep[id]; });
-                if (!more.length) return { keep: keep, nameMap: nameMap, total: j.total };
+                if (!more.length) return { keep: keep, nameMap: nameMap, total: j.total, all: j.names };
                 return TV.helper.epg(e.url, more, from, to, false).then(function (j2) {
                     Object.keys(j2.chans || {}).forEach(function (id) { keep[id] = j2.chans[id]; });
-                    return { keep: keep, nameMap: nameMap, total: j.total };
+                    return { keep: keep, nameMap: nameMap, total: j.total, all: j.names };
                 });
             }).then(function (r) {
                 var keep = r.keep, j = { total: r.total };
-                var data = { url: e.url, at: Date.now(), chans: keep, names: r.nameMap };
+                var data = { url: e.url, at: Date.now(), chans: keep, names: r.nameMap, all: r.all || {} };
                 apply(src.id, data);
                 TV.log("guide: " + Object.keys(keep).length + " channels with programmes (" + (j.total || 0) + " in the file)");
                 var size = 0; Object.keys(keep).forEach(function (id) { size += keep[id].length; });
@@ -136,6 +172,7 @@
         return out;
     }
     function apply(srcId, data) {
+        if (data.all) guideNames[srcId] = data.all;
         Object.keys(data.chans || {}).forEach(function (id) { progs[srcId + "|" + id] = slim(data.chans[id]); });
         Object.keys(data.names || {}).forEach(function (n) { byName[srcId + "|" + n] = srcId + "|" + data.names[n]; });
         fire();
@@ -215,7 +252,7 @@
     var queue = [], running = 0;
     function ensure(chans) {
         chans.forEach(function (ch) {
-            if (!ch || ch.url || has(ch) || !ch.sid) return;                 // M3U channels: XMLTV only
+            if (!ch || (ch.url && !/^stalker:/.test(ch.url)) || has(ch) || !ch.sid) return;   // M3U channels: XMLTV only
             if (shortDone[ch.id] && Date.now() - shortDone[ch.id] < 20 * 60 * 1000) return;
             shortDone[ch.id] = Date.now();
             queue.push(ch);
@@ -225,8 +262,14 @@
     function pump() {
         while (running < 3 && queue.length) {
             var ch = queue.shift(), src = TV.data.sourceOf(ch);
-            if (!src || src.type !== "xtream") continue;
+            if (!src || (src.type !== "xtream" && src.type !== "stalker")) continue;
             running++;
+            if (src.type === "stalker") {
+                (function (ch) {
+                    TV.stalker.shortEpg(src, ch.sid).then(function (l) { if (l.length) { progs["id|" + ch.id] = l; fire(); } }).catch(function () {}).then(function () { running--; pump(); });
+                })(ch);
+                continue;
+            }
             (function (ch) {
                 TV.data.xApi(src, "get_short_epg", "stream_id=" + ch.sid + "&limit=12").then(function (j) {
                     var l = (j && j.epg_listings || []).map(function (p) {
@@ -251,5 +294,6 @@
         }, Promise.resolve());
     }
 
-    TV.epg = { prune: prune, now: now, at: at, range: range, list: list, progress: progress, loadAll: loadAll, ensure: ensure, onUpdate: onUpdate, b64: b64 };
+    TV.epg = { prune: prune, now: now, at: at, range: range, list: list, has: has, progress: progress, loadAll: loadAll, ensure: ensure, onUpdate: onUpdate, b64: b64,
+               chosen: chosen, setChannelGuide: setChannelGuide, guideSearch: guideSearch, hasGuideList: function () { return Object.keys(guideNames).length > 0; } };
 })(window);

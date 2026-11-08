@@ -255,11 +255,12 @@ final class Helper {
             JSONObject b = parse(r.body);
             if (b == null || !sessionOk(b.optString("k", null))) { wrongCode(); json(out, r, 403, "{\"ok\":0}"); return; }
             JSONObject item = new JSONObject();
-            boolean m3u = "m3u".equals(b.optString("type"));
-            item.put("type", m3u ? "m3u" : "xtream");
+            boolean m3u = "m3u".equals(b.optString("type")), stalker = "stalker".equals(b.optString("type"));
+            item.put("type", m3u ? "m3u" : stalker ? "stalker" : "xtream");
             item.put("name", cut(b.optString("name"), 80));
             item.put("epg", cut(b.optString("epg"), 2000));
             if (m3u) item.put("url", cut(b.optString("url"), 4000));
+            else if (stalker) { item.put("portal", cut(b.optString("portal"), 400)); item.put("mac", cut(b.optString("mac"), 40)); }
             else { item.put("server", cut(b.optString("server"), 400)); item.put("user", cut(b.optString("user"), 200)); item.put("pass", cut(b.optString("pass"), 200)); }
             synchronized (lock) { pending.add(item); while (pending.size() > 5) pending.remove(0); }
             log("phone sent a " + item.getString("type") + " source");
@@ -301,6 +302,24 @@ final class Helper {
             return;
         }
         if (p.equals("/dev/keys")) { json(out, r, 200, "{\"keys\":[]}"); return; }
+        /* A request with the headers a Stalker (MAG) portal wants (a WebView cannot send a Cookie or a
+           User-Agent of its own). Body: { url, headers }. */
+        if (p.equals("/sget") && post) {
+            JSONObject b = parse(r.body);
+            if (b == null || !b.optString("url").matches("(?i)^https?://.*")) { json(out, r, 400, err("bad request")); return; }
+            java.util.Map<String, String> hd = new java.util.HashMap<>();
+            JSONObject h = b.optJSONObject("headers");
+            if (h != null) for (java.util.Iterator<String> it = h.keys(); it.hasNext(); ) {
+                String k = it.next();
+                if (k.matches("(?i)^(cookie|user-agent|x-user-agent|authorization|referer|accept-language)$")) { String v = h.optString(k); hd.put(k, v.length() > 2000 ? v.substring(0, 2000) : v); }
+            }
+            String u = b.getString("url");
+            try (Got g = get(u, b.optInt("t", 60000), 0, false, hd)) {
+                byte[] body = readAll(g.in);
+                send(out, r, g.status, "text/plain; charset=utf-8", body);
+            } catch (Exception e) { log("stalker request failed " + redact(u) + ": " + e.getMessage()); json(out, r, 502, err(e.getMessage())); }
+            return;
+        }
         if (p.equals("/fetch")) {
             String u = r.q.get("u");
             if (u == null || !u.matches("(?i)^https?://.*")) { json(out, r, 400, err("bad url")); return; }
@@ -401,8 +420,9 @@ final class Helper {
         int status; String type = ""; InputStream in; HttpURLConnection conn;
         @Override public void close() { try { if (in != null) in.close(); } catch (IOException ignored) {} if (conn != null) conn.disconnect(); }
     }
-    private Got get(String target, int timeoutMs) throws IOException { return get(target, timeoutMs, 0, false); }
-    private Got get(String target, int timeoutMs, int hops, boolean insecure) throws IOException {
+    private Got get(String target, int timeoutMs) throws IOException { return get(target, timeoutMs, 0, false, null); }
+    private Got get(String target, int timeoutMs, int hops, boolean insecure) throws IOException { return get(target, timeoutMs, hops, insecure, null); }
+    private Got get(String target, int timeoutMs, int hops, boolean insecure, java.util.Map<String, String> extra) throws IOException {
         URL url = new URL(target);
         HttpURLConnection c = (HttpURLConnection) url.openConnection();
         if (insecure && c instanceof HttpsURLConnection) {
@@ -416,20 +436,21 @@ final class Helper {
         c.setRequestProperty("User-Agent", UA);
         c.setRequestProperty("Accept-Encoding", "gzip");
         c.setRequestProperty("Accept", "*/*");
+        if (extra != null) for (java.util.Map.Entry<String, String> h : extra.entrySet()) c.setRequestProperty(h.getKey(), h.getValue());   // a Stalker portal's own headers
         int status;
         try { status = c.getResponseCode(); }
         catch (javax.net.ssl.SSLException e) {
             c.disconnect();
             if (!insecure && target.toLowerCase(Locale.US).startsWith("https:")) {
                 log("certificate not valid (" + e.getMessage() + "), retried without the check");
-                return get(target, timeoutMs, hops, true);
+                return get(target, timeoutMs, hops, true, extra);
             }
             throw e;
         }
         if (status >= 300 && status < 400 && c.getHeaderField("Location") != null && hops < 6) {
             String next = new URL(url, c.getHeaderField("Location")).toString();
             c.disconnect();
-            return get(next, timeoutMs, hops + 1, insecure);
+            return get(next, timeoutMs, hops + 1, insecure, extra);
         }
         Got g = new Got();
         g.conn = c; g.status = status; g.type = c.getContentType() == null ? "" : c.getContentType();

@@ -179,6 +179,16 @@
     function rememberHls(url) { var m = TV.load("hlsOnly", {}) || {}, k = Object.keys(m); if (k.length > 400) delete m[k[0]]; m[fp(url)] = 1; TV.save("hlsOnly", m); }
     function play(url, opts) {
         opts = opts || {};
+        // A Stalker portal's channel or movie: its real link is asked first (it lasts a short time only)
+        if (/^stalker:/.test(url) && TV.stalker) {
+            var my = ++token;
+            clearTimeout(watchdog); clearTimeout(retryTimer);
+            cur = { url: url, opts: opts, token: my };
+            buffering = true; emit("onBuffering", true);
+            TV.stalker.resolve(url).then(function (real) { if (cur && cur.token === my) play(real, opts); },
+                function (e) { if (cur && cur.token === my) { TV.log("stalker link: " + e.message); emit("onError", e.message); } });
+            return;
+        }
         attempts = 0;
         if (!opts.uhd && knownUhd(url)) opts.uhd = true;
         if (TV.WEBOS && /\.ts(\?|$)/i.test(url) && knownHls(url)) { opts._hls = true; url = toHls(url); }

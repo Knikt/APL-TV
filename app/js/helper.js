@@ -82,6 +82,15 @@
     TV.helper = {
         PORT: PORT,
         start: startService,
+        /* A Stalker portal's request with its own headers (Cookie with the MAC, MAG User-Agent, token).
+           An installed helper from before 1.0.7 does not know it: "needs the new install". */
+        sget: function (url, headers, timeout) {
+            return call("/sget", { method: "POST", body: JSON.stringify({ url: url, headers: headers || {}, t: timeout || 60000 }), timeout: (timeout || 60000) + 5000 }).then(function (r) {
+                if (r.status === 404) { var n = new Error("helper too old"); n.old = true; throw n; }
+                if (r.status >= 200 && r.status < 300) return r.text;
+                var e = new Error("HTTP " + r.status); e.status = r.status; throw e;
+            });
+        },
         fetch: function (url, timeout) {
             return call("/fetch?u=" + encodeURIComponent(url) + "&t=" + (timeout || 120000), { timeout: (timeout || 120000) + 5000 }).then(function (r) {
                 if (r.status >= 200 && r.status < 300) return r.text;

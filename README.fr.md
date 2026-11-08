@@ -24,7 +24,7 @@ Créé par **Knikt** (Gero Corp.), l'auteur d'[APL Launcher](https://github.com/
 La même app sur chaque TV : même look, mêmes fonctions, mêmes mises à jour.
 
 - **Accueil façon Apple TV.** Un grand titre à la une parmi ce que tout le monde regarde cette semaine (image de fond, logo du titre, âge conseillé, note IMDb, résumé), puis Reprendre, À suivre pour tes séries, Chaînes favorites avec ce qui passe, Ma liste, Films et Séries tendance, les nouveautés, Les mieux notés et des rangées par genre (anime, K-drama, studios comme Ghibli ou Pixar, séries Netflix, HBO…).
-- **TV en direct.** La chaîne sur laquelle tu es passe en plein écran derrière l'interface, avec son programme, le temps restant et la suite. Catégories (Favoris, Récentes, puis les tiennes, ta langue d'abord), touches numériques, chaîne précédente, et les versions 4K / FHD / HD d'une chaîne sur une seule carte.
+- **TV en direct.** La chaîne sur laquelle tu es passe en plein écran derrière l'interface, avec son programme, le temps restant et la suite. Catégories (Favoris, Récentes, tes propres groupes, puis celles de ton fournisseur, ta langue d'abord, et toutes dans une liste par pays), touches numériques, chaîne précédente, et les versions 4K / FHD / HD d'une chaîne sur une seule carte. OK maintenu sur une chaîne pour l'ajouter à un de tes groupes ou choisir son guide TV.
 - **Guide TV** en grille, depuis le guide XMLTV de ton fournisseur (ou le guide court d'Xtream), avec epg.pw et iptv-epg.org pour les chaînes qui n'en ont pas.
 - **Films et séries.** Les catégories de ton fournisseur, les affiches avec leur note IMDb, et une page par titre : le vrai résumé dans ta langue (TMDB), les saisons et épisodes avec ceux que tu as vus cochés, la saga du film, Titres similaires pris dans ton propre catalogue, le réalisateur et les acteurs, et une page pour chaque acteur. Les versions d'un même titre (langues, 4K) sont regroupées : celle dans ta langue, dans la meilleure qualité que ton écran affiche, est choisie, et celle que tu choisis est retenue. Un bouton Trier (ajoutés récemment, de A à Z, année, note).
 - **Le lecteur.** Menus Sous-titres et Audio pendant la lecture (films, séries et chaînes en direct), téléchargement OpenSubtitles avec réglage du décalage (jamais choisi par défaut), style des sous-titres, avance et retour précis (par 10 s, plus vite en restant appuyé), épisode précédent et suivant, une carte « Épisode suivant » avec une image qui ne dévoile rien, une minuterie de mise en veille, le format de l'image (adapter, remplir l'écran, format d'origine). Les flux à plusieurs qualités démarrent à la meilleure. Rien ne se lance tout seul, sauf si tu actives la lecture automatique.
@@ -128,7 +128,7 @@ Organisation : `app/` est l'app elle-même, la même sur chaque TV (app web ES5)
 
 ## Ajouter ta playlist
 
-APL TV › Réglages › Playlists › Ajouter une playlist › **Depuis le téléphone** : scanne le QR code avec ton téléphone (sur le même Wi-Fi que la TV), tape ou colle ton lien M3U, ou ton serveur Xtream, ton identifiant et ton mot de passe, et appuie sur Envoyer à l'écran. Tu peux ajouter plusieurs playlists. Un lien M3U qui est en réalité un lien Xtream (`get.php?username=…`) est lu comme Xtream, avec les affiches, les résumés et le guide TV.
+APL TV › Réglages › Playlists › Ajouter une playlist › **Depuis le téléphone** : scanne le QR code avec ton téléphone (sur le même Wi-Fi que la TV), tape ou colle ton lien M3U, ton serveur Xtream, ton identifiant et ton mot de passe, ou ton portail Stalker et ton adresse MAC, et appuie sur Envoyer à l'écran. Tu peux ajouter plusieurs playlists. Un lien M3U qui est en réalité un lien Xtream (`get.php?username=…`) est lu comme Xtream, avec les affiches, les résumés et le guide TV.
 
 ## Par l'auteur d'APL Launcher
 
@@ -141,6 +141,20 @@ Sur Samsung, les deux sont faits pour aller ensemble :
 - APL Launcher Setup installe APL TV d'un seul interrupteur, avec ta clé TMDB, et le garde à jour.
 
 Si APL TV te plaît, jette un œil à APL Launcher, et une étoile sur l'un ou l'autre dépôt fait toujours plaisir.
+
+## Questions
+
+**Quelles playlists marchent ?** Les liens M3U, les comptes Xtream et les portails Stalker (MAG / Ministra : l'adresse du portail et une adresse MAC). Ajoutes-en autant que tu veux : quand il y en a plusieurs, chaque catégorie affiche le nom de sa playlist.
+
+**Je peux faire mes propres groupes de chaînes ?** Oui : OK maintenu sur une chaîne › Ajouter à un groupe › Nouveau groupe. Tes groupes arrivent juste après les Favoris dans la TV en direct et le Guide. OK maintenu sur un groupe pour le renommer ou le supprimer, et sur une de ses chaînes pour la monter ou la descendre.
+
+**Et les préfixes et suffixes dans les noms des chaînes ?** Ils sont retirés tout seuls : étiquettes de pays (`FR|`, `UK:`), mentions de qualité (FHD, 4K, HEVC…) et décorations, et les versions 4K / FHD / HD d'une chaîne sont regroupées sur une seule carte.
+
+**Je peux choisir le guide TV ?** Pour chaque playlist, mets ta propre adresse XMLTV dans ses réglages (en plus du guide de ton fournisseur et des guides publics associés automatiquement). Pour une chaîne, OK maintenu dessus › Guide TV de cette chaîne : cherche dans le guide de ton fournisseur par son nom, ou prends les programmes d'une autre chaîne (la version HD d'une chaîne 4K, par exemple).
+
+**Un portail Stalker sur Samsung ou LG ?** Un portail demande des en-têtes que le navigateur d'une TV ne sait pas envoyer, alors c'est le service d'APL TV qui les envoie : relance une fois APL Launcher Setup (Samsung) ou installe une fois le dernier `.ipk` (LG). Sur Android, installe une fois le dernier `.apk`.
+
+**Installer vite sur Fire TV ou Android TV ?** Dans l'app Downloader, tape le code **9141513**.
 
 ## Vie privée et sécurité
 

@@ -544,3 +544,7 @@ body.is-preview { cursor: default; }
 .alert__qr { display: flex; flex-direction: column; align-items: center; margin: -10px 0 40px; }
 .alert__qr canvas { width: 360px; height: 360px; padding: 26px; border-radius: 40px; background: #fff; image-rendering: pixelated; box-shadow: 0 24px 60px rgba(0,0,0,0.45); }
 .alert__qrurl { margin-top: 22px; font-size: 26px; font-weight: 600; color: rgba(255,255,255,0.8); }
+
+/* ===================== A SHORT TEXT TO TYPE (TV.prompt: a group's name) ===================== */
+.alert__field { margin: 6px auto 26px; max-width: 640px; min-height: 76px; padding: 18px 28px; border-radius: 22px; background: rgba(255,255,255,0.12); font-size: 34px; font-weight: 600; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.alert__ph { color: rgba(255,255,255,0.4); font-weight: 500; }

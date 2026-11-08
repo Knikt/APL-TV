@@ -46,8 +46,9 @@
         }
         if (src.type === "xtream") src.server = normServer(src.server);
         if (src.type === "m3u") src.url = String(src.url || "").trim();
+        if (src.type === "stalker" && TV.stalker) { src.portal = TV.stalker.normPortal(src.portal); src.mac = TV.stalker.normMac(src.mac) || String(src.mac || "").trim(); }
         src.id = src.id || TV.uid();
-        src.name = String(src.name || "").trim() || (src.type === "xtream" ? hostName(src.server) : hostName(src.url)) || T("My playlist");
+        src.name = String(src.name || "").trim() || hostName(src.type === "xtream" ? src.server : src.type === "stalker" ? src.portal : src.url) || T("My playlist");
         list.push(src);
         saveSources(list);
         return src;
@@ -151,6 +152,12 @@
             });
             return out;
         });
+    }
+
+    /* ---------- Stalker portal (MAG): js/stalker.js, in the same catalog shape ---------- */
+    function loadStalker(src, progress) {
+        if (!TV.stalker) return Promise.reject(new Error("no Stalker support"));
+        return TV.stalker.load(src, progress, { id: src.id, v: CATALOG_V, at: Date.now(), type: "stalker", live: { cats: [], chans: [] }, movies: { cats: [], items: [] }, series: { cats: [], items: [] }, failed: {} });
     }
 
     /* ---------- M3U ---------- */
@@ -284,7 +291,7 @@
 
     var retryTimers = {};
     function loadSource(src, progress) {
-        return (src.type === "xtream" ? loadXtream(src, progress) : loadM3U(src, progress)).then(function (c) {
+        return (src.type === "xtream" ? loadXtream(src, progress) : src.type === "stalker" ? loadStalker(src, progress) : loadM3U(src, progress)).then(function (c) {
             /* The movies or the series did not come (the provider too slow, an error): the ones from before stay,
                instead of an empty Movies tab until the next refresh, and APL TV asks again in 10 minutes. */
             var prev = cats[src.id], failed = c.failed || {}, missed = [];
@@ -438,10 +445,11 @@
         var src;
         if (catId === "fav") src = favChannels();
         else if (catId === "recent") src = recentChannels();
+        else if (String(catId).indexOf("grp:") === 0) { var cg = chanGroupOf(catId); src = cg ? cg.ids.map(channel).filter(Boolean) : []; }
         else if (catId === "all") src = merged ? merged.live.chans.filter(function (c) { var ct = catOf(c); return (TV.pref("showAdult") || !ct.adult) && !ct.off; }) : [];
         else src = merged && !catOf({ cat: catId }).off && merged.live.byCat[catId] || [];
         var out = src;
-        if (TV.pref("mergeQuality") && catId !== "fav" && catId !== "recent") {
+        if (TV.pref("mergeQuality") && catId !== "fav" && catId !== "recent" && String(catId).indexOf("grp:") !== 0) {
             var seen = {};
             out = [];
             src.forEach(function (c) {
@@ -500,6 +508,35 @@
         TV.save("favs", f);
         return true;
     }
+    /* Your own groups of channels (hold OK on a channel > Add to a Group): [{ id, name, ids }], shown in
+       Live TV and the Guide after Favorites, in the order you add their channels */
+    function chanGroups() { return TV.load("chanGroups", []) || []; }
+    function saveGroups(g) {
+        TV.save("chanGroups", g);
+        Object.keys(groupCache).forEach(function (k) { if (k.indexOf("grp:") === 0) delete groupCache[k]; });
+        fire("groups");
+    }
+    function addChanGroup(name) { var g = chanGroups(), id = TV.uid(); g.push({ id: id, name: String(name).slice(0, 40), ids: [] }); saveGroups(g); return id; }
+    function renameChanGroup(id, name) { var g = chanGroups(); g.forEach(function (x) { if (x.id === id) x.name = String(name).slice(0, 40); }); saveGroups(g); }
+    function deleteChanGroup(id) { saveGroups(chanGroups().filter(function (x) { return x.id !== id; })); }
+    function toggleChanGroup(id, chId) {
+        var g = chanGroups(), on = false;
+        g.forEach(function (x) { if (x.id !== id) return; var i = x.ids.indexOf(chId); if (i < 0) { x.ids.push(chId); on = true; } else x.ids.splice(i, 1); });
+        saveGroups(g);
+        return on;
+    }
+    function moveInChanGroup(id, chId, delta) {
+        var g = chanGroups(), moved = false;
+        g.forEach(function (x) {
+            if (x.id !== id) return;
+            var i = x.ids.indexOf(chId), j = i + delta;
+            if (i < 0 || j < 0 || j >= x.ids.length) return;
+            x.ids.splice(j, 0, x.ids.splice(i, 1)[0]); moved = true;
+        });
+        if (moved) saveGroups(g);
+        return moved;
+    }
+    function chanGroupOf(catId) { var id = String(catId).replace(/^grp:/, ""); return chanGroups().filter(function (x) { return x.id === id; })[0] || null; }
     function pushRecent(id) {
         var r = (TV.load("recent", []) || []).filter(function (x) { return x !== id; });
         r.unshift(id);
@@ -942,6 +979,7 @@
         }
         var src = sourceOf(item);
         if (!src) return Promise.resolve({ seasons: {}, info: {} });
+        if (src.type === "stalker" && TV.stalker) return TV.stalker.seriesInfo(src, item);
         return xApi(src, "get_series_info", "series_id=" + item.seriesId).then(function (j) {
             var seasons = {};
             var eps = j && j.episodes || {};
@@ -1004,6 +1042,7 @@
         catalog: function () { return merged; },
         channelsIn: channelsIn, channelsNamed: channelsNamed, channel: channel, streamUrl: streamUrl, catOf: catOf, sourceOf: sourceOf,
         favIds: favIds, isFav: isFav, toggleFav: toggleFav, favChannels: favChannels, moveFav: moveFav,
+        chanGroups: chanGroups, chanGroupOf: chanGroupOf, addChanGroup: addChanGroup, renameChanGroup: renameChanGroup, deleteChanGroup: deleteChanGroup, toggleChanGroup: toggleChanGroup, moveInChanGroup: moveInChanGroup,
         pushRecent: pushRecent, recentChannels: recentChannels,
         myList: myList, inMyList: inMyList, toggleMyList: toggleMyList,
         setResume: setResume, resumeOf: resumeOf, continueWatching: continueWatching, isDone: isDone, markWatched: markWatched, recentlyWatched: recentlyWatched,

@@ -254,6 +254,9 @@
                 if (s.account.exp) rows.push({ label: T("Subscription Ends"), value: new Date(s.account.exp).toLocaleDateString(TV.locale) });
                 if (s.account.max) rows.push({ label: T("Screens at Once"), value: String(s.account.max) });
             }
+        } else if (s.type === "stalker") {
+            rows.push({ label: T("Portal Address"), value: String(s.portal || "").replace(/^(https?:\/\/[^\/]+).*$/, "$1/…") });
+            rows.push({ label: T("MAC Address"), value: s.mac || "" });
         } else rows.push({ label: T("Address"), value: s.url.replace(/^(https?:\/\/[^\/]+).*$/, "$1/…") });
         rows.push({ label: T("TV Guide Address"), value: s.epg ? s.epg.replace(/^(https?:\/\/[^\/]+).*$/, "$1/…") : (s.type === "xtream" ? T("From the server") : T("From the playlist")), acc: "chevron",
             desc: T("An XMLTV address (.xml or .xml.gz), if your provider gives you one."),
@@ -264,7 +267,7 @@
             TV.alert({ title: T("Delete “{name}”?", { name: s.name }), message: T("Its channels, favorites and guide will be removed from APL TV."), buttons: [
                 { label: T("Cancel") }, { label: T("Delete"), danger: true, run: function () { D.removeSource(id); pop(); } }] });
         } });
-        return { title: s.name, icon: s.type === "xtream" ? "link" : "list", desc: s.type === "xtream" ? T("Xtream account") : T("M3U playlist"), rows: rows };
+        return { title: s.name, icon: s.type === "m3u" ? "list" : "link", desc: s.type === "xtream" ? T("Xtream account") : s.type === "stalker" ? T("Stalker Portal (MAG)") : T("M3U playlist"), rows: rows };
     }
 
     function addPage() {
@@ -277,8 +280,9 @@
     /* ---------- typing with the remote ---------- */
     function formPage(f) {
         var rows = [];
-        rows.push({ label: T("Type"), value: f.type === "xtream" ? "Xtream" : "M3U", acc: "chevron", desc: T("Xtream: server, username and password. M3U: one address."),
-            run: function () { f.type = f.type === "xtream" ? "m3u" : "xtream"; replaceTop(formPage(f)); } });
+        rows.push({ label: T("Type"), value: f.type === "xtream" ? "Xtream" : f.type === "stalker" ? T("Stalker Portal (MAG)") : "M3U", acc: "chevron",
+            desc: T("Xtream: server, username and password. M3U: one address. Stalker: the portal's address and a MAC address."),
+            run: function () { f.type = f.type === "xtream" ? "m3u" : f.type === "m3u" ? "stalker" : "xtream"; replaceTop(formPage(f)); } });
         function field(label, key, opts) {
             opts = opts || {};
             var shown = f[key] ? (opts.secret ? new Array(Math.min(f[key].length, 12) + 1).join("•") : f[key]) : T("Not set");
@@ -290,6 +294,9 @@
             field(T("Server"), "server", { url: true, desc: T("For example http://example.com:8080") });
             field(T("Username"), "user");
             field(T("Password"), "pass", { secret: true });
+        } else if (f.type === "stalker") {
+            field(T("Portal Address"), "portal", { url: true, desc: T("For example http://example.com:8080/c/") });
+            field(T("MAC Address"), "mac", { desc: T("The one your provider registered, like 00:1A:79:12:34:56.") });
         } else field(T("Playlist Address"), "url", { url: true, desc: T("The address of your M3U playlist (http://…).") });
         field(T("Name (optional)"), "name");
         field(T("TV Guide Address (optional)"), "epg", { url: true, desc: T("An XMLTV address (.xml or .xml.gz), if your provider gives you one.") });
@@ -303,6 +310,9 @@
             if (fromUrl) { src.server = fromUrl.server; src.user = fromUrl.user; src.pass = fromUrl.pass; }
             else { src.server = f.server; src.user = f.user; src.pass = f.pass; }
             if (!src.server || !src.user || !src.pass) { TV.toast(T("Fill in the server, the username and the password.")); return; }
+        } else if (f.type === "stalker") {
+            src.portal = f.portal || ""; src.mac = f.mac || "";
+            if (!src.portal || !TV.stalker || !TV.stalker.normMac(src.mac)) { TV.toast(T("Fill in the portal's address and a MAC address like 00:1A:79:12:34:56.")); return; }
         } else {
             src.url = f.url;
             if (!/^https?:\/\//i.test(src.url || "")) { TV.toast(T("The address must start with http:// or https://")); return; }

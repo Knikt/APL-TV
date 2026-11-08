@@ -683,6 +683,24 @@
         setTimeout(function () { try { inp.focus(); if (inp.setSelectionRange) inp.setSelectionRange(inp.value.length, inp.value.length); } catch (e) {} }, 30);
     };
 
+    /* A short text typed with the screen's keyboard, shown in a box while you type (a group's name...) */
+    TV.prompt = function (o) {
+        var root = TV.$("alert");
+        root.innerHTML = "";
+        var box = el("div", "alert__box");
+        box.appendChild(el("h2", "alert__title", esc(o.title || "")));
+        var field = el("div", "alert__field");
+        function show(v) { field.innerHTML = v ? esc(v) : "<span class='alert__ph'>" + esc(o.placeholder || "") + "</span>"; }
+        show(o.value || "");
+        box.appendChild(field);
+        box.appendChild(el("p", "alert__msg", esc(T("Type it with the keyboard, then OK."))));
+        root.appendChild(box);
+        root.classList.add("is-open");
+        TV.editText({ value: o.value || "", onInput: show,
+            onDone: function (v) { root.classList.remove("is-open"); v = String(v || "").trim(); if (v && o.onDone) o.onDone(v); },
+            onCancel: function () { root.classList.remove("is-open"); } });
+    };
+
     /* ---------- clock ---------- */
     function tick() { var c = TV.$("clock"); if (c) c.textContent = TV.hhmm(new Date()); }
     tick(); setInterval(tick, 10000);

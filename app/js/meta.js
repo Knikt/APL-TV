@@ -563,6 +563,23 @@
         if (named[up] !== undefined) return cc === "CA" && up === "R" ? 18 : named[up];
         return isNaN(n) ? -1 : n;
     }
+    /* The big banner of Home and the screen saver show only titles without an adult rating (PG-13 at most in
+       the US, under 18 in the UK and Germany): an "all audiences" film can still have a racy backdrop
+       (Charlie Wilson's War: all audiences in France, R in the US). Rows and search keep everything. */
+    var bannerMemo = {};
+    function bannerSafe(item) {
+        if (!item) return Promise.resolve(false);
+        if (bannerMemo[item.id] !== undefined) return Promise.resolve(bannerMemo[item.id]);
+        return lookup(item).then(function (m) {
+            if (!m || !m.tmdbId) return true;                 // nothing known about it: kept
+            return certs(item.kind === "series" ? "tv" : "movie", m.tmdbId).then(function (c) {
+                var worst = 0;
+                ["US", "GB", "DE", "FR", ageCountry()].forEach(function (cc) { if (c && c[cc]) worst = Math.max(worst, minAge(cc, c[cc])); });
+                return worst < 17;
+            });
+        }).then(function (ok) { bannerMemo[item.id] = ok; return ok; }, function () { return true; });
+    }
+    function bannerKnown(item) { return item ? bannerMemo[item.id] : undefined; }
     function inScale(cc, n, kind) {
         if (cc === "FR") return n < 10 ? "TP" : n < 12 ? "10" : n < 16 ? "12" : n < 18 ? "16" : "18";
         if (cc === "US") return kind === "tv" ? (n <= 6 ? "TV-G" : n <= 10 ? "TV-PG" : n <= 14 ? "TV-14" : "TV-MA") : (n === 0 ? "G" : n < 13 ? "PG" : n < 17 ? "PG-13" : n < 18 ? "R" : "NC-17");
@@ -604,5 +621,5 @@
     function testKey(k) {
         return TV.fetchJSON(API + "/configuration?api_key=" + encodeURIComponent(String(k || "").trim()), { timeout: 12000, noProxy: true }).then(function (j) { return !!(j && j.images); }, function () { return false; });
     }
-    TV.meta = { setKey: setKey, testKey: testKey, keySource: function () { return global.TV_KEYS && global.TV_KEYS.tmdb ? "setup" : (TV.load("tmdbKey", "") ? "settings" : ""); }, certs: certs, certBadge: certBadge, ageCountries: COUNTRIES, ageCountry: ageCountry, themeWords: themeWords, themes: themes, themeMatch: themeMatch, themeTitles: themeTitles, similar: similar, byPerson: byPerson, collection: collection, genres: genres, genreTitles: genreTitles, topRated: topRated, trending: trending, person: person, lookup: lookup, want: want, clearQueue: clearQueue, season: season, img: img, fmt: fmt, imdbBadge: imdbBadge, known: known, enabled: function () { return !!KEY; } };
+    TV.meta = { setKey: setKey, testKey: testKey, keySource: function () { return global.TV_KEYS && global.TV_KEYS.tmdb ? "setup" : (TV.load("tmdbKey", "") ? "settings" : ""); }, certs: certs, certBadge: certBadge, ageCountries: COUNTRIES, ageCountry: ageCountry, themeWords: themeWords, themes: themes, themeMatch: themeMatch, themeTitles: themeTitles, bannerSafe: bannerSafe, bannerKnown: bannerKnown, similar: similar, byPerson: byPerson, collection: collection, genres: genres, genreTitles: genreTitles, topRated: topRated, trending: trending, person: person, lookup: lookup, want: want, clearQueue: clearQueue, season: season, img: img, fmt: fmt, imdbBadge: imdbBadge, known: known, enabled: function () { return !!KEY; } };
 })(window);

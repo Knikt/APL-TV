@@ -59,7 +59,24 @@
         why = {};
         var out = interleave(D.itemsIn("movies", "trend").slice(0, 12), D.itemsIn("series", "trend").slice(0, 8), "trend");
         if (out.length < 6) out = out.concat(interleave(D.itemsIn("movies", "new").slice(0, 12), D.itemsIn("series", "new").slice(0, 8), "new").filter(function (x) { return out.indexOf(x) < 0; }));
-        return out.slice(0, 12);
+        // titles already known to have an adult rating stay out of the banner (see TV.meta.bannerSafe)
+        return out.filter(function (x) { return !TV.meta.bannerKnown || TV.meta.bannerKnown(x) !== false; }).slice(0, 12);
+    }
+    /* The backdrop of a banner title, only once its rating is known to be fine; an adult-rated one leaves */
+    function heroBg(item, url) {
+        if (!TV.meta.bannerSafe) { if (url) TV.bg(url); return; }
+        TV.meta.bannerSafe(item).then(function (ok) {
+            if (!ok) { dropFeatured(item); return; }
+            if (url && visible && zone === -1 && featured[heroIndex] === item) TV.bg(url);
+        });
+    }
+    function dropFeatured(item) {
+        var i = featured.indexOf(item);
+        if (i < 0) return;
+        featured.splice(i, 1);
+        if (!featured.length) { dirty = true; if (visible) render(); return; }
+        if (heroIndex >= featured.length) heroIndex = 0;
+        if (i === heroIndex || heroIndex >= featured.length) drawHero(featured[heroIndex]);
     }
     function kickerOf(item) {
         var s = item.kind === "series";
@@ -85,7 +102,7 @@
         heroNav = new TV.Nav({ onSelect: function (i) { if (i === 0 && item.kind === "movie") TV.detail.play(item); else TV.detail.open(item); } });
         heroNav.setTiles([play, more], heroNav && zone === -1 ? 0 : 0);
         if (zone !== -1) heroNav.blur();
-        if (item.backdrop) TV.bg(item.backdrop);
+        heroBg(item, item.backdrop);
         TV.meta.lookup(item).then(function (m) {
             if (!m || featured[heroIndex] !== item) return;
             if (m.logo) { var im = el("img", "hero__logo"); im.src = m.logo; im.onload = function () { if (title.parentNode) title.parentNode.replaceChild(im, title); }; }
@@ -101,7 +118,7 @@
                 if (age && featured[heroIndex] === item) meta.innerHTML = [age].concat(bits).join("<span class='dot'></span>");
             });
             if (m.overview) desc.textContent = m.overview;
-            if (m.backdrop && visible && zone === -1) TV.bg(m.backdrop);
+            if (m.backdrop) heroBg(item, m.backdrop);
         });
     }
     function rotate() {
@@ -245,7 +262,7 @@
         strips.forEach(function (s, i) { s.setActive(active && i === zone); });
         if (heroNav) { if (active && zone === -1) heroNav.refocus(); else heroNav.blur(); }
         scrollTo();
-        if (active && zone === -1 && featured[heroIndex]) TV.meta.lookup(featured[heroIndex]).then(function (m) { if (m && m.backdrop && visible && zone === -1) TV.bg(m.backdrop); });
+        if (active && zone === -1 && featured[heroIndex]) { var fi = featured[heroIndex]; TV.meta.lookup(fi).then(function (m) { if (m && m.backdrop) heroBg(fi, m.backdrop); }); }
     }
 
     function activate(it, kind) {
@@ -264,7 +281,7 @@
             if (!root) build();
             visible = true;
             if (dirty || !strips.length) render(); else { strips.forEach(function (s) { s.cards.forEach(function (c) { if (c._update) c._update(); }); }); paint(); }
-            TV.bg(featured[heroIndex] && featured[heroIndex].backdrop || "");
+            if (featured[heroIndex] && featured[heroIndex].backdrop) { TV.bg(""); heroBg(featured[heroIndex], featured[heroIndex].backdrop); } else TV.bg("");
         },
         hide: function () { visible = false; clearInterval(heroTimer); TV.meta.clearQueue(); document.body.classList.remove("in-rows"); },
         enter: function () { paint(true); },
