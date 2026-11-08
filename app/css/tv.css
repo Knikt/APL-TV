@@ -9,10 +9,12 @@
      screen, multiview). #bg draws the dark backdrop everywhere else.
    ============================================================ */
 
-@font-face { font-family: "SF Pro Display"; font-weight: 400; src: local("SF Pro Display"), url("../fonts/SFPRODISPLAYREGULAR.OTF") format("opentype"); }
-@font-face { font-family: "SF Pro Display"; font-weight: 500; src: local("SF Pro Display Medium"), url("../fonts/SFPRODISPLAYMEDIUM.OTF") format("opentype"); }
-@font-face { font-family: "SF Pro Display"; font-weight: 600; src: local("SF Pro Display Medium"), url("../fonts/SFPRODISPLAYMEDIUM.OTF") format("opentype"); }
-@font-face { font-family: "SF Pro Display"; font-weight: 700; src: local("SF Pro Display Bold"), url("../fonts/SFPRODISPLAYBOLD.OTF") format("opentype"); }
+/* Two addresses for each font: ../fonts/ when this file is read from css/, fonts/ when an automatic
+   update puts it in the page itself (js/boot.js), where ../fonts/ points outside the app */
+@font-face { font-family: "SF Pro Display"; font-weight: 400; src: local("SF Pro Display"), url("../fonts/SFPRODISPLAYREGULAR.OTF") format("opentype"), url("fonts/SFPRODISPLAYREGULAR.OTF") format("opentype"); }
+@font-face { font-family: "SF Pro Display"; font-weight: 500; src: local("SF Pro Display Medium"), url("../fonts/SFPRODISPLAYMEDIUM.OTF") format("opentype"), url("fonts/SFPRODISPLAYMEDIUM.OTF") format("opentype"); }
+@font-face { font-family: "SF Pro Display"; font-weight: 600; src: local("SF Pro Display Medium"), url("../fonts/SFPRODISPLAYMEDIUM.OTF") format("opentype"), url("fonts/SFPRODISPLAYMEDIUM.OTF") format("opentype"); }
+@font-face { font-family: "SF Pro Display"; font-weight: 700; src: local("SF Pro Display Bold"), url("../fonts/SFPRODISPLAYBOLD.OTF") format("opentype"), url("fonts/SFPRODISPLAYBOLD.OTF") format("opentype"); }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
 

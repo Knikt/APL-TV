@@ -1,8 +1,8 @@
 {
- "version": "1.0.4",
+ "version": "1.0.5",
  "loader": 1,
  "reinstall": "1.0.1",
- "notes": "Trending on Home, IMDb ratings for new titles, OLED screen protection, channels quick right after start-up, and APL TV now runs on LG and Android TV too",
+ "notes": "The Apple-style font is back after automatic updates",
  "platforms": {
   "tizen": {
    "reinstall": "1.0.1"
