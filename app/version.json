@@ -1,8 +1,8 @@
 {
- "version": "1.0.5",
+ "version": "1.0.6",
  "loader": 1,
  "reinstall": "1.0.1",
- "notes": "The Apple-style font is back after automatic updates",
+ "notes": "Every category in a list by country in Live TV and the Guide, and Support APL TV in Settings",
  "platforms": {
   "tizen": {
    "reinstall": "1.0.1"

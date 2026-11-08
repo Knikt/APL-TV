@@ -138,6 +138,14 @@
             desc: TV.TIZEN ? T("Runs the version installed with APL Launcher Setup again, until the next update.") : T("Runs the installed version again, until the next update."), run: function () { TV.updater.reset(); } });
         rows.push({ section: T("About") });
         rows.push({ label: T("Refresh All Playlists"), icon: "refresh", run: function () { refreshAll(); } });
+        if (TV.DONATE) rows.push({ label: T("Support APL TV"), acc: "chevron", icon: "star",
+            desc: T("APL TV is free and made by one person. If you like it, you can buy me a coffee on Ko-fi: OK shows a code to scan with your phone."),
+            run: function () {
+                var qr = el("div", "alert__qr");
+                qr.appendChild(TV.qr.canvas(TV.DONATE, 360));
+                qr.appendChild(el("div", "alert__qrurl", esc(TV.DONATE.replace(/^https?:\/\//, ""))));
+                TV.alert({ title: T("Support APL TV"), message: T("Scan the code with your phone's camera. Thank you!"), node: qr });
+            } });
         rows.push({ label: "APL TV", value: T("Version {v}", { v: TV.VERSION }), desc: T("Created by Knikt (Gero Corp.)") + "\n" + T("A player for your own playlists. APL TV comes with no channels.") });
         rows.push({ label: T("Credits"), desc: T("Film and series data and pictures: TMDB. This product uses the TMDB API but is not endorsed or certified by TMDB.") + "\n" + T("IMDb ratings: Stremio's Cinemeta. Subtitles: OpenSubtitles. TV guides: your provider, epg.pw and iptv-epg.org.") });
         return { title: T("Settings"), icon: "gear", desc: T("Your playlists and how APL TV works."), rows: rows };

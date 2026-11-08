@@ -629,6 +629,7 @@
         var box = el("div", "alert__box");
         box.appendChild(el("h2", "alert__title", esc(o.title || "")));
         if (o.message) box.appendChild(el("p", "alert__msg", esc(o.message)));
+        if (o.node) box.appendChild(o.node);                     // a QR code, a picture…
         var btns = el("div", "alert__buttons");
         var buttons = o.buttons || [{ label: T("OK") }];
         var tiles = buttons.map(function (b) { var d = el("div", "alert__btn" + (b.danger ? " is-danger" : ""), esc(b.label)); btns.appendChild(d); return d; });

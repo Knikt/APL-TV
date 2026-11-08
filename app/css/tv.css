@@ -539,3 +539,8 @@ body.is-preview { cursor: default; }
 .saver__date { display: block; margin-top: 22px; font-size: 26px; font-weight: 600; letter-spacing: 3px; text-transform: uppercase; color: rgba(255,255,255,0.8); }
 .saver__title { display: block; margin-top: 12px; font-size: 26px; font-weight: 400; color: rgba(255,255,255,0.56); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; opacity: 0; transition: opacity 700ms ease; }
 .saver__title.is-on { opacity: 1; }
+
+/* ===================== A QR CODE IN AN ALERT (Settings > Support APL TV) ===================== */
+.alert__qr { display: flex; flex-direction: column; align-items: center; margin: -10px 0 40px; }
+.alert__qr canvas { width: 360px; height: 360px; padding: 26px; border-radius: 40px; background: #fff; image-rendering: pixelated; box-shadow: 0 24px 60px rgba(0,0,0,0.45); }
+.alert__qrurl { margin-top: 22px; font-size: 26px; font-weight: 600; color: rgba(255,255,255,0.8); }

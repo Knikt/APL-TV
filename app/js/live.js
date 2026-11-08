@@ -51,12 +51,39 @@
             { id: "all", name: T("All Channels"), count: 0 }
         ];
         (cat ? cat.live.cats : []).forEach(function (c) { if ((adult || !c.adult) && !c.off) { list.push(c); list[2].count += c.count; } });
+        // first: every category in a list (a big account has hundreds: too many to scroll through here)
+        list.unshift({ id: "pick", name: T("Categories"), count: 0 });
         return list;
+    }
+    /* Every category of your channels in a vertical list, by country or region when there are many.
+       Used by Live TV (its first chip) and by the Guide. top: entries first (Favorites…); onPick(category) */
+    function pickCategory(currentId, onPick, top) {
+        var cat = D.catalog(), adult = TV.pref("showAdult"), S = TV.smart;
+        var all = (cat ? cat.live.cats : []).filter(function (c) { return (adult || !c.adult) && !c.off; });
+        function item(c) {
+            return { label: (c.tag ? c.tag + " · " : "") + c.name + (c.count ? "  ·  " + c.count : ""), check: c.id === currentId, focus: c.id === currentId,
+                     run: function () { onPick(c); } };
+        }
+        top = top || [];
+        if (all.length <= 40) { TV.menu(T("Category"), top.concat(all).map(item)); return; }
+        var groups = [], by = {}, curGroup = null;
+        all.forEach(function (c) {
+            var g = c.grp || "";
+            if (!by[g]) { by[g] = { id: g, name: g && S && S.groupName ? S.groupName(g) : T("Other Categories"), cats: [] }; groups.push(by[g]); }
+            by[g].cats.push(c);
+            if (c.id === currentId) curGroup = g;
+        });
+        var other = by[""];
+        if (other) { groups.splice(groups.indexOf(other), 1); groups.push(other); }    // the categories of no country last
+        TV.menu(T("Category"), top.map(item).concat(groups.map(function (g) {
+            return { label: g.name + "  ·  " + g.cats.length, check: g.id === curGroup, focus: g.id === curGroup && top.every(function (t) { return t.id !== currentId; }),
+                     run: function () { TV.menu(g.name, g.cats.map(item)); } };
+        })));
     }
     function buildChips() {
         chipStrip.innerHTML = "";
         chipEls = cats.map(function (c) {
-            var icon = c.id === "fav" ? TV.icon("star", 22) + "&nbsp;&nbsp;" : "";
+            var icon = c.id === "fav" ? TV.icon("star", 22) + "&nbsp;&nbsp;" : c.id === "pick" ? TV.icon("list", 22) + "&nbsp;&nbsp;" : "";
             var e = el("div", "chip", icon + (c.tag ? "<span class='lrow__flag'>" + esc(c.tag) + "</span>" : "") + esc(c.name) + (c.count ? "<span class='chip__n'>" + c.count + "</span>" : ""));
             chipStrip.appendChild(e);
             return e;
@@ -79,7 +106,7 @@
     }
     function loadCategory(keepId) {
         var c = cats[catIndex];
-        if (!c) return;
+        if (!c || c.id === "pick") return;
         TV.setPref("liveCat", c.id);
         var items = D.channelsIn(c.id), idx = 0;
         var want = keepId || (playing && playing.id);
@@ -249,7 +276,7 @@
             buildChips();
             var want = TV.pref("liveCat");
             if (want === "fav" && !D.favIds().length) want = null;
-            catIndex = D.favIds().length ? 0 : Math.min(3, cats.length - 1);
+            catIndex = D.favIds().length ? 1 : Math.min(4, cats.length - 1);   // after Categories: Favorites, or your first category
             for (var i = 0; i < cats.length; i++) if (cats[i].id === want) { catIndex = i; break; }
             zone = "cards";
             paintChips();
@@ -291,6 +318,15 @@
             return false;
         },
         ok: function () {
+            if (zone === "chips" && cats[catIndex] && cats[catIndex].id === "pick") {
+                var cur = TV.pref("liveCat");
+                pickCategory(cur, function (c) {
+                    for (var i = 0; i < cats.length; i++) if (cats[i].id === c.id) { catIndex = i; break; }
+                    loadCategory();
+                    zone = cards.items.length ? "cards" : "chips"; cards.setActive(zone === "cards"); paintChips();
+                }, cats.slice(1, 4));
+                return;
+            }
             if (zone === "chips") { clearTimeout(chipTimer); loadCategory(); if (cards.items.length) { zone = "cards"; cards.setActive(true); paintChips(); } return; }
             var ch = cards.current();
             if (ch) fullScreen(ch);
@@ -323,5 +359,5 @@
     setInterval(function () { view.refresh(); }, 60000);
     TV.views = TV.views || {};
     TV.views.live = view;
-    TV.live = { play: function (ch, ctx) { fullScreen(ch, ctx); }, findNumber: findNumber, playChannel: function (ch, rect) { playChannel(ch, rect); } };
+    TV.live = { play: function (ch, ctx) { fullScreen(ch, ctx); }, findNumber: findNumber, playChannel: function (ch, rect) { playChannel(ch, rect); }, pickCategory: pickCategory };
 })(window);

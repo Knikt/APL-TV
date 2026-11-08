@@ -132,7 +132,7 @@ if release:
     data = open(ipk, "rb").read()
     h = hashlib.sha256(data).hexdigest()
     open(os.path.join(out, "SHA256SUMS-ipk.txt"), "w", encoding="utf-8", newline="\n").write("%s  %s\n" % (h, os.path.basename(ipk)))
-    repo = os.environ.get("GITHUB_REPOSITORY") or "Knikt/APL-TV-for-TizenOS"
+    repo = os.environ.get("GITHUB_REPOSITORY") or "Knikt/APL-TV"
     manifest = {
         "id": APP_ID, "version": version, "type": "web", "title": "APL TV",
         "appDescription": "Live TV, movies and series from your own playlists, in the style of Apple TV",

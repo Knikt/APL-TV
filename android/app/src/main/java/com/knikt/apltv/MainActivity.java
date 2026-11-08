@@ -6,6 +6,7 @@ import android.content.Context;
 import android.graphics.Color;
 import android.os.Bundle;
 import android.util.SparseIntArray;
+import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.View;
 import android.view.WindowManager;
@@ -74,8 +75,22 @@ public class MainActivity extends Activity {
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         FrameLayout root = new FrameLayout(this);
         root.setBackgroundColor(Color.BLACK);
+        // The page and the video are 16:9 (1920 x 1080): they go on a stage of that shape, as large as the
+        // screen allows and centred. A screen of another shape (a phone, a tablet, MEmu's window) gets
+        // black bars instead of a page cut on one side.
+        final FrameLayout stage = new FrameLayout(this);
+        root.addView(stage, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT, Gravity.CENTER));
+        root.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
+            int w = r - l, h = b - t;
+            if (w <= 0 || h <= 0) return;
+            int sw = Math.min(w, Math.round(h * 16f / 9f)), sh = Math.min(h, Math.round(sw * 9f / 16f));
+            FrameLayout.LayoutParams p = (FrameLayout.LayoutParams) stage.getLayoutParams();
+            if (p.width == sw && p.height == sh) return;
+            p.width = sw; p.height = sh; p.gravity = Gravity.CENTER;
+            stage.post(() -> stage.setLayoutParams(p));
+        });
 
-        player = new Player(this, root);
+        player = new Player(this, stage);
         web = new WebView(this);
         web.setBackgroundColor(Color.TRANSPARENT);
         web.setLayerType(View.LAYER_TYPE_HARDWARE, null);
@@ -83,7 +98,7 @@ public class MainActivity extends Activity {
         web.setFocusableInTouchMode(true);
         web.setVerticalScrollBarEnabled(false);
         web.setHorizontalScrollBarEnabled(false);
-        root.addView(web, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
+        stage.addView(web, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
         setContentView(root);
 
         WebSettings s = web.getSettings();
