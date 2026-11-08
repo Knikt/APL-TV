@@ -1,0 +1,44 @@
+name: Issue labels
+
+# The TV chosen in an issue form ("Your TV") becomes a label: samsung, lg-webos, android-tv or all-tvs.
+# Filter the issues by TV with these labels. The issue's text is only read, never run.
+on:
+  issues:
+    types: [opened, edited]
+
+permissions:
+  issues: write
+
+jobs:
+  label:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const LABELS = {
+              "samsung":    ["1428a0", "Samsung TVs and monitors (Tizen)"],
+              "lg-webos":   ["a50034", "LG TVs (webOS)"],
+              "android-tv": ["3ddc84", "Android TV, Google TV and Fire TV"],
+              "all-tvs":    ["6e7781", "Every TV"]
+            };
+            const body = context.payload.issue.body || "";
+            const m = body.match(/###\s*Your TV\s*\r?\n+\s*([^\r\n]+)/i);
+            if (!m) return;
+            const value = m[1].trim();
+            const want = [];
+            if (/samsung|tizen/i.test(value)) want.push("samsung");
+            if (/\blg\b|webos/i.test(value)) want.push("lg-webos");
+            if (/android|google tv|fire tv/i.test(value)) want.push("android-tv");
+            if (/all tvs/i.test(value)) want.push("all-tvs");
+            const { owner, repo } = context.repo, issue_number = context.payload.issue.number;
+            for (const name of Object.keys(LABELS)) {
+              try { await github.rest.issues.getLabel({ owner, repo, name }); }
+              catch (e) { await github.rest.issues.createLabel({ owner, repo, name, color: LABELS[name][0], description: LABELS[name][1] }); }
+            }
+            // An edited issue keeps only the TV it says now
+            const now = (context.payload.issue.labels || []).map(l => l.name);
+            for (const name of now) {
+              if (LABELS[name] && !want.includes(name)) await github.rest.issues.removeLabel({ owner, repo, issue_number, name });
+            }
+            if (want.length) await github.rest.issues.addLabels({ owner, repo, issue_number, labels: want });

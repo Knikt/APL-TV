@@ -1,0 +1,13 @@
+# Pull requests get the label of the TVs their files concern (.github/workflows/pr-labels.yml)
+samsung:
+  - changed-files:
+      - any-glob-to-any-file: ["app/config.xml", "app/service/**", "tools/make-package.sh", "tools/build.ps1"]
+lg-webos:
+  - changed-files:
+      - any-glob-to-any-file: ["webos/**", "tools/make-webos.py"]
+android-tv:
+  - changed-files:
+      - any-glob-to-any-file: ["android/**", "tools/make-android.py", "app/js/android.js"]
+all-tvs:
+  - changed-files:
+      - any-glob-to-any-file: ["app/js/**", "app/css/**", "app/index.html"]

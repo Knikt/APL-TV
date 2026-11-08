@@ -148,12 +148,54 @@
         return p;
     }
 
+    /* A rating Cinemeta does not have yet (often a new title): IMDb's own daily file, through the helper
+       service. Asked in groups, once every 12 hours per title; the cover gets its badge when it comes. */
+    var imdbWait = {}, imdbPending = {}, imdbTimer = null;
+    function askImdb(id) {
+        if (imdbPending[id]) return imdbPending[id];
+        imdbPending[id] = new Promise(function (resolve) { imdbWait[id] = resolve; });
+        if (!imdbTimer) imdbTimer = setTimeout(flushImdb, 1500);
+        return imdbPending[id];
+    }
+    function flushImdb() {
+        imdbTimer = null;
+        var ids = Object.keys(imdbWait).slice(0, 500), waiting = {};
+        ids.forEach(function (id) { waiting[id] = imdbWait[id]; delete imdbWait[id]; });
+        if (Object.keys(imdbWait).length) imdbTimer = setTimeout(flushImdb, 1500);
+        function settle(ratings) {
+            ids.forEach(function (id) { delete imdbPending[id]; waiting[id](ratings ? (ratings[id] || 0) : -1); });
+        }
+        TV.helper.imdb(ids).then(settle, function (e) {
+            // A helper installed before this feature (Samsung screens until APL Launcher Setup runs again)
+            // answers 404: not asked again today. Otherwise again in 10 minutes.
+            imdbOffUntil = Date.now() + (/HTTP 404/.test(e.message) ? 24 * 3600 * 1000 : 10 * 60 * 1000);
+            TV.log("imdb ratings: " + e.message);
+            settle(null);
+        });
+    }
+    var imdbOffUntil = 0;
+    function fillImdb(key, m) {
+        if (!m || !m.imdbId || m.imdb || !TV.helper || !TV.helper.imdb || Date.now() < imdbOffUntil || (m.imdbTry && Date.now() - m.imdbTry < 12 * 3600 * 1000)) return null;
+        return askImdb(m.imdbId).then(function (r) {
+            if (r < 0) return null;                    // the helper could not answer: asked again next time
+            m.imdbTry = Date.now();
+            if (r) m.imdb = r;
+            TV.idb.set("meta:" + key, m);
+            return r ? m : null;
+        });
+    }
+
     /* Ratings for the covers on screen, a few at a time */
     var queue = [], running = 0;
     function want(item, cb) {
         var key = cacheKey(item);
-        if (key in memo) { cb(memo[key]); return; }
-        queue.push({ item: item, cb: cb });
+        function done(m) {
+            cb(m);
+            var late = fillImdb(key, m);
+            if (late) late.then(function (m2) { if (m2) { try { cb(m2); } catch (e) {} } });
+        }
+        if (key in memo) { done(memo[key]); return; }
+        queue.push({ item: item, cb: done });
         pump();
     }
     function pump() {
@@ -198,6 +240,28 @@
                 var list = [], seen = {};
                 all.forEach(function (rs) { rs.forEach(function (r) {
                     if (seen[r.id]) return; seen[r.id] = 1;
+                    list.push({ id: r.id, t: r.title || r.name || "", o: r.original_title || r.original_name || "", y: parseInt(String(r.release_date || r.first_air_date || "").slice(0, 4), 10) || 0, v: r.vote_average || 0, n: r.vote_count || 0 });
+                }); });
+                if (list.length) TV.idb.set(key, { at: Date.now(), list: list });
+                return list;
+            });
+        }).catch(function () { return []; });
+    }
+
+    /* What everyone is watching this week (TMDB's trending list, 100 titles), most popular first; data.js
+       finds them in your catalog. Kept 12 hours. */
+    function trending(kind) {
+        if (!KEY) return Promise.resolve([]);
+        var key = "trend:" + kind + ":" + TV.lang;
+        return TV.idb.get(key).then(function (saved) {
+            if (saved && Date.now() - saved.at < 12 * 3600 * 1000) return saved.list;
+            return Promise.all([1, 2, 3, 4, 5].map(function (p) {
+                return tmdb("/trending/" + kind + "/week", "language=" + TV.locale + "&page=" + p)
+                    .then(function (j) { return j && j.results || []; }, function () { return []; });
+            })).then(function (all) {
+                var list = [], seen = {};
+                all.forEach(function (rs) { rs.forEach(function (r) {
+                    if (seen[r.id] || r.adult) return; seen[r.id] = 1;
                     list.push({ id: r.id, t: r.title || r.name || "", o: r.original_title || r.original_name || "", y: parseInt(String(r.release_date || r.first_air_date || "").slice(0, 4), 10) || 0, v: r.vote_average || 0, n: r.vote_count || 0 });
                 }); });
                 if (list.length) TV.idb.set(key, { at: Date.now(), list: list });
@@ -540,5 +604,5 @@
     function testKey(k) {
         return TV.fetchJSON(API + "/configuration?api_key=" + encodeURIComponent(String(k || "").trim()), { timeout: 12000, noProxy: true }).then(function (j) { return !!(j && j.images); }, function () { return false; });
     }
-    TV.meta = { setKey: setKey, testKey: testKey, keySource: function () { return global.TV_KEYS && global.TV_KEYS.tmdb ? "setup" : (TV.load("tmdbKey", "") ? "settings" : ""); }, certs: certs, certBadge: certBadge, ageCountries: COUNTRIES, ageCountry: ageCountry, themeWords: themeWords, themes: themes, themeMatch: themeMatch, themeTitles: themeTitles, similar: similar, byPerson: byPerson, collection: collection, genres: genres, genreTitles: genreTitles, topRated: topRated, person: person, lookup: lookup, want: want, clearQueue: clearQueue, season: season, img: img, fmt: fmt, imdbBadge: imdbBadge, known: known, enabled: function () { return !!KEY; } };
+    TV.meta = { setKey: setKey, testKey: testKey, keySource: function () { return global.TV_KEYS && global.TV_KEYS.tmdb ? "setup" : (TV.load("tmdbKey", "") ? "settings" : ""); }, certs: certs, certBadge: certBadge, ageCountries: COUNTRIES, ageCountry: ageCountry, themeWords: themeWords, themes: themes, themeMatch: themeMatch, themeTitles: themeTitles, similar: similar, byPerson: byPerson, collection: collection, genres: genres, genreTitles: genreTitles, topRated: topRated, trending: trending, person: person, lookup: lookup, want: want, clearQueue: clearQueue, season: season, img: img, fmt: fmt, imdbBadge: imdbBadge, known: known, enabled: function () { return !!KEY; } };
 })(window);

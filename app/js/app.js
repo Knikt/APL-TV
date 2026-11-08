@@ -11,7 +11,7 @@
     "use strict";
 
     var TV = global.TV, el = TV.el, esc = TV.esc, T = TV.t, D = TV.data;
-    TV.VERSION = "1.0.3";
+    TV.VERSION = "1.0.4";
     var TABS = [
         { id: "home", label: T("Home") },
         { id: "live", label: T("Live TV") },
@@ -115,12 +115,23 @@
     };
 
     /* ---------- opened by another app (APL Launcher's Top Shelf…) ---------- */
-    function readRequest() {
+    /* LG (webOS): the same requests come as launch parameters, once ({"channel": "…"}, {"search": "…"}) */
+    var webosSeen = "";
+    function webosParams(p) {
+        var S = global.webOSSystem || global.PalmSystem, txt = p ? JSON.stringify(p) : String(S && S.launchParams || "");
+        if (!txt || txt === "{}" || txt === webosSeen) return {};
+        webosSeen = txt;
+        try { return typeof p === "object" && p ? p : (JSON.parse(txt) || {}); } catch (e) { return {}; }
+    }
+    function readRequest(params) {
         try {
-            var req = global.tizen.application.getCurrentApplication().getRequestedAppControl();
-            var data = (req && req.appControl && req.appControl.data) || [];
             var m = {};
-            data.forEach(function (d) { m[d.key] = d.value && d.value[0]; });
+            if (TV.WEBOS) m = webosParams(params);
+            else {
+                var req = global.tizen.application.getCurrentApplication().getRequestedAppControl();
+                var data = (req && req.appControl && req.appControl.data) || [];
+                data.forEach(function (d) { m[d.key] = d.value && d.value[0]; });
+            }
             if (m.channel) { var ch = D.channel(m.channel); if (ch) { TV.live.play(ch); return true; } }
             // From APL Launcher's Top Shelf: a title's page, or straight back into it
             var cat = D.catalog(), byId = function (id) { return cat && (cat.movies.byId[id] || cat.series.byId[id]); };
@@ -139,8 +150,14 @@
     }
     // Opened again while already in front (APL Launcher's Top Shelf): Tizen says so with "appcontrol"
     global.addEventListener("appcontrol", function () { setTimeout(readRequest, 100); });
+    // LG: opened again while running (its icon, a voice request): the new parameters, then to the front
+    document.addEventListener("webOSRelaunch", function (e) {
+        var S = global.webOSSystem || global.PalmSystem;
+        try { if (S && S.activate) S.activate(); } catch (x) {}
+        setTimeout(function () { readRequest(e && e.detail); }, 100);
+    });
     document.addEventListener("visibilitychange", function () {
-        if (!document.hidden) { setTimeout(readRequest, 200); TV.registerKeys(); }
+        if (!document.hidden) { if (!TV.WEBOS) setTimeout(readRequest, 200); TV.registerKeys(); }
         else pushShelf();
     });
 
@@ -148,7 +165,7 @@
        What you were watching and your channels, with the data to open each one here (app control
        "resume", "title", "channel"). Sent when you leave APL TV and every few minutes. */
     function pushShelf() {
-        if (!D.catalog() || !TV.helper || !TV.helper.shelf) return;
+        if (!TV.TIZEN || !D.catalog() || !TV.helper || !TV.helper.shelf) return;     // APL Launcher is on Samsung screens
         try {
             var cont = D.continueWatching().slice(0, 12).map(function (x) {
                 var it = x.item, r = x.resume;

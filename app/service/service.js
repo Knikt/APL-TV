@@ -22,9 +22,9 @@ var zlib = require("zlib");
 var os = require("os");
 var crypto = require("crypto");
 
-var PORT = 8765, VERSION = "1.0.3";
+var PORT = 8765, VERSION = "1.0.4";
 var IDLE_MS = 15 * 60 * 1000, SESSION_MS = 20 * 60 * 1000;
-var UA = "APL TV/" + VERSION + " (Tizen)";
+var UA = "APL TV/" + VERSION + " (" + (global.APLTV_PLATFORM || "Tizen") + ")";
 
 var session = null;           // { token, at }
 var pending = [];             // what the phone sent, waiting for the app
@@ -38,6 +38,7 @@ function stopLater() {
     clearTimeout(idle);
     idle = setTimeout(function () {
         try { server.close(); } catch (e) {}
+        server = null;                  // on LG the process can stay: the next "start" opens the port again
         try { tizen.application.getCurrentApplication().exit(); } catch (e) {}
     }, IDLE_MS);
 }
@@ -141,6 +142,99 @@ function get(target, timeoutMs, cb, hops, insecure) {
             finish(e);
         });
     } catch (e) { finish(e); }
+}
+
+/* ---------- IMDb ratings ----------
+   The app first asks a free per-title source (Cinemeta), which has no rating yet for many new titles.
+   IMDb publishes all its ratings once a day (title.ratings.tsv.gz, ~9 MB, for personal and
+   non-commercial use): read here once a day, kept compact (title number and rating, ~5 MB, sorted for
+   a quick search), and saved in /tmp so a restarted service does not download it again. */
+var IMDB_URL = "https://datasets.imdbws.com/title.ratings.tsv.gz", IMDB_FILE = "/tmp/apltv-imdb.bin", IMDB_DAY = 24 * 3600 * 1000;
+var imdbTab = null, imdbWaiting = null;
+function imdbFind(tab, id) {
+    var n = parseInt(String(id).replace(/^tt/, ""), 10);
+    if (!(n > 0)) return 0;
+    var lo = 0, hi = tab.n - 1;
+    while (lo <= hi) {
+        var mid = (lo + hi) >> 1, v = tab.ids[mid];
+        if (v === n) return tab.r[mid] / 10;
+        if (v < n) lo = mid + 1; else hi = mid - 1;
+    }
+    return 0;
+}
+function loadImdb(cb) {
+    if (imdbTab && Date.now() - imdbTab.at < IMDB_DAY) { cb(null, imdbTab); return; }
+    if (imdbWaiting) { imdbWaiting.push(cb); return; }
+    imdbWaiting = [cb];
+    var fs = require("fs");
+    function done(err, tab) {
+        if (tab) imdbTab = tab;
+        if (err) log("imdb ratings: " + err.message);
+        var w = imdbWaiting; imdbWaiting = null;
+        w.forEach(function (fn) { fn(imdbTab ? null : err, imdbTab); });
+    }
+    fs.readFile(IMDB_FILE, function (e, buf) {
+        try {
+            if (!e && buf.length > 12) {
+                var at = buf.readDoubleLE(0), n = buf.readUInt32LE(8);
+                if (Date.now() - at < IMDB_DAY && buf.length === 12 + n * 5) {
+                    var ids = new Uint32Array(n), r = new Uint8Array(n);
+                    new Uint8Array(ids.buffer).set(buf.slice(12, 12 + n * 4));
+                    r.set(buf.slice(12 + n * 4));
+                    log("imdb ratings: " + n + " titles from /tmp");
+                    done(null, { at: at, n: n, ids: ids, r: r });
+                    return;
+                }
+            }
+        } catch (x) {}
+        download();
+    });
+    function download() {
+        log("imdb ratings: downloading");
+        get(IMDB_URL, 180000, function (err, res) {
+            if (err) { done(err); return; }
+            if (res.status !== 200) { res.body.resume(); done(new Error("HTTP " + res.status)); return; }
+            // id * 256 + rating*10 in one number: one native sort puts them in order
+            var cap = 1 << 21, keys = new Float64Array(cap), n = 0, rest = "", header = true;
+            function line(s) {
+                if (header) { header = false; if (s.indexOf("tconst") === 0) return; }
+                var t1 = s.indexOf("\t"), t2 = s.indexOf("\t", t1 + 1);
+                if (t1 < 3 || t2 < 0) return;
+                if (parseInt(s.slice(t2 + 1), 10) < 5) return;               // a handful of votes is not a rating
+                var id = parseInt(s.slice(2, t1), 10), rate = Math.round(parseFloat(s.slice(t1 + 1, t2)) * 10);
+                if (!(id > 0) || !(rate > 0)) return;
+                if (n === cap) { var bigger = new Float64Array(cap * 2); bigger.set(keys); keys = bigger; cap *= 2; }
+                keys[n++] = id * 256 + rate;
+            }
+            res.body.setEncoding("utf8");
+            res.body.on("data", function (chunk) {
+                var parts = (rest + chunk).split("\n");
+                rest = parts.pop();
+                for (var i = 0; i < parts.length; i++) line(parts[i]);
+            });
+            res.body.on("error", function (e) { done(e); });
+            res.body.on("end", function () {
+                try {
+                    if (rest) line(rest);
+                    if (n < 1000) { done(new Error("only " + n + " ratings")); return; }
+                    var sorted = keys.subarray(0, n);
+                    if (sorted.sort) sorted.sort(); else Array.prototype.sort.call(sorted, function (a, b) { return a - b; });
+                    var ids = new Uint32Array(n), r = new Uint8Array(n);
+                    for (var i = 0; i < n; i++) { var k = sorted[i]; r[i] = k % 256; ids[i] = (k - r[i]) / 256; }
+                    keys = null;
+                    var tab = { at: Date.now(), n: n, ids: ids, r: r };
+                    log("imdb ratings: " + n + " titles");
+                    done(null, tab);
+                    var out = Buffer.alloc ? Buffer.alloc(12 + n * 5) : new Buffer(12 + n * 5);
+                    out.writeDoubleLE(tab.at, 0); out.writeUInt32LE(n, 8);
+                    var view = new Uint8Array(out.buffer, out.byteOffset || 0, out.length);
+                    view.set(new Uint8Array(ids.buffer, 0, n * 4), 12);
+                    view.set(r, 12 + n * 4);
+                    fs.writeFile(IMDB_FILE, out, function () {});
+                } catch (x) { done(x); }
+            });
+        });
+    }
 }
 
 /* ---------- XMLTV, read as it arrives ---------- */
@@ -403,6 +497,20 @@ function handler(req, res) {
         });
         return;
     }
+    if (path === "/imdb" && req.method === "POST") {
+        readBody(req, 200000, function (body) {
+            var b = null;
+            try { b = JSON.parse(body); } catch (e) {}
+            if (!b || !b.ids || !b.ids.length) { send(res, 400, { error: "bad request" }); return; }
+            loadImdb(function (err, tab) {
+                if (err || !tab) { send(res, 502, { error: (err && err.message) || "no ratings" }); return; }
+                var out = {};
+                b.ids.slice(0, 2000).forEach(function (id) { var r = imdbFind(tab, id); if (r) out[id] = r; });
+                send(res, 200, { ratings: out, at: tab.at });
+            });
+        });
+        return;
+    }
     if (path === "/epg/match" && req.method === "POST") {
         readBody(req, 2000000, function (body) {
             var b = null;
@@ -480,7 +588,9 @@ function start() {
     stopLater();
 }
 
+module.exports.start = function () { start(); stopLater(); };
+module.exports.phonePage = phonePage;      // tools/make-android.py: the same phone page for the Android helper
 module.exports.onStart = function () { start(); };
 module.exports.onRequest = function () { start(); };
 module.exports.onExit = function () { clearTimeout(idle); try { server.close(); } catch (e) {} server = null; };
-try { start(); } catch (e) {}
+if (!global.APLTV_NO_START) { try { start(); } catch (e) {} }

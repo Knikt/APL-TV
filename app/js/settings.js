@@ -84,6 +84,14 @@
             run: function () { push(hiddenPage()); } });
         rows.push(toggleRow(T("Interface Sounds"), "sounds", T("The sounds of APL Launcher when you move and press OK.")));
         rows.push(toggleRow(T("Animations"), "motion", T("Off: everything appears at once."), applyMotion));
+        if (TV.saver) {
+            var scr = TV.saver.screen(), sp = TV.pref("screenSaver");
+            rows.push({ label: T("Screen Protection (OLED)"), acc: "chevron",
+                value: sp === "on" ? T("On") : sp === "off" ? T("Off") : T("Automatic") + " (" + (scr.oled ? T("On") : T("Off")) + ")",
+                desc: T("Against burn-in on OLED screens: the interface moves a few pixels every 2 minutes, and after 5 minutes without the remote while nothing plays, pictures from your catalog move slowly with the time. Automatic: on for screens recognised as OLED.") + "\n" +
+                      (scr.oled ? T("This screen: OLED ({model})", { model: scr.model }) : T("This screen: not recognised as OLED ({model})", { model: scr.model || "?" })),
+                run: function () { choose(T("Screen Protection (OLED)"), "screenSaver", [["auto", T("Automatic")], ["on", T("On")], ["off", T("Off")]]); } });
+        }
         rows.push({ label: T("Time Format"), value: TV.pref("timeFormat") === "12" ? "12 h" : "24 h", run: function () { TV.setPref("timeFormat", TV.pref("timeFormat") === "12" ? "24" : "12"); redraw(); } });
         rows.push({ label: T("Language"), value: { auto: T("Automatic"), fr: "Français", en: "English" }[TV.pref("language")] || T("Automatic"), desc: T("APL TV restarts in the new language."),
             run: function () {
@@ -127,7 +135,7 @@
         rows.push(toggleRow(T("Automatic Updates"), "autoUpdate", T("APL TV checks GitHub every 6 hours and updates itself, then restarts when nothing is playing. Your playlists and settings stay.")));
         rows.push({ label: T("Check for Updates"), icon: "refresh", run: function () { if (TV.updater) TV.updater.check(true); } });
         if (TV.updater && TV.updater.fromBundle()) rows.push({ label: T("Back to the Installed Version"), value: TV.updater.installed(), acc: "chevron",
-            desc: T("Runs the version installed with APL Launcher Setup again, until the next update."), run: function () { TV.updater.reset(); } });
+            desc: TV.TIZEN ? T("Runs the version installed with APL Launcher Setup again, until the next update.") : T("Runs the installed version again, until the next update."), run: function () { TV.updater.reset(); } });
         rows.push({ section: T("About") });
         rows.push({ label: T("Refresh All Playlists"), icon: "refresh", run: function () { refreshAll(); } });
         rows.push({ label: "APL TV", value: T("Version {v}", { v: TV.VERSION }), desc: T("Created by Knikt (Gero Corp.)") + "\n" + T("A player for your own playlists. APL TV comes with no channels.") });

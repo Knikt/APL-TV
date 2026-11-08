@@ -1,0 +1,23 @@
+name: Idea or request
+description: Something APL TV could do, or do better
+labels: ["enhancement"]
+body:
+  - type: dropdown
+    id: tv
+    attributes:
+      label: Your TV
+      description: The TV you would use it on (or all of them).
+      options:
+        - All TVs
+        - Samsung (Tizen)
+        - LG (webOS)
+        - Android TV / Google TV / Fire TV
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: Your idea
+      description: What you would like, and when it would help you.
+    validations:
+      required: true

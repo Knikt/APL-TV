@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: APL Launcher (the home screen for Samsung TVs)
+    url: https://github.com/Knikt/APL-Launcher-for-TizenOS/issues
+    about: Questions about APL Launcher itself go to its own repository.

@@ -233,7 +233,7 @@
         this.build();
     }
     Strip.prototype.build = function () {
-        this.strip.innerHTML = ""; this.cards = [];
+        this.strip.innerHTML = ""; this.cards = []; this._cw = 0;
         this.grow(9);
         this.lazy();
     };
@@ -244,7 +244,10 @@
             this.cards.push(c); this.strip.appendChild(c);
         }
     };
-    Strip.prototype.cardW = function () { return this.cards[0] ? this.cards[0].offsetWidth || 230 : 230; };
+    Strip.prototype.cardW = function () {         // measured once: reading it on every press made the screen lay out again
+        if (!this._cw && this.cards[0]) this._cw = this.cards[0].offsetWidth;
+        return this._cw || 230;
+    };
     Strip.prototype.lazy = function () {
         var w = this.cardW() + this.gap, first = Math.floor(this.scroll / w) - 1, last = first + Math.ceil(this.width / w) + 3;
         for (var i = Math.max(0, first); i < Math.min(this.cards.length, last); i++) {
@@ -256,12 +259,14 @@
         if (!this.cards.length) return;
         if (i >= this.cards.length - 4) this.grow(i + 9);
         i = TV.clamp(i, 0, this.cards.length - 1);
+        var c = this.cards[i];
+        /* Where the card really is, read before anything changes. Computed from the gap before, which TVs
+           without flex gap (Tizen 6.0) do not apply: there, going left, the card ended up off the screen. */
+        var real = c.offsetWidth > 0, w = (real ? c.offsetWidth : this.cardW()) + this.gap, x = real ? c.offsetLeft : i * w, right = this.width - this.left - 140;
         if (this.cards[this.index]) this.cards[this.index].classList.remove("is-focused");
         this.index = i;
-        var c = this.cards[i];
         TV.lift(c);
         if (this.active) c.classList.add("is-focused");
-        var w = this.cardW() + this.gap, x = i * w, right = this.width - this.left - 140;
         if (x - this.scroll + w > right) this.scroll = x + w - right;
         if (x - this.scroll < 0) this.scroll = x;
         this.strip.style.transform = "translateX(" + (-this.scroll) + "px)";
@@ -586,16 +591,27 @@
         }
         TV.menu(name, items);
     };
+    /* A menu longer than the screen (subtitle languages, versions…) scrolls inside its panel: the title
+       stays, the chosen line is always in view, and a half line at the bottom shows there is more. */
     TV.menu = function (title, items) {
         var root = TV.$("menu"), panel = root.firstChild;
         panel.innerHTML = "";
         if (title) panel.appendChild(el("div", "menu__title", esc(title)));
+        var list = el("div", "menu__list");
+        panel.appendChild(list);
         var tiles = items.map(function (it) {
-            var r = el("div", "menu__item" + (it.danger ? " is-danger" : ""), "<span>" + esc(it.label) + "</span>" + (it.check ? "<span class='menu__check'>" + TV.icon("check", 30) + "</span>" : (it.icon ? TV.icon(it.icon, 30) : "")));
-            panel.appendChild(r);
+            var r = el("div", "menu__item" + (it.danger ? " is-danger" : ""), "<span class='menu__label'>" + esc(it.label) + "</span>" + (it.check ? "<span class='menu__check'>" + TV.icon("check", 30) + "</span>" : (it.icon ? TV.icon(it.icon, 30) : "")));
+            list.appendChild(r);
             return r;
         });
+        function inView(t) {
+            var top = t.offsetTop, h = t.offsetHeight, view = list.clientHeight, s = list.scrollTop, room = 44;
+            if (list.scrollHeight <= view + 1) return;
+            if (top - room < s) list.scrollTop = Math.max(0, top - room);
+            else if (top + h + room > s + view) list.scrollTop = top + h + room - view;
+        }
         var nav = new TV.Nav({
+            onFocus: function (i, t) { inView(t); },
             onSelect: function (i) { close(); if (items[i].run) items[i].run(); },
             onBack: close
         });
@@ -646,6 +662,7 @@
             inp.removeEventListener("input", onInput);
             inp.removeEventListener("blur", onBlur);
             try { inp.blur(); } catch (e) {}
+            if (TV.ANDROID) { try { global.APLAndroid.editing(false); } catch (e) {} }
             TV.popNav(blocker);
             if (keep) { if (o.onDone) o.onDone(inp.value.trim()); }
             else { if (o.onInput) o.onInput(before); if (o.onCancel) o.onCancel(); }
@@ -660,6 +677,8 @@
         inp.addEventListener("keydown", onKey);
         inp.addEventListener("input", onInput);
         setTimeout(function () { inp.addEventListener("blur", onBlur); }, 300);
+        // Android: the keys go to the keyboard while typing, and the keyboard is asked to open
+        if (TV.ANDROID) { try { global.APLAndroid.editing(true); } catch (e) {} }
         setTimeout(function () { try { inp.focus(); if (inp.setSelectionRange) inp.setSelectionRange(inp.value.length, inp.value.length); } catch (e) {} }, 30);
     };
 

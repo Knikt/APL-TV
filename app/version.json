@@ -1,14 +1,26 @@
 {
- "version": "1.0.3",
+ "version": "1.0.4",
  "loader": 1,
  "reinstall": "1.0.1",
- "notes": "Movies stay when the provider is slow, versions switch for real, best quality, Sort, Picture Size, keyboard fixes",
+ "notes": "Trending on Home, IMDb ratings for new titles, OLED screen protection, channels quick right after start-up, and APL TV now runs on LG and Android TV too",
+ "platforms": {
+  "tizen": {
+   "reinstall": "1.0.1"
+  },
+  "webos": {
+   "reinstall": "1.0.3"
+  },
+  "android": {
+   "reinstall": "1.0.3"
+  }
+ },
  "scripts": [
   "js/lang-fr.js",
   "js/i18n.js",
   "js/keys.local.js",
   "js/dev.local.js",
   "js/core.js",
+  "js/android.js",
   "js/nav.js",
   "js/qr.js",
   "js/helper.js",
@@ -29,6 +41,7 @@
   "js/multiview.js",
   "js/osd.js",
   "js/voice.js",
+  "js/saver.js",
   "js/updater.js",
   "js/app.js"
  ],

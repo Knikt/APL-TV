@@ -1,8 +1,13 @@
 name: Package
 
-# Builds apl-tv-vX.Y.Z.wgt on every push to main; a v* tag also publishes it in a GitHub Release,
-# with SHA256SUMS-wgt.txt. Signed with the Tizen SDK's default certificate: APL Launcher Setup
-# (or Apps2Samsung) signs it again for each screen.
+# Builds the three packages on every push to main and every pull request; a v* tag also publishes
+# them in a GitHub Release, each with its SHA256:
+#   apl-tv-vX.Y.Z.wgt              Samsung (Tizen). Signed with the Tizen SDK's default certificate:
+#                                  APL Launcher Setup (or Apps2Samsung) signs it again for each screen.
+#   apl-tv-vX.Y.Z-lg-webos.ipk     LG (webOS), with apl-tv.manifest.json for the Homebrew Channel.
+#   apl-tv-vX.Y.Z-android.apk      Android TV, Google TV, Fire TV. Signed with the project's key, from
+#                                  the repository's secrets ANDROID_KEYSTORE_B64 (the .jks in base64) and
+#                                  ANDROID_KEYSTORE_PASS: a tag without them does not publish anything.
 on:
   push:
     branches: [main]
@@ -64,20 +69,102 @@ jobs:
           name: APL-TV-wgt
           path: dist/
 
+  ipk:
+    name: APL TV .ipk (LG webOS)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: LG's webOS CLI and Pillow
+        run: |
+          npm install -g @webos-tools/cli@3.2.6
+          python3 -m pip install --quiet pillow
+      - name: Build the package
+        run: python3 tools/make-webos.py --release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: APL-TV-ipk
+          path: |
+            dist/apl-tv-v*-lg-webos.ipk
+            dist/SHA256SUMS-ipk.txt
+            dist/apl-tv.manifest.json
+
+  apk:
+    name: APL TV .apk (Android TV)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.10.2"
+      - name: Android SDK 35 and Pillow
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35" "build-tools;35.0.0" > /dev/null
+          python3 -m pip install --quiet pillow
+      # A release is signed with the project's key; other builds only check that it builds
+      - name: Signing key
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          KEY_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+        run: |
+          [ -n "$KEY_B64" ] || { echo "::error::The ANDROID_KEYSTORE_B64 secret is missing: no release without the project's key" >&2; exit 1; }
+          printf '%s' "$KEY_B64" | base64 -d > "$RUNNER_TEMP/release.jks"
+          echo "APL_KEYSTORE_FILE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+      - name: Build the package
+        env:
+          APL_KEYSTORE_PASS: ${{ secrets.ANDROID_KEYSTORE_PASS }}
+          GRADLE: gradle
+        run: |
+          if [ -n "$APL_KEYSTORE_FILE" ]; then python3 tools/make-android.py --release; else python3 tools/make-android.py --release --unsigned; fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: APL-TV-apk
+          path: |
+            dist/apl-tv-v*-android*.apk
+            dist/SHA256SUMS-apk.txt
+
   release:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [wgt]
+    needs: [wgt, ipk, apk]
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: APL-TV-wgt
           path: dist
+          merge-multiple: true
+      - name: Every package is there
+        run: |
+          ls -l dist
+          for f in dist/apl-tv-v*.wgt dist/apl-tv-v*-lg-webos.ipk dist/apl-tv-v*-android.apk dist/SHA256SUMS-wgt.txt dist/SHA256SUMS-ipk.txt dist/SHA256SUMS-apk.txt; do
+            [ -e "$f" ] || { echo "::error::missing $f" >&2; exit 1; }
+          done
       - uses: softprops/action-gh-release@v2
         with:
           files: |
             dist/apl-tv-v*.wgt
             dist/SHA256SUMS-wgt.txt
+            dist/apl-tv-v*-lg-webos.ipk
+            dist/SHA256SUMS-ipk.txt
+            dist/apl-tv.manifest.json
+            dist/apl-tv-v*-android.apk
+            dist/SHA256SUMS-apk.txt
           generate_release_notes: true

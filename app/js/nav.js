@@ -22,6 +22,8 @@
         RED: 403, GREEN: 404, YELLOW: 405, BLUE: 406,
         DONE: 65376, CANCEL: 65385, PAGE_UP: 33, PAGE_DOWN: 34
     };
+    // LG remotes (webOS): Back is 461, the channel keys are Page Up / Page Down
+    if (TV.WEBOS) { KEY.RETURN = 461; KEY.CH_UP = 33; KEY.CH_DOWN = 34; }
     TV.isBack = function (c) { return c === KEY.RETURN || c === KEY.ESC || c === KEY.BACKSPACE; };
     TV.digit = function (c) { return c >= 48 && c <= 57 ? c - 48 : (c >= 96 && c <= 105 ? c - 96 : -1); };
 

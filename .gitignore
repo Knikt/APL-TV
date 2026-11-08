@@ -12,3 +12,15 @@ app/sounds/*.wav
 # Samsung certificates
 *.p12
 *.pwd
+
+# Android: made by tools/make-android.py at each build
+android/local.properties
+android/.gradle/
+android/build/
+android/app/build/
+android/app/src/main/assets/
+android/app/src/main/res/mipmap-*/
+android/app/src/main/res/drawable/banner.png
+*.apk
+*.jks
+*.keystore

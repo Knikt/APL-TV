@@ -9,9 +9,12 @@
    restarts APL TV as soon as nothing is playing or open (otherwise at
    the next start). Your playlists and settings are not touched.
 
-   An update that changes the app's permissions (config.xml), the helper
-   service or the loader cannot be done this way: a message then asks to
-   run APL Launcher Setup again, just once.
+   Each TV reads its own part of version.json ("platforms": tizen, webos,
+   android). An update that changes a TV's own installed part (Samsung:
+   permissions in config.xml, the helper service; LG: its package; Android:
+   the app) cannot be done this way: a message then asks, just once, to run
+   APL Launcher Setup again (Samsung) or to install the new .ipk / .apk.
+   An update can also be held for one TV ("off").
    ============================================================ */
 (function (global) {
     "use strict";
@@ -37,7 +40,7 @@
     /* manual: asked from Settings (messages shown) */
     function check(manual) {
         if (busy) return Promise.resolve();
-        if (!global.tizen) { if (manual) TV.toast(T("Updates happen on the screen.")); return Promise.resolve(); }
+        if (TV.PREVIEW) { if (manual) TV.toast(T("Updates happen on the screen.")); return Promise.resolve(); }
         busy = true;
         if (manual) TV.toast(T("Checking for an update…"));
         return getText(raw() + "version.json").then(function (txt) {
@@ -46,21 +49,34 @@
                 if (manual) TV.toast(T("APL TV is up to date (version {v})", { v: U.running }));
                 return;
             }
+            // This TV's own part of the update: Samsung, LG and Android each have their own installed
+            // part, so their own minimum version, and an update can be held for one of them
+            var mine = (v.platforms && v.platforms[TV.PLATFORM]) || {};
+            if (mine.off) {
+                TV.log("update " + v.version + " is not out for " + TV.PLATFORM + " yet");
+                if (manual) TV.toast(T("APL TV is up to date (version {v})", { v: U.running }));
+                return;
+            }
+            var reinstall = mine.reinstall || (v.platforms ? null : v.reinstall);
+            var loader = mine.loader || v.loader || 1;
+            if (mine.notes) v.notes = mine.notes;
             // A version that failed to start is not downloaded again and again
             var prev = null;
             try { prev = JSON.parse(global.localStorage.getItem(U.KEY) || "null"); } catch (e) {}
             if (prev && prev.bad && prev.version === v.version && !manual) return;
-            if ((v.loader || 1) > U.LOADER || (v.reinstall && U.cmp(v.reinstall, U.installed) > 0)) {
+            if (loader > U.LOADER || (reinstall && U.cmp(reinstall, U.installed) > 0)) {
                 if (manual || TV.pref("updateNotified") !== v.version) {
                     TV.setPref("updateNotified", v.version);
-                    TV.toast(T("APL TV {v} is out: install it once with APL Launcher Setup on the PC", { v: v.version }));
+                    TV.toast(TV.WEBOS ? T("APL TV {v} is out: install its new .ipk once", { v: v.version })
+                           : TV.ANDROID ? T("APL TV {v} is out: install its new .apk once", { v: v.version })
+                                      : T("APL TV {v} is out: install it once with APL Launcher Setup on the PC", { v: v.version }));
                 }
                 return;
             }
             var paths = (v.scripts || []).concat(v.styles || []).filter(function (p) { return !/\.local\./.test(p) && /^(js|css)\/[\w.-]+\.(js|css)$/.test(p); });
             var files = {};
             return Promise.all(paths.map(function (p) { return getText(raw() + p).then(function (t) { files[p] = t; }); })).then(function () {
-                save({ version: v.version, loader: v.loader || 1, scripts: v.scripts, styles: v.styles, body: v.body || null, files: files, at: Date.now() });
+                save({ version: v.version, loader: loader, scripts: v.scripts, styles: v.styles, body: v.body || null, files: files, at: Date.now() });
                 TV.log("update " + v.version + " downloaded");
                 TV.toast(v.notes ? T("APL TV {v} is ready: {notes}", { v: v.version, notes: v.notes }) : T("APL TV {v} is ready", { v: v.version }));
                 restartWhenIdle();

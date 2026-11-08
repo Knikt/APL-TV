@@ -40,8 +40,8 @@
         catch (e) { try { global.localStorage.removeItem(KEY); } catch (x) {} }
     }
 
-    // Updates only on the screen (the PC preview always runs the local files)
-    var onTv = !!global.tizen;
+    // Updates only on the screen, Samsung, LG or Android (the PC preview always runs the local files)
+    var onTv = !!(global.tizen || global.PalmSystem || global.PalmServiceBridge || global.webOSSystem || global.APLAndroid);
     var bundle = onTv ? readBundle() : null;
     var useBundle = !!(bundle && !bundle.bad && bundle.files && (bundle.loader || 1) <= LOADER &&
                        cmp(bundle.version, BUILD.version) > 0);

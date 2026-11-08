@@ -1,6 +1,8 @@
 /* ============================================================
    helper.js: talks to APL TV's helper service (service/service.js).
-   The service starts when needed and listens on port 8765 of the screen.
+   The service starts when needed and listens on port 8765 of the screen
+   (Samsung: a Tizen web service; LG: the app's webOS JS service;
+   Android: Helper.java inside the app).
    ============================================================ */
 (function (global) {
     "use strict";
@@ -18,9 +20,26 @@
         return list;
     }
 
+    /* On LG (webOS) the same helper runs as the app's JS service (com.knikt.apltv.service). The app stays
+       subscribed to it: webOS keeps a service alive only while someone listens. */
+    var WEBOS_SERVICE = "luna://com.knikt.apltv.service/", lunaKeep = null, lunaCall = null;
+    function startWebos(resolve) {
+        var done = false;
+        function fin() { if (!done) { done = true; resolve(); } }
+        // Already subscribed: one more "start" opens the port again if the service closed it while idle
+        if (lunaKeep) lunaCall = TV.luna(WEBOS_SERVICE + "start", {}, fin);
+        else lunaKeep = TV.luna(WEBOS_SERVICE + "start", { subscribe: true }, function (m) {
+            if (m && m.returnValue === false) { TV.log("helper service: " + (m.errorText || "refused")); lunaKeep = null; }
+            fin();
+        });
+        setTimeout(fin, 4000);
+    }
     function startService() {
         if (starting) return starting;
         starting = new Promise(function (resolve) {
+            if (TV.WEBOS) { startWebos(resolve); return; }
+            // Android: the helper is part of the app (Helper.java), started with it
+            if (TV.ANDROID) { try { global.APLAndroid.startHelper(); } catch (e) {} resolve(); return; }
             var T = global.tizen;
             if (!T || !T.application) { resolve(); return; }
             function plain() { try { T.application.launch(SERVICE_ID, resolve, resolve); } catch (e) { resolve(); } }
@@ -79,6 +98,13 @@
             return call("/epg/match", { method: "POST", timeout: 240000, body: JSON.stringify({ url: url, names: names, from: from, to: to }) }).then(function (r) {
                 if (r.status !== 200) throw new Error("guide: " + (json(r).error || r.status));
                 return json(r);
+            });
+        },
+        /* IMDb ratings from IMDb's daily file (the first call downloads it: up to a minute) */
+        imdb: function (ids) {
+            return call("/imdb", { method: "POST", timeout: 200000, body: JSON.stringify({ ids: ids }) }).then(function (r) {
+                if (r.status !== 200) throw new Error("imdb: HTTP " + r.status);
+                return json(r).ratings || {};
             });
         },
         session: function () { return call("/session", { method: "POST", body: "{}" }).then(json); },

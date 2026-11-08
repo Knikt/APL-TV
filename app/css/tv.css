@@ -477,6 +477,10 @@ body.is-preview { cursor: default; }
 .menu__item.is-focused.is-danger { color: #ff3b30; }
 .menu__item svg { flex: none; opacity: 0.9; }
 .menu__check { color: var(--blue); }
+/* A long menu scrolls inside the panel (never past the screen's edges): about 10 lines, then a half line */
+.menu__list { position: relative; max-height: 852px; overflow: hidden; margin: 0 -14px; padding: 6px 14px; scroll-behavior: smooth; }
+.reduce-motion .menu__list { scroll-behavior: auto; }
+.menu__label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .alert { position: fixed; top: 0; right: 0; bottom: 0; left: 0; z-index: 45; display: flex; align-items: center; justify-content: center; background: rgba(8, 9, 12, 0.9); opacity: 0; pointer-events: none; transition: opacity 220ms ease; }
 .alert.is-open { opacity: 1; pointer-events: auto; }
@@ -505,3 +509,31 @@ body.is-preview { cursor: default; }
 
 /* ===================== MOTION OFF ===================== */
 .reduce-motion *, .reduce-motion *::after, .reduce-motion *::before { transition-duration: 0ms !important; animation: none !important; }
+
+/* ===================== SCREEN SAVER (OLED screen protection, js/saver.js) ===================== */
+.saver { position: fixed; top: 0; left: 0; width: 1920px; height: 1080px; z-index: 9000; background: #000; opacity: 0; visibility: hidden; transition: opacity 900ms ease, visibility 0s linear 900ms; overflow: hidden; }
+.saver.is-on { opacity: 1; visibility: visible; transition: opacity 900ms ease, visibility 0s; }
+.saver__pic { position: absolute; top: -5%; left: -5%; right: -5%; bottom: -5%; background: #000 center / cover no-repeat; opacity: 0; transition: opacity 2400ms ease; }
+.saver__pic.is-on { opacity: 0.72; }
+.saver__pic.is-moving { animation: saverPan 16s linear forwards; }
+.saver__pic.is-moving.is-left { animation-name: saverPanLeft; }
+@keyframes saverPan { from { transform: scale(1) translate(0, 0); } to { transform: scale(1.08) translate(-2.5%, -1.5%); } }
+@keyframes saverPanLeft { from { transform: scale(1.08) translate(-2.5%, 1%); } to { transform: scale(1) translate(0, 0); } }
+/* A soft shade on the side of the time, so it reads on any picture */
+.saver__shade { position: absolute; left: 0; right: 0; height: 62%; opacity: 0; transition: opacity 1200ms ease; pointer-events: none; }
+.saver__shade--b { bottom: 0; background: linear-gradient(to top, rgba(0,0,0,0.78) 0%, rgba(0,0,0,0.42) 34%, rgba(0,0,0,0) 100%); }
+.saver__shade--t { top: 0; background: linear-gradient(to bottom, rgba(0,0,0,0.78) 0%, rgba(0,0,0,0.42) 34%, rgba(0,0,0,0) 100%); }
+.saver[data-corner="bl"] .saver__shade--b, .saver[data-corner="br"] .saver__shade--b,
+.saver[data-corner="tl"] .saver__shade--t, .saver[data-corner="tr"] .saver__shade--t { opacity: 1; }
+/* The time in a corner, with the interface's margins (120 px from the sides) */
+.saver__clock { position: absolute; max-width: 980px; color: #fff; text-shadow: 0 2px 24px rgba(0,0,0,0.45); opacity: 0; transition: opacity 900ms ease; }
+.saver__clock.is-on { opacity: 1; }
+.saver[data-corner="bl"] .saver__clock { left: 120px; bottom: 100px; text-align: left; }
+.saver[data-corner="br"] .saver__clock { right: 120px; bottom: 100px; text-align: right; }
+.saver[data-corner="tr"] .saver__clock { right: 120px; top: 92px; text-align: right; }
+.saver[data-corner="tl"] .saver__clock { left: 120px; top: 92px; text-align: left; }
+.saver__time { display: block; font-size: 140px; font-weight: 300; letter-spacing: -4px; line-height: 0.92; font-variant-numeric: tabular-nums; }
+.saver[data-corner="bl"] .saver__time, .saver[data-corner="tl"] .saver__time { margin-left: -9px; }   /* the digits' own margin: lined up with the date */
+.saver__date { display: block; margin-top: 22px; font-size: 26px; font-weight: 600; letter-spacing: 3px; text-transform: uppercase; color: rgba(255,255,255,0.8); }
+.saver__title { display: block; margin-top: 12px; font-size: 26px; font-weight: 400; color: rgba(255,255,255,0.56); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; opacity: 0; transition: opacity 700ms ease; }
+.saver__title.is-on { opacity: 1; }

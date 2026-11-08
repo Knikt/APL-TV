@@ -2,8 +2,9 @@
    home.js: Home, Apple TV / Netflix style.
    A large featured title at the top (backdrop, logo, IMDb rating, plot,
    Play / More Info; a new one every 10 s), then rows: Continue Watching,
-   Favorite Channels (what's on now), My List, New Movies, New Series,
-   Top Rated. The backdrop follows the title you are on.
+   Favorite Channels (what's on now), My List, Trending (this week),
+   New Movies and Series (out this year or last year), Top Rated.
+   The backdrop follows the title you are on.
    ============================================================ */
 (function (global) {
     "use strict";
@@ -42,16 +43,33 @@
         TV.bg("");
     }
 
-    /* ---------- featured ---------- */
-    function pickFeatured() {
-        var m = D.itemsIn("movies", "recent").slice(0, 12), s = D.itemsIn("series", "recent").slice(0, 8), out = [];
+    /* ---------- featured ----------
+       What everyone watches this week (TMDB's trending titles found in your catalog), two movies for one
+       series. Until that list is known (or without a TMDB key): the new releases of your catalog. The
+       label says which, so a 2015 movie is never called new. Hidden categories, themes, titles and adult
+       content are left out (data.js). */
+    var why = {};
+    function interleave(m, s, tag) {
+        var out = [];
         for (var i = 0; i < Math.max(m.length, s.length); i++) { if (m[i]) out.push(m[i]); if (s[i] && out.length % 3 === 2) out.push(s[i]); }
+        out.forEach(function (x) { why[x.id] = tag; });
+        return out;
+    }
+    function pickFeatured() {
+        why = {};
+        var out = interleave(D.itemsIn("movies", "trend").slice(0, 12), D.itemsIn("series", "trend").slice(0, 8), "trend");
+        if (out.length < 6) out = out.concat(interleave(D.itemsIn("movies", "new").slice(0, 12), D.itemsIn("series", "new").slice(0, 8), "new").filter(function (x) { return out.indexOf(x) < 0; }));
         return out.slice(0, 12);
+    }
+    function kickerOf(item) {
+        var s = item.kind === "series";
+        if (why[item.id] === "trend") return s ? T("Trending Show") : T("Trending Movie");
+        return s ? T("New Series") : T("New Movie");
     }
     function drawHero(item) {
         heroEl.innerHTML = "";
         if (!item) return;
-        var kicker = el("div", "hero__kicker", esc(item.kind === "series" ? T("New Series") : T("New Movie")));
+        var kicker = el("div", "hero__kicker", esc(kickerOf(item)));
         var title = el("div", "hero__title", esc(item.title || item.name));
         var meta = el("div", "hero__meta", item.year ? "<span>" + item.year + "</span>" : "");
         var desc = el("div", "hero__desc", esc(item.plot || ""));
@@ -154,8 +172,10 @@
         var ml = D.itemsIn("movies", "mylist").concat(D.itemsIn("series", "mylist"));
         addRow(T("My List"), ml, "poster");
         addRow(T("Recently Watched"), D.recentlyWatched().slice(0, 30), "poster");
-        addRow(T("New Movies"), D.itemsIn("movies", "recent").slice(0, 30), "poster");
-        addRow(T("New Series"), D.itemsIn("series", "recent").slice(0, 30), "poster");
+        addRow(T("Trending Movies"), D.itemsIn("movies", "trend").slice(0, 30), "poster", { sub: T("This week") });
+        addRow(T("Trending Series"), D.itemsIn("series", "trend").slice(0, 30), "poster", { sub: T("This week") });
+        addRow(T("New Movies"), D.itemsIn("movies", "new").slice(0, 30), "poster");
+        addRow(T("New Shows"), D.itemsIn("series", "new").slice(0, 30), "poster");
         addRow(T("Top Rated Movies"), D.itemsIn("movies", "top").slice(0, 30), "poster", { genreKey: "topmovies" });
         addRow(T("Top Rated Series"), D.itemsIn("series", "top").slice(0, 30), "poster", { genreKey: "topseries" });
         var cat2 = D.catalog();
@@ -288,8 +308,19 @@
                 TV.titleMenu(it.item || it, function () { view.invalidate(); }, { continueRow: !!it.item });
             }
         },
-        invalidate: function () { dirty = true; if (visible && TV.topNav() === TV.shell.screen) { var z = zone; render(); zone = Math.min(z, strips.length - 1); paint(); } }
+        invalidate: function () {
+            dirty = true;
+            if (!visible) return;
+            if (TV.topNav() === TV.shell.screen) { clearTimeout(redrawTimer); var z = zone; render(); zone = Math.min(z, strips.length - 1); paint(); return; }
+            // Something is open over Home (the "Pick up where you left off?" question…): drawn again once it closes
+            clearTimeout(redrawTimer);
+            redrawTimer = setTimeout(function again() {
+                if (!dirty || !visible) return;
+                if (TV.topNav() === TV.shell.screen) view.invalidate(); else redrawTimer = setTimeout(again, 700);
+            }, 700);
+        }
     };
+    var redrawTimer = null;
 
     D.onChange(function (w) {
         if (w === "top" || w === "genre") { if (visible) addGenreRows(); else dirty = true; return; }

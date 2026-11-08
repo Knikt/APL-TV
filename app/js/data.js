@@ -278,7 +278,7 @@
         ["live", "movies", "series"].forEach(function (k) { m[k].cats = S.sortCategories(m[k].cats); });
         merged = m;
         applyOff();
-        groupCache = {}; idxCache = {}; topLists = {}; genreLists = {};
+        groupCache = {}; idxCache = {}; topLists = {}; genreLists = {}; trendLists = {};
         fire("catalog");
     }
 
@@ -297,7 +297,7 @@
                 }
             });
             if (missed.length) {
-                if (!retryTimers[src.id]) retryTimers[src.id] = setTimeout(function () { delete retryTimers[src.id]; refresh([src]); }, 10 * 60000);
+                if (!retryTimers[src.id]) retryTimers[src.id] = setTimeout(function () { whenQuiet(function () { delete retryTimers[src.id]; refresh([src]); }); }, 10 * 60000);
                 if (missed.indexOf("movies") >= 0 && !c.movies.items.length) TV.toast(T("{name}: the movies did not arrive ({error}). APL TV tries again in 10 minutes.", { name: src.name, error: failed.movies || T("no list") }), true);
                 if (missed.indexOf("series") >= 0 && !c.series.items.length) TV.toast(T("{name}: the series did not arrive ({error}). APL TV tries again in 10 minutes.", { name: src.name, error: failed.series || T("no list") }), true);
             }
@@ -407,8 +407,21 @@
                 .then(rebuild);
         }).then(function () {
             var old = sources().filter(function (s) { return cats[s.id] && (Date.now() - (cats[s.id].at || 0) > MAX_AGE || (cats[s.id].v || 1) < CATALOG_V); });
-            if (old.length) setTimeout(function () { refresh(old, function () {}); }, 15000);
+            if (old.length) whenQuiet(function () { refresh(old, function () {}); });
         });
+    }
+    /* Refreshing a big account is seconds of heavy work for the TV (reading and saving 200,000 titles: up
+       to 12 s on the LG G5, the first channel then took 12 s to show). It waits for a quiet moment: the
+       remote unused for 45 s (counted from the start too) and no channel starting, so zapping and moving
+       around stay quick. After 20 minutes it goes ahead anyway. */
+    var bootAt = Date.now();
+    function whenQuiet(fn) {
+        var since = Date.now();
+        (function check() {
+            var still = Date.now() - Math.max(TV.keyAt || 0, bootAt) > 45000 && !(TV.player && TV.player.isBuffering());
+            if (still || Date.now() - since > 20 * 60000) { TV.log("catalog refresh: starting (" + Math.round((Date.now() - bootAt) / 1000) + " s after start)"); fn(); }
+            else setTimeout(check, 5000);
+        })();
     }
     function refresh(list, progress) {
         list = list || sources();
@@ -757,7 +770,7 @@
             return g.item;
         });
     }
-    function itemsIn(kind, catId) { return catId === "top" || String(catId).indexOf("g:") === 0 ? itemsInRaw(kind, catId) : groupVersions(itemsInRaw(kind, catId)); }
+    function itemsIn(kind, catId) { return catId === "top" || catId === "trend" || String(catId).indexOf("g:") === 0 ? itemsInRaw(kind, catId) : groupVersions(itemsInRaw(kind, catId)); }
 
     /* A title reduced for comparing, in any alphabet (Arabic, Cyrillic… are kept): no case, accents, spaces or punctuation */
     function titleKey(s) {
@@ -859,6 +872,23 @@
         }
         return null;
     }
+    /* "Trending": TMDB's titles of the week found in your catalog, in their order (most watched first) */
+    var trendLists = {}, trendLoading = {};
+    function trendingItems(kind) {
+        if (trendLists[kind]) return trendLists[kind];
+        if (!trendLoading[kind] && TV.meta && TV.meta.enabled()) {
+            trendLoading[kind] = true;
+            TV.meta.trending(kind === "movies" ? "movie" : "tv").then(function (list) {
+                return findTitles(kind, list).then(function (found) {
+                    trendLists[kind] = oneCardPerTitle(found);
+                    trendLoading[kind] = false;
+                    TV.log("trending " + kind + ": " + trendLists[kind].length + " in the catalog, from " + list.length + " TMDB titles");
+                    fire("trend");
+                });
+            }).catch(function (e) { trendLoading[kind] = false; TV.log("trending: " + e.message); });
+        }
+        return null;
+    }
     function itemsInRaw(kind, catId) {
         var part = merged && merged[kind];
         if (!part) return [];
@@ -866,6 +896,15 @@
         function ok(x) { return (adult || !catOf(x).adult) && (!hid || !isHidden(x)); }
         if (catId === "watched") return recentlyWatched(kind);
         if (catId === "recent") return preferMine(part.items.filter(ok)).slice().sort(function (a, b) { return b.added - a.added; }).slice(0, 300);
+        // New releases: recently added AND out this year or last year (an old title added today is not new)
+        if (catId === "new") {
+            var since = new Date().getFullYear() - 1;
+            return preferMine(part.items.filter(function (x) { return x.year >= since && ok(x); })).slice().sort(function (a, b) { return b.added - a.added; }).slice(0, 300);
+        }
+        if (catId === "trend") {
+            var tr = trendingItems(kind);
+            return tr ? tr.filter(ok) : [];
+        }
         if (String(catId).indexOf("g:") === 0) {
             var gl = genreLists[kind + ":" + catId.slice(2)];
             if (gl) return gl.filter(ok);

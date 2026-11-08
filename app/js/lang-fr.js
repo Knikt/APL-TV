@@ -139,6 +139,14 @@ window.TV_LANG_FR = {
     "◀ ▶ move · OK pause · Back stop": "◀ ▶ avancer, reculer · OK pause · Retour arrêt",
     "ends at {t}": "fin à {t}",
     "Try another channel, or try again later.": "Essaie une autre chaîne, ou réessaie plus tard.",
+    "This screen cannot decode this video.": "Cet écran ne sait pas décoder cette vidéo.",
+    "Screen Protection (OLED)": "Protection de l'écran (OLED)",
+    "Against burn-in on OLED screens: the interface moves a few pixels every 2 minutes, and after 5 minutes without the remote while nothing plays, pictures from your catalog move slowly with the time. Automatic: on for screens recognised as OLED.": "Contre le marquage des écrans OLED : l'interface se décale de quelques pixels toutes les 2 minutes, et après 5 minutes sans télécommande quand rien ne joue, des images de ton catalogue défilent lentement avec l'heure. Automatique : activée sur les écrans reconnus comme OLED.",
+    "This screen: OLED ({model})": "Cet écran : OLED ({model})",
+    "This screen: not recognised as OLED ({model})": "Cet écran : pas reconnu comme OLED ({model})",
+    "Try another version of it, if there is one.": "Essaie une autre version, s'il y en a une.",
+    "Try again later, or try another version if there is one.": "Réessaie plus tard, ou essaie une autre version s'il y en a une.",
+    "This device cannot play the sound of this video ({format}). Try another version if there is one.": "Cet appareil ne sait pas lire le son de cette vidéo ({format}). Essaie une autre version s'il y en a une.",
 
     /* Search */
     "Space": "Espace",
@@ -520,5 +528,15 @@ window.TV_LANG_FR = {
     "Sort By": "Trier par",
     "No movies came from your playlists yet. APL TV asks your provider again by itself.": "Aucun film n'est encore arrivé de tes playlists. APL TV redemande à ton fournisseur tout seul.",
     "No series came from your playlists yet. APL TV asks your provider again by itself.": "Aucune série n'est encore arrivée de tes playlists. APL TV redemande à ton fournisseur tout seul.",
-    "Nothing here. Some countries or categories are hidden: Settings, Countries and Categories.": "Rien ici. Des pays ou des catégories sont masqués : Réglages, Pays et catégories."
+    "Nothing here. Some countries or categories are hidden: Settings, Countries and Categories.": "Rien ici. Des pays ou des catégories sont masqués : Réglages, Pays et catégories.",
+    /* Trending, new releases, LG */
+    "Trending Movie": "Film tendance",
+    "Trending Show": "Série tendance",
+    "Trending Movies": "Films tendance",
+    "Trending Series": "Séries tendance",
+    "This week": "Cette semaine",
+    "New Shows": "Nouvelles séries",
+    "APL TV {v} is out: install its new .ipk once": "APL TV {v} est sortie : installe une fois son nouveau .ipk",
+    "APL TV {v} is out: install its new .apk once": "APL TV {v} est sortie : installe une fois son nouveau .apk",
+    "Runs the installed version again, until the next update.": "Relance la version installée, jusqu'à la prochaine mise à jour."
 };

@@ -500,7 +500,13 @@
             onTime: function () { stateBox.classList.remove("is-on"); },
             onSubtitle: function (s) { if (subsOn && !ext) showSub(s); },
             onEnded: function () { save(true); if (o.next && o.onEpisode && TV.pref("autoNext")) { var n = o.next.ep, cb = o.onEpisode; finish(true); cb(n); } else finish(); },
-            onError: function (e) { stateBox.classList.remove("is-on"); error(T("This video cannot be played."), String(e)); }
+            onError: function (e) {
+                stateBox.classList.remove("is-on");
+                // a format the screen cannot decode (HEVC 10-bit on a small Android box, an old Samsung…)
+                var dec = /DECOD|FORMAT_UNSUPPORTED|NOT_SUPPORTED/i.test(String(e));
+                error(dec ? T("This screen cannot decode this video.") : T("This video cannot be played."), String(e),
+                      dec ? T("Try another version of it, if there is one.") : T("Try again later, or try another version if there is one."));
+            }
         });
         // the series' (or movie's) picture for the "next episode" card: never a picture of the episode
         o.art = o.item && TV.sized(o.item.backdrop || "", "w780");
@@ -702,8 +708,8 @@
     }
 
     /* ---------- shared ---------- */
-    function error(title, detail) {
-        errBox.innerHTML = "<h3>" + esc(title) + "</h3><p>" + esc(T("Try another channel, or try again later.")) + (detail ? "<br><small style='opacity:.6'>" + esc(detail) + "</small>" : "") + "</p>";
+    function error(title, detail, hint) {
+        errBox.innerHTML = "<h3>" + esc(title) + "</h3><p>" + esc(hint || T("Try another channel, or try again later.")) + (detail ? "<br><small style='opacity:.6'>" + esc(detail) + "</small>" : "") + "</p>";
         errBox.classList.add("is-on");
         stateBox.classList.remove("is-on");
     }
@@ -717,6 +723,7 @@
             } else if (mode === "live" && ch) TV.save("lastWatch", { kind: "live", id: ch.id, at: Date.now() });
         } catch (e) {}
         if (mode === "vod") { save(false); if (!keepPlayer) TV.player.stop(); D.resumeChanged(); }
+        stopExt(); clearTimeout(subTimer); putSub("");     // no subtitle line left on screen after the video
         closeOsd();
         if (TV.pushShelf) TV.pushShelf();
         var cb = onClose; onClose = null;

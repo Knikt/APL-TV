@@ -9,8 +9,28 @@
 
     var TV = global.TV = global.TV || {};
     var T = TV.t;
-    TV.PREVIEW = !global.tizen;
+    /* Where APL TV runs: a Samsung screen (Tizen), an LG TV (webOS), or the PC preview */
+    TV.TIZEN = !!global.tizen;
+    TV.WEBOS = !TV.TIZEN && !!(global.PalmSystem || global.PalmServiceBridge || global.webOSSystem);
+    TV.ANDROID = !TV.TIZEN && !TV.WEBOS && !!global.APLAndroid;      // the Android app (android/), js/android.js
+    TV.PREVIEW = !TV.TIZEN && !TV.WEBOS && !TV.ANDROID;
+    TV.PLATFORM = TV.TIZEN ? "tizen" : TV.WEBOS ? "webos" : TV.ANDROID ? "android" : "preview";
     if (TV.PREVIEW) { document.body.classList.add("is-preview"); document.documentElement.style.background = "#000"; }
+    if (TV.WEBOS) {
+        document.documentElement.classList.add("is-webos");
+        var avObj = document.getElementById("av");          // Samsung's video plane: nothing to do on LG
+        if (avObj && avObj.parentNode) avObj.parentNode.removeChild(avObj);
+    }
+    /* webOS system calls (luna://…). onMsg gets each answer; a subscription keeps coming while the
+       returned bridge is kept. */
+    TV.luna = function (uri, params, onMsg) {
+        var B = global.PalmServiceBridge;
+        if (!B) { if (onMsg) setTimeout(function () { onMsg({ returnValue: false, errorText: "no webOS" }); }, 0); return null; }
+        var b = new B();
+        b.onservicecallback = function (txt) { var m = {}; try { m = JSON.parse(txt); } catch (e) {} if (onMsg) onMsg(m); };
+        b.call(uri, JSON.stringify(params || {}));
+        return b;
+    };
     /* Tizen 6.0 (2021 TVs, Chromium 76) has no flex gap: the items of a row would touch.
        There the class no-gap spaces them with margins instead (rules generated at the end of tv2.css). */
     (function () {
@@ -80,7 +100,7 @@
     TV.drop = function (key) { delete memo[key]; try { global.localStorage.removeItem(PFX + key); } catch (e) {} };
 
     var DEFAULTS = { pictureMode: "fit", language: "auto", sounds: true, showAdult: false, mergeQuality: true, autoPreview: false, motion: true, startTab: "home", lastChannel: null, timeFormat: "24",
-                     audioLang: "auto", audioLang2: "orig", subLang: "auto", subLang2: "off", subSize: "m", subColor: "white", subBg: "outline", subPos: "low", autoNext: false, resumePrompt: true, autoUpdate: true };
+                     audioLang: "auto", audioLang2: "orig", subLang: "auto", subLang2: "off", subSize: "m", subColor: "white", subBg: "outline", subPos: "low", autoNext: false, resumePrompt: true, autoUpdate: true, screenSaver: "auto" };
     var prefs = TV.load("prefs", {}) || {};
     var prefListeners = [];
     TV.pref = function (k) { return Object.prototype.hasOwnProperty.call(prefs, k) ? prefs[k] : DEFAULTS[k]; };
@@ -374,9 +394,17 @@
     TV.uid = function () { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); };
 
     TV.exit = function () {
+        if (TV.WEBOS) { try { global.close(); } catch (e) {} return; }
+        if (TV.ANDROID) { try { global.APLAndroid.exit(); } catch (e) {} return; }
         try { global.tizen.application.getCurrentApplication().exit(); } catch (e) { TV.toast("Exit (preview)"); }
     };
     TV.hide = function () {
+        if (TV.ANDROID) { try { global.APLAndroid.background(); } catch (e) { TV.exit(); } return; }
+        if (TV.WEBOS) {
+            var S = global.webOSSystem || global.PalmSystem;
+            try { S.platformBack(); } catch (e) { TV.exit(); }
+            return;
+        }
         try { global.tizen.application.getCurrentApplication().hide(); } catch (e) { TV.exit(); }
     };
 })(window);
