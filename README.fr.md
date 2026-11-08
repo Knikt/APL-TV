@@ -149,6 +149,14 @@ Si APL TV te plaît, jette un œil à APL Launcher, et une étoile sur l'un ou l
 - L'assistant sur la TV (port 8765) ne répond qu'à APL TV lui-même, et à la page téléphone pendant qu'un code est affiché. Les sites ouverts dans le navigateur de la TV sont refusés. Le code est aléatoire, change à chaque fois, et trop de mauvais codes le ferment.
 - Pas de compte, pas de statistiques, pas de pub.
 
+## Soutenir APL TV
+
+APL TV est gratuit, open source et fait par une seule personne sur son temps libre. Si tu l'aimes et que tu veux m'aider, tu peux m'offrir un café sur [Ko-fi](https://ko-fi.com/knikt). Ce n'est jamais obligatoire et tout reste gratuit. La même page soutient aussi [APL Launcher](https://github.com/Knikt/APL-Launcher-for-TizenOS).
+
+Dans APL TV, Réglages › Soutenir APL TV affiche un QR code pour ouvrir la page sur ton téléphone.
+
+[![Me soutenir sur Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/knikt)
+
 ## Crédits
 
 APL TV est fait par **Knikt** (Gero Corp.)

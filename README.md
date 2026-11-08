@@ -149,6 +149,14 @@ If you like APL TV, have a look at APL Launcher, and a star on either repository
 - The helper on the TV (port 8765) only answers APL TV itself, and the phone page while a setup code is shown. Websites opened in the TV's browser are refused. The code is random, changes each time, and too many wrong codes close it.
 - No account, no analytics, no ads.
 
+## Support APL TV
+
+APL TV is free, open source and made by one person in my spare time. If you like it and want to help, you can buy me a coffee on [Ko-fi](https://ko-fi.com/knikt). It's never required and everything stays free. The same page supports [APL Launcher](https://github.com/Knikt/APL-Launcher-for-TizenOS) too.
+
+In APL TV, Settings › Support APL TV shows a QR code to open the page on your phone.
+
+[![Support me on Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/knikt)
+
 ## Credits
 
 APL TV is made by **Knikt** (Gero Corp.)
