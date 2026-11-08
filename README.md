@@ -107,7 +107,7 @@ LG's Developer Mode lasts a set number of hours: press **Extend Session Time** i
 
 **No root.** Install the `.apk` like any app from outside the store:
 
-- **On the TV:** with an app like Downloader, open the `apl-tv-vX.Y.Z-android.apk` link from Releases and install it (Android asks once to allow apps from that source).
+- **On the TV, with the Downloader app:** type the code **9141513**. It always gives the latest version (`https://github.com/Knikt/APL-TV/releases/latest/download/apl-tv-android.apk`). Android asks once to allow apps from Downloader.
 - **From a PC:** turn on the TV's developer options, then `adb connect <TV address>` and `adb install apl-tv-vX.Y.Z-android.apk`.
 
 A newer `.apk` installs over the old one and keeps your playlists. Every `.apk` of APL TV is signed with the same key.
