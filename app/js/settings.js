@@ -39,14 +39,21 @@
     function toggleRow(label, key, desc, after) {
         return { label: label, value: TV.pref(key) ? T("On") : T("Off"), desc: desc, run: function () { TV.setPref(key, !TV.pref(key)); if (after) after(); redraw(); } };
     }
+    function typeLabel(s) {
+        return s.type === "xtream" ? T("Xtream account") : s.type === "stalker" ? T("Stalker Portal (MAG)") : s.type === "plex" ? T("Plex server") :
+               s.type === "jellyfin" ? (s.kind === "emby" ? T("Emby server") : T("Jellyfin server")) : T("M3U playlist");
+    }
+    function typeIcon(s) { return s.type === "m3u" ? "list" : s.type === "jellyfin" || s.type === "plex" ? "film" : "link"; }
     function mainPage() {
         var rows = [{ section: T("Playlists") }];
         D.sources().forEach(function (s) {
-            rows.push({ label: s.name, value: fmtCount(s), acc: "chevron", icon: s.type === "xtream" ? "link" : "list",
-                desc: (s.type === "xtream" ? T("Xtream account") : T("M3U playlist")) + (s.error ? "\n" + s.error : "") + (s.at ? "\n" + T("Updated {d}", { d: new Date(s.at).toLocaleString(TV.locale) }) : ""),
+            rows.push({ label: s.name, value: fmtCount(s), acc: "chevron", icon: typeIcon(s),
+                desc: typeLabel(s) + (s.error ? "\n" + s.error : "") + (s.at ? "\n" + T("Updated {d}", { d: new Date(s.at).toLocaleString(TV.locale) }) : ""),
                 run: function () { push(sourcePage(s.id)); } });
         });
-        rows.push({ label: T("Add a Playlist"), acc: "chevron", icon: "plus", desc: T("Your M3U playlist or your Xtream account (server, username, password)."), run: function () { push(addPage()); } });
+        if (D.sources().length) rows.push({ label: T("Edit on Your Phone"), acc: "chevron", icon: "phone", desc: T("Hide and order your categories, make your groups of channels and order your favorites on your phone, then send it all to the TV."),
+            run: function () { push(editPhonePage()); } });
+        rows.push({ label: T("Add a Playlist"), acc: "chevron", icon: "plus", desc: T("Your M3U playlist, your Xtream account, a Stalker portal, or your own media server (Jellyfin, Emby, Plex)."), run: function () { push(addPage()); } });
         rows.push({ section: T("Playback") });
         rows.push(toggleRow(T("Automatic Preview"), "autoPreview", T("In Live TV, staying on a channel plays it behind the list. Off: a channel only plays when you press OK.")));
         rows.push(toggleRow(T("Sort the Categories"), "tidyCats", T("Your screen's language first, adult ones last. Off: the order of your playlist."), function () { D.rebuild(); }));
@@ -63,6 +70,7 @@
         rows.push({ label: T("Subtitle Style"), acc: "chevron", icon: "cc", desc: T("Size, colour, background and position of the subtitles."), run: function () { push(subStylePage()); } });
         rows.push(toggleRow(T("Pick Up Where You Left Off"), "resumePrompt", T("When APL TV opens, it offers the movie or episode you were watching at the minute you stopped, or the last channel.")));
         rows.push(toggleRow(T("Autoplay Next Episode"), "autoNext", T("Off: near the end of an episode, the next one is only offered (with the series' picture, never a spoiler).")));
+        rows.push(toggleRow(T("Pause Live TV (Timeshift)"), "timeshift", T("Pause a channel and go back in it (◀ ▶ 10 s): APL TV keeps it from the moment you pause, up to an hour. Play/Pause or the first button of the bar pauses, Stop goes back to live.")));
         rows.push({ label: T("Live Stream Format"), value: TV.pref("liveFormat") === "m3u8" ? "HLS (m3u8)" : "MPEG-TS", desc: T("For Xtream accounts. Try HLS if channels stutter or do not start."),
             run: function () { TV.setPref("liveFormat", TV.pref("liveFormat") === "m3u8" ? "ts" : "m3u8"); redraw(); } });
         rows.push({ label: T("Picture Size"), value: { fit: T("Fit to Screen"), fill: T("Fill the Screen"), auto: T("Original Shape") }[TV.pref("pictureMode")] || T("Fit to Screen"), acc: "chevron", icon: "aspect",
@@ -94,6 +102,11 @@
                       (scr.oled ? T("This screen: OLED ({model})", { model: scr.model }) : T("This screen: not recognised as OLED ({model})", { model: scr.model || "?" })),
                 run: function () { choose(T("Screen Protection (OLED)"), "screenSaver", [["auto", T("Automatic")], ["on", T("On")], ["off", T("Off")]]); } });
         }
+        var kl = TV.pref("kbLayout");
+        rows.push({ label: T("Search Keyboard"), acc: "chevron", icon: "keyboard",
+            value: kl === "qwerty" ? "QWERTY" : kl === "azerty" ? "AZERTY" : kl === "abc" ? T("Alphabetical (ABC)") : T("Automatic") + " (" + (TV.lang === "fr" ? "AZERTY" : "QWERTY") + ")",
+            desc: T("The letters of the search keyboard: like a computer's keyboard, or in alphabetical order. Its last key opens the TV's own keyboard."),
+            run: function () { choose(T("Search Keyboard"), "kbLayout", [["auto", T("Automatic")], ["qwerty", "QWERTY"], ["azerty", "AZERTY"], ["abc", T("Alphabetical (ABC)")]]); } });
         rows.push({ label: T("Time Format"), value: TV.pref("timeFormat") === "12" ? "12 h" : "24 h", run: function () { TV.setPref("timeFormat", TV.pref("timeFormat") === "12" ? "24" : "12"); redraw(); } });
         rows.push({ label: T("Language"), value: { auto: T("Automatic"), fr: "Français", en: "English" }[TV.pref("language")] || T("Automatic"), desc: T("APL TV restarts in the new language."),
             run: function () {
@@ -259,8 +272,15 @@
         } else if (s.type === "stalker") {
             rows.push({ label: T("Portal Address"), value: String(s.portal || "").replace(/^(https?:\/\/[^\/]+).*$/, "$1/…") });
             rows.push({ label: T("MAC Address"), value: s.mac || "" });
+        } else if (s.type === "jellyfin") {
+            rows.push({ label: T("Server"), value: s.server });
+            rows.push({ label: T("Username"), value: s.user });
+            rows.push({ label: T("Password"), value: s.pass ? "••••••••" : T("None"), secret: true });
+        } else if (s.type === "plex") {
+            rows.push({ label: T("Server"), value: s.name });
+            rows.push({ label: T("Link the Screen Again"), icon: "link", acc: "chevron", desc: T("If Plex asks for it, or after you changed your Plex password."), run: function () { push(plexPage(s.id)); } });
         } else rows.push({ label: T("Address"), value: s.url.replace(/^(https?:\/\/[^\/]+).*$/, "$1/…") });
-        rows.push({ label: T("TV Guide Address"), value: s.epg ? s.epg.replace(/^(https?:\/\/[^\/]+).*$/, "$1/…") : (s.type === "xtream" ? T("From the server") : T("From the playlist")), acc: "chevron",
+        if (s.type !== "jellyfin" && s.type !== "plex") rows.push({ label: T("TV Guide Address"), value: s.epg ? s.epg.replace(/^(https?:\/\/[^\/]+).*$/, "$1/…") : (s.type === "xtream" ? T("From the server") : T("From the playlist")), acc: "chevron",
             desc: T("An XMLTV address (.xml or .xml.gz), if your provider gives you one."),
             run: function (row) { edit(row, { value: s.epg || "", url: true, onDone: function (v) { D.updateSource(id, { epg: v }); D.rebuild(); TV.epg.loadAll(true); redraw(); } }); } });
         rows.push({ label: fmtCount(s), desc: s.error || "" });
@@ -269,22 +289,146 @@
             TV.alert({ title: T("Delete “{name}”?", { name: s.name }), message: T("Its channels, favorites and guide will be removed from APL TV."), buttons: [
                 { label: T("Cancel") }, { label: T("Delete"), danger: true, run: function () { D.removeSource(id); pop(); } }] });
         } });
-        return { title: s.name, icon: s.type === "m3u" ? "list" : "link", desc: s.type === "xtream" ? T("Xtream account") : s.type === "stalker" ? T("Stalker Portal (MAG)") : T("M3U playlist"), rows: rows };
+        return { title: s.name, icon: typeIcon(s), desc: typeLabel(s), rows: rows };
     }
 
     function addPage() {
         return { title: T("Add a Playlist"), icon: "plus", desc: T("Scan the code with your phone to type or paste your playlist there, or use the remote."), rows: [
             { label: T("From Your Phone"), icon: "phone", acc: "chevron", desc: T("Recommended: scan a QR code, then type or paste your playlist on your phone."), run: function () { push(phonePage()); } },
-            { label: T("With the Remote"), icon: "keyboard", acc: "chevron", desc: T("Type the address or your Xtream details with the screen's keyboard."), run: function () { push(formPage({ type: "xtream" })); } }
+            { label: T("With the Remote"), icon: "keyboard", acc: "chevron", desc: T("Type the address or your Xtream details with the screen's keyboard."), run: function () { push(formPage({ type: "xtream" })); } },
+            { label: T("Your Media Server"), icon: "film", acc: "chevron", desc: T("Jellyfin, Emby or Plex: the movies and series of your own server."), run: function () { push(mediaPage()); } }
         ] };
+    }
+    function mediaPage() {
+        return { title: T("Your Media Server"), icon: "film", desc: T("Your own movies and series, from the server where you keep them. They play straight from it."), rows: [
+            { label: "Jellyfin / Emby", icon: "film", acc: "chevron", desc: T("The server's address, your user name and your password."), run: function () { push(formPage({ type: "jellyfin" })); } },
+            { label: "Plex", icon: "film", acc: "chevron", desc: T("A code appears on the screen: type it on plex.tv/link with your phone or computer."), run: function () { push(plexPage()); } }
+        ] };
+    }
+
+    /* ---------- edit on the phone: a QR code, the phone's page (service.js), its changes applied here ---------- */
+    var editTimer = null;
+    function editPhonePage() { return { title: T("Edit on Your Phone"), custom: drawEditPhone, onLeave: stopEditPhone, rows: [] }; }
+    function stopEditPhone() { if (editTimer) { clearInterval(editTimer); editTimer = null; TV.helper.editClose(); } }
+    function drawEditPhone() {
+        root.innerHTML = "";
+        var qr = el("div", "qr");
+        var box = el("div", "qr__box", "<div style='width:400px;height:400px;display:flex;align-items:center;justify-content:center;color:#888;font-size:24px'>" + esc(T("Starting…")) + "</div>");
+        var url = el("div", "qr__url"), pin = el("div", "qr__pin"), state = el("div", "qr__state");
+        qr.appendChild(box); qr.appendChild(url); qr.appendChild(pin); qr.appendChild(state);
+        var steps = el("div", "steps");
+        steps.innerHTML =
+            "<div class='step'><b>1</b><span>" + esc(T("Connect your phone to the same Wi-Fi as the screen.")) + "</span></div>" +
+            "<div class='step'><b>2</b><span>" + esc(T("Open the camera and point it at the code. Tap the link that appears.")) + "</span></div>" +
+            "<div class='step'><b>3</b><span>" + esc(T("Hide or move categories, make your groups, order your favorites, then tap Send to the TV. You can send as many times as you like.")) + "</span></div>";
+        var back = el("div", "btn", esc(T("Done")));
+        steps.appendChild(back);
+        root.appendChild(qr); root.appendChild(steps);
+        nav = new TV.Nav({ onSelect: function () { stopEditPhone(); pop(); } });
+        nav.setTiles([back]);
+        if (TV.shell.focusOn() !== "view") nav.blur();
+        if (editTimer) { clearInterval(editTimer); editTimer = null; }
+        TV.helper.editStart(D.editData()).then(function (s) {
+            var link = s.urls && s.urls[0];
+            if (!link) throw new Error(T("The screen is not on a network."));
+            box.innerHTML = "";
+            box.appendChild(TV.qr.canvas(link, 400));
+            url.textContent = link.replace(/\?.*$/, "");
+            pin.textContent = T("Code: {code}", { code: s.token });
+            state.innerHTML = "<i></i>" + esc(T("Waiting for your phone…"));
+            var busy = false;
+            editTimer = setInterval(function () {
+                if (busy) return;
+                busy = true;
+                TV.helper.editPending(s.token).then(function (r) {
+                    busy = false;
+                    if (r.expired) { stopEditPhone(); drawEditPhone(); return; }
+                    if (!r.data) return;
+                    if (D.applyPhoneEdit(r.data)) {
+                        state.innerHTML = "<i></i>" + esc(T("Your changes are on the TV ({time})", { time: TV.hhmm(new Date()) }));
+                        TV.toast(T("Your changes from the phone are on the TV"));
+                    }
+                }, function () { busy = false; });
+            }, 1500);
+        }).catch(function (e) {
+            box.innerHTML = "<div style='width:400px;height:400px;display:flex;align-items:center;justify-content:center;text-align:center;color:#555;font-size:24px;padding:20px'>" +
+                esc(e.old ? (TV.ANDROID ? T("Editing on the phone needs the new version of the app (.apk) once.") : T("Editing on the phone needs the new install once (APL Launcher Setup or the new package).")) :
+                    T("The phone page could not start ({e}). Use the remote instead.", { e: e.message })) + "</div>";
+        });
+    }
+
+    /* ---------- Plex: a code on the screen, typed on plex.tv/link ---------- */
+    var plexTimer = null;
+    function plexPage(againId) {
+        return { title: "Plex", custom: function () { drawPlex(againId); }, onLeave: stopPlex, rows: [] };
+    }
+    function stopPlex() { clearInterval(plexTimer); plexTimer = null; }
+    function drawPlex(againId) {
+        root.innerHTML = "";
+        var qr = el("div", "qr");
+        var box = el("div", "qr__box", "<div style='width:400px;height:400px;display:flex;align-items:center;justify-content:center;color:#888;font-size:24px'>" + esc(T("Starting…")) + "</div>");
+        var url = el("div", "qr__url"), pin = el("div", "qr__pin qr__pin--big"), state = el("div", "qr__state");
+        qr.appendChild(box); qr.appendChild(url); qr.appendChild(pin); qr.appendChild(state);
+        var steps = el("div", "steps");
+        steps.innerHTML =
+            "<div class='step'><b>1</b><span>" + esc(T("On your phone or computer, go to plex.tv/link (or scan the code) and sign in to Plex.")) + "</span></div>" +
+            "<div class='step'><b>2</b><span>" + esc(T("Type the code shown here.")) + "</span></div>" +
+            "<div class='step'><b>3</b><span>" + esc(T("APL TV finds your Plex server and loads its movies and series.")) + "</span></div>";
+        var back = el("div", "btn", esc(T("Cancel")));
+        steps.appendChild(back);
+        root.appendChild(qr); root.appendChild(steps);
+        nav = new TV.Nav({ onSelect: function () { stopPlex(); pop(); } });
+        nav.setTiles([back]);
+        if (TV.shell.focusOn() !== "view") nav.blur();
+        stopPlex();
+        TV.media.plex.pin().then(function (p) {
+            box.innerHTML = "";
+            box.appendChild(TV.qr.canvas("https://plex.tv/link", 400));
+            url.textContent = "plex.tv/link";
+            pin.textContent = p.code;
+            state.innerHTML = "<i></i>" + esc(T("Waiting for the code…"));
+            var t0 = Date.now(), busy = false;
+            plexTimer = setInterval(function () {
+                if (busy) return;
+                if (Date.now() - t0 > 14 * 60000) { stopPlex(); drawPlex(againId); return; }       // a code lasts 15 minutes
+                busy = true;
+                TV.media.plex.check(p).then(function (token) {
+                    busy = false;
+                    if (!token || !plexTimer) return;
+                    stopPlex();
+                    state.innerHTML = "<i></i>" + esc(T("Linked! Finding your server…"));
+                    return TV.media.plex.servers(token).then(function (list) { plexChosen(list, token, againId, state); });
+                }).catch(function (e) { busy = false; TV.log("plex: " + e.message); });
+            }, 2000);
+        }).catch(function (e) {
+            box.innerHTML = "<div style='width:400px;height:400px;display:flex;align-items:center;justify-content:center;text-align:center;color:#555;font-size:24px;padding:20px'>" +
+                esc(T("Plex does not answer right now ({e}).", { e: e.message })) + "</div>";
+        });
+    }
+    function plexChosen(list, token, againId, state) {
+        if (!list.length) { state.textContent = T("No Plex server on this account. Is Plex Media Server installed and signed in?"); return; }
+        function use(sv) {
+            var src = { type: "plex", name: sv.name, token: sv.token, uris: sv.uris, serverId: sv.id, plexToken: token, base: "" };
+            if (againId) {
+                D.updateSource(againId, { token: sv.token, uris: sv.uris, serverId: sv.id, plexToken: token, base: "" });
+                var s = D.sources().filter(function (x) { return x.id === againId; })[0];
+                pages = [mainPage()];
+                loadWithProgress(s, function () { pages = [mainPage(), sourcePage(againId)]; redraw(); });
+                return;
+            }
+            addAndLoad(src);
+        }
+        if (list.length === 1) { use(list[0]); return; }
+        // several servers (yours, a friend's): you choose
+        TV.menu(T("Which Plex Server?"), list.map(function (sv) { return { label: sv.name, icon: "film", run: function () { use(sv); } }; }));
     }
 
     /* ---------- typing with the remote ---------- */
     function formPage(f) {
         var rows = [];
-        rows.push({ label: T("Type"), value: f.type === "xtream" ? "Xtream" : f.type === "stalker" ? T("Stalker Portal (MAG)") : "M3U", acc: "chevron",
-            desc: T("Xtream: server, username and password. M3U: one address. Stalker: the portal's address and a MAC address."),
-            run: function () { f.type = f.type === "xtream" ? "m3u" : f.type === "m3u" ? "stalker" : "xtream"; replaceTop(formPage(f)); } });
+        rows.push({ label: T("Type"), value: f.type === "xtream" ? "Xtream" : f.type === "stalker" ? T("Stalker Portal (MAG)") : f.type === "jellyfin" ? "Jellyfin / Emby" : "M3U", acc: "chevron",
+            desc: T("Xtream: server, username and password. M3U: one address. Stalker: the portal's address and a MAC address. Jellyfin and Emby: your server's address, user name and password."),
+            run: function () { f.type = { xtream: "m3u", m3u: "stalker", stalker: "jellyfin", jellyfin: "xtream" }[f.type] || "xtream"; replaceTop(formPage(f)); } });
         function field(label, key, opts) {
             opts = opts || {};
             var shown = f[key] ? (opts.secret ? new Array(Math.min(f[key].length, 12) + 1).join("•") : f[key]) : T("Not set");
@@ -299,9 +443,13 @@
         } else if (f.type === "stalker") {
             field(T("Portal Address"), "portal", { url: true, desc: T("For example http://example.com:8080/c/") });
             field(T("MAC Address"), "mac", { desc: T("The one your provider registered, like 00:1A:79:12:34:56.") });
+        } else if (f.type === "jellyfin") {
+            field(T("Server"), "server", { url: true, desc: T("Your server's address, for example http://192.168.1.20:8096") });
+            field(T("Username"), "user");
+            field(T("Password"), "pass", { secret: true, desc: T("Leave it empty if this user has none.") });
         } else field(T("Playlist Address"), "url", { url: true, desc: T("The address of your M3U playlist (http://…).") });
         field(T("Name (optional)"), "name");
-        field(T("TV Guide Address (optional)"), "epg", { url: true, desc: T("An XMLTV address (.xml or .xml.gz), if your provider gives you one.") });
+        if (f.type !== "jellyfin") field(T("TV Guide Address (optional)"), "epg", { url: true, desc: T("An XMLTV address (.xml or .xml.gz), if your provider gives you one.") });
         rows.push({ label: T("Add"), action: true, run: function () { submit(f); } });
         return { title: T("With the Remote"), icon: "keyboard", desc: T("OK on a line opens the keyboard. Done to keep the text."), rows: rows, keep: true };
     }
@@ -315,6 +463,9 @@
         } else if (f.type === "stalker") {
             src.portal = f.portal || ""; src.mac = f.mac || "";
             if (!src.portal || !TV.stalker || !TV.stalker.normMac(src.mac)) { TV.toast(T("Fill in the portal's address and a MAC address like 00:1A:79:12:34:56.")); return; }
+        } else if (f.type === "jellyfin") {
+            src.server = f.server || ""; src.user = f.user || ""; src.pass = f.pass || ""; delete src.epg;
+            if (!src.server || !src.user) { TV.toast(T("Fill in the server's address and your user name.")); return; }
         } else {
             src.url = f.url;
             if (!/^https?:\/\//i.test(src.url || "")) { TV.toast(T("The address must start with http:// or https://")); return; }
@@ -347,7 +498,7 @@
         steps.innerHTML =
             "<div class='step'><b>1</b><span>" + esc(T("Connect your phone to the same Wi-Fi as the screen.")) + "</span></div>" +
             "<div class='step'><b>2</b><span>" + esc(T("Open the camera and point it at the code. Tap the link that appears.")) + "</span></div>" +
-            "<div class='step'><b>3</b><span>" + esc(T("Type or paste your Xtream details or your M3U link, then tap Send to the screen.")) + "</span></div>";
+            "<div class='step'><b>3</b><span>" + esc(T("Type or paste your Xtream details, your M3U link, or your Jellyfin, Emby or Plex server, then tap Send to the screen.")) + "</span></div>";
         var back = el("div", "btn", esc(T("Use the Remote Instead")));
         steps.appendChild(back);
         root.appendChild(qr); root.appendChild(steps);
@@ -369,6 +520,9 @@
                     if (!r.items || !r.items.length) return;
                     stopPhone();
                     var it = r.items[r.items.length - 1];
+                    // Plex from the phone: its code on the screen, to type on plex.tv/link
+                    if (it.type === "plex") { replaceTop(plexPage()); return; }
+                    if (it.type === "jellyfin") { delete it.epg; if (!it.user && !it.server) return; }
                     state.innerHTML = "<i></i>" + esc(T("Received! Loading…"));
                     if (it.type === "xtream") {
                         var x = D.xtreamFromUrl(it.server);
@@ -498,6 +652,9 @@
             pages = [mainPage(), addPage()];
             if (name === "phone") pages.push(phonePage());
             if (name === "remote") pages.push(formPage({ type: "xtream" }));
+            if (name === "media" || name === "plex" || name === "jellyfin") pages.push(mediaPage());
+            if (name === "plex") pages.push(plexPage());
+            if (name === "jellyfin") pages.push(formPage({ type: "jellyfin" }));
         }
     };
 
@@ -549,6 +706,7 @@
     TV.views.settings = view;
     TV.setup = {
         phone: function () { view.openPage("phone"); TV.shell.go("settings", true); },
-        remote: function () { view.openPage("remote"); TV.shell.go("settings", true); }
+        remote: function () { view.openPage("remote"); TV.shell.go("settings", true); },
+        media: function (which) { view.openPage(which || "media"); TV.shell.go("settings", true); }
     };
 })(window);

@@ -20,11 +20,13 @@ import androidx.media3.common.text.Cue;
 import androidx.media3.common.text.CueGroup;
 import androidx.media3.common.util.UnstableApi;
 import androidx.media3.datasource.DefaultHttpDataSource;
+import androidx.media3.exoplayer.DecoderCounters;
 import androidx.media3.exoplayer.DefaultLoadControl;
 import androidx.media3.exoplayer.DefaultRenderersFactory;
 import androidx.media3.exoplayer.ExoPlayer;
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory;
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector;
+import androidx.media3.exoplayer.upstream.DefaultBandwidthMeter;
 import androidx.media3.extractor.DefaultExtractorsFactory;
 import androidx.media3.extractor.ts.DefaultTsPayloadReaderFactory;
 import androidx.media3.ui.AspectRatioFrameLayout;
@@ -51,8 +53,11 @@ final class Player {
     private String url = null;
     private boolean prepared = false, wantPlay = false, suspended = false, wasPlaying = false;
     private volatile double durationMs = 0, positionMs = 0;
-    private volatile String tracksJson = "[]", currentJson = "[]";
-    private final List<int[]> audio = new ArrayList<>(), text = new ArrayList<>();
+    private volatile String tracksJson = "[]", currentJson = "[]", statsJson = "{}", videoJson = "{}";
+    private volatile long statsWanted = 0;
+    private volatile int videoOverride = -1;
+    private DefaultBandwidthMeter meter;
+    private final List<int[]> audio = new ArrayList<>(), text = new ArrayList<>(), video = new ArrayList<>();
     private double[] lastRect = {0, 0, 1920, 1080};
     private static final String UA = "APL TV (Android)";
 
@@ -80,8 +85,10 @@ final class Player {
         DefaultHttpDataSource.Factory http = new DefaultHttpDataSource.Factory()
             .setUserAgent(UA).setAllowCrossProtocolRedirects(true).setConnectTimeoutMs(15000).setReadTimeoutMs(20000);
         DefaultLoadControl load = new DefaultLoadControl.Builder().setBufferDurationsMs(15000, 50000, 2500, 5000).build();
+        meter = new DefaultBandwidthMeter.Builder(act).build();
         exo = new ExoPlayer.Builder(act, new DefaultRenderersFactory(act).setEnableDecoderFallback(true))
             .setTrackSelector(selector)
+            .setBandwidthMeter(meter)
             .setMediaSourceFactory(new DefaultMediaSourceFactory(http, ex))
             .setLoadControl(load)
             .build();
@@ -118,6 +125,7 @@ final class Player {
             if (exo != null) {
                 positionMs = exo.getCurrentPosition();
                 if (exo.isPlaying()) event("time", String.valueOf((long) positionMs));
+                if (System.currentTimeMillis() - statsWanted < 4000) readStats();
             }
             ui.postDelayed(this, 500);
         }
@@ -135,6 +143,7 @@ final class Player {
         ui.post(() -> {
             ensure();
             url = u; prepared = false; wantPlay = false; durationMs = 0; positionMs = 0; lastSummary = "";
+            videoOverride = -1; video.clear(); videoJson = "{}"; statsJson = "{}";
             selector.setParameters(selector.buildUponParameters().setForceHighestSupportedBitrate(false).clearOverrides().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false));
             exo.stop();
             exo.clearMediaItems();
@@ -161,7 +170,7 @@ final class Player {
             wantPlay = false; url = null; prepared = false;
             if (exo != null) { exo.stop(); exo.clearMediaItems(); }
             view.setVisibility(View.GONE);
-            tracksJson = "[]"; currentJson = "[]"; audio.clear(); text.clear();
+            tracksJson = "[]"; currentJson = "[]"; audio.clear(); text.clear(); video.clear(); videoJson = "{}"; statsJson = "{}";
         });
     }
     void seek(long ms, int id) { ui.post(() -> { if (exo == null) return; pendingSeek = id; exo.seekTo(Math.max(0, ms)); positionMs = ms; }); }
@@ -193,8 +202,8 @@ final class Player {
     /* ---------- tracks, in AVPlay's shape ---------- */
     private void readTracks() {
         if (exo == null) return;
-        audio.clear(); text.clear();
-        JSONArray all = new JSONArray(), cur = new JSONArray();
+        audio.clear(); text.clear(); video.clear();
+        JSONArray all = new JSONArray(), cur = new JSONArray(), vids = new JSONArray();
         StringBuilder sum = new StringBuilder();
         boolean anyAudio = false, audioOk = false;
         String badAudio = "";
@@ -212,6 +221,15 @@ final class Player {
                     sum.append(type == C.TRACK_TYPE_VIDEO ? "video " : type == C.TRACK_TYPE_AUDIO ? "audio " : "text ").append(describe(f));
                     if (!ok && type != C.TRACK_TYPE_TEXT) sum.append(" (not supported here)");
                     if (type == C.TRACK_TYPE_AUDIO) { anyAudio = true; if (ok) audioOk = true; else if (badAudio.isEmpty()) badAudio = shortName(f.sampleMimeType); }
+                }
+                // the qualities of the picture (a stream with several): for the Quality button
+                if (type == C.TRACK_TYPE_VIDEO) for (int i = 0; i < grp.length; i++) {
+                    if (!grp.isTrackSupported(i, true)) continue;
+                    Format f = grp.getTrackFormat(i);
+                    JSONObject q = new JSONObject();
+                    q.put("index", video.size()); q.put("w", f.width); q.put("h", f.height); q.put("bitrate", f.bitrate > 0 ? f.bitrate : 0);
+                    video.add(new int[]{g, i});
+                    vids.put(q);
                 }
                 for (int i = 0; i < grp.length; i++) {
                     // A track beyond what the decoder announces (4K HEVC on a small device) can still be the
@@ -241,6 +259,7 @@ final class Player {
         } catch (Exception ignored) {}
         tracksJson = all.toString();
         currentJson = cur.toString();
+        try { JSONObject v = new JSONObject(); v.put("override", videoOverride); v.put("list", vids); videoJson = v.toString(); } catch (Exception ignored) {}
         String s = sum.toString();
         if (s.length() > 0 && !s.equals(lastSummary)) {
             lastSummary = s;
@@ -283,6 +302,57 @@ final class Player {
             case MimeTypes.VIDEO_MPEG2: return "MPEG-2";
             default: return mime.replaceFirst("^[a-z]+/", "");
         }
+    }
+    /* Stream Info (the page asks once a second while it shows it): the picture, the sound, the connection */
+    private void readStats() {
+        if (exo == null) return;
+        try {
+            JSONObject o = new JSONObject();
+            Format v = exo.getVideoFormat(), a = exo.getAudioFormat();
+            if (v != null) {
+                o.put("w", v.width); o.put("h", v.height);
+                if (v.frameRate > 0) o.put("fps", v.frameRate);
+                o.put("vcodec", v.codecs != null ? v.codecs : (v.sampleMimeType != null ? v.sampleMimeType : ""));
+                if (v.bitrate > 0) o.put("vbitrate", v.bitrate);
+                if (v.colorInfo != null) {
+                    if (v.colorInfo.colorTransfer == C.COLOR_TRANSFER_ST2084) o.put("hdr", MimeTypes.VIDEO_DOLBY_VISION.equals(v.sampleMimeType) ? "Dolby Vision" : "HDR10");
+                    else if (v.colorInfo.colorTransfer == C.COLOR_TRANSFER_HLG) o.put("hdr", "HLG");
+                }
+            }
+            if (a != null) {
+                o.put("acodec", a.sampleMimeType != null ? a.sampleMimeType : (a.codecs != null ? a.codecs : ""));
+                if (a.channelCount > 0) o.put("channels", a.channelCount);
+                if (a.sampleRate > 0) o.put("rate", a.sampleRate);
+                if (a.bitrate > 0) o.put("abitrate", a.bitrate);
+            }
+            if (meter != null) o.put("bandwidth", meter.getBitrateEstimate());
+            o.put("buffered", exo.getTotalBufferedDuration() / 1000.0);
+            DecoderCounters dc = exo.getVideoDecoderCounters();
+            if (dc != null) { dc.ensureUpdated(); o.put("dropped", dc.droppedBufferCount); o.put("frames", dc.renderedOutputBufferCount); }
+            statsJson = o.toString();
+        } catch (Exception ignored) {}
+    }
+    String stats() {
+        if (System.currentTimeMillis() - statsWanted > 4000) ui.post(this::readStats);
+        statsWanted = System.currentTimeMillis();
+        return statsJson;
+    }
+    String videoJson() { return videoJson; }
+    /* One quality of the picture (index in the list), or -1: automatic again */
+    void selectVideo(int index) {
+        ui.post(() -> {
+            if (exo == null) return;
+            if (index < 0 || index >= video.size()) {
+                videoOverride = -1;
+                exo.setTrackSelectionParameters(exo.getTrackSelectionParameters().buildUpon().clearOverridesOfType(C.TRACK_TYPE_VIDEO).build());
+            } else {
+                int[] gi = video.get(index);
+                Tracks.Group grp = exo.getCurrentTracks().getGroups().get(gi[0]);
+                videoOverride = index;
+                exo.setTrackSelectionParameters(exo.getTrackSelectionParameters().buildUpon()
+                    .setOverrideForType(new TrackSelectionOverride(grp.getMediaTrackGroup(), gi[1])).build());
+            }
+        });
     }
     String tracksJson() { return tracksJson; }
     String currentJson() { return currentJson; }

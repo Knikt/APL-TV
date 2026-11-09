@@ -73,6 +73,9 @@ final class Helper {
 
     private final Object lock = new Object();
     private String sessionToken = null; private long sessionAt = 0; private int wrong = 0;
+    // the phone editor (1.0.11): what the app sent, what the phone sends back
+    private String editToken = null, editData = null, editSaved = null; private long editAt = 0; private int editWrong = 0;
+    private static final long EDIT_MS = 30 * 60 * 1000L;
     private final List<JSONObject> pending = new ArrayList<>();
     private final LinkedList<String> logs = new LinkedList<>();
     private volatile boolean devLog = false;
@@ -255,8 +258,9 @@ final class Helper {
             JSONObject b = parse(r.body);
             if (b == null || !sessionOk(b.optString("k", null))) { wrongCode(); json(out, r, 403, "{\"ok\":0}"); return; }
             JSONObject item = new JSONObject();
-            boolean m3u = "m3u".equals(b.optString("type")), stalker = "stalker".equals(b.optString("type"));
-            item.put("type", m3u ? "m3u" : stalker ? "stalker" : "xtream");
+            String ty = b.optString("type");
+            boolean m3u = "m3u".equals(ty), stalker = "stalker".equals(ty);
+            item.put("type", m3u ? "m3u" : stalker ? "stalker" : "jellyfin".equals(ty) ? "jellyfin" : "plex".equals(ty) ? "plex" : "xtream");   // Jellyfin and Emby: server, user, password like Xtream
             item.put("name", cut(b.optString("name"), 80));
             item.put("epg", cut(b.optString("epg"), 2000));
             if (m3u) item.put("url", cut(b.optString("url"), 4000));
@@ -268,8 +272,75 @@ final class Helper {
             return;
         }
 
+        // the phone editor: its page, the playlist it edits, what it sends back
+        if (p.equals("/edit")) {
+            String k = r.q.get("k");
+            boolean good = editOk(k);
+            if (k != null && !good) editWrongCode();
+            send(out, r, 200, "text/html; charset=utf-8", editPage(r.lang, good ? k : null).getBytes(StandardCharsets.UTF_8));
+            return;
+        }
+        if (p.equals("/edit/data")) {
+            if (!editOk(r.q.get("k"))) { editWrongCode(); json(out, r, 403, err("expired")); return; }
+            String d; synchronized (lock) { d = editData; }
+            send(out, r, 200, "application/json; charset=utf-8", (d != null ? d : "{}").getBytes(StandardCharsets.UTF_8));
+            return;
+        }
+        if (p.equals("/edit/save") && post) {
+            JSONObject b = parse(r.body);
+            if (b == null || !editOk(b.optString("k", null)) || b.optJSONObject("data") == null) { editWrongCode(); json(out, r, 403, "{\"ok\":0}"); return; }
+            synchronized (lock) { editSaved = b.getJSONObject("data").toString(); }
+            log("phone sent playlist changes");
+            json(out, r, 200, "{\"ok\":1}");
+            return;
+        }
+
         // Everything below is for the app on this device only
         if (!isLocal(r)) { json(out, r, 403, err("local only")); return; }
+
+        if (p.equals("/edit/start") && post) {
+            if (r.body == null || r.body.length == 0) { json(out, r, 400, err("too big")); return; }
+            JSONArray urls = new JSONArray();
+            synchronized (lock) {
+                editToken = newToken(); editAt = System.currentTimeMillis(); editData = new String(r.body, StandardCharsets.UTF_8); editSaved = null; editWrong = 0;
+                for (String a : lanAddresses()) urls.put("http://" + a + ":" + PORT + "/edit?k=" + editToken);
+                json(out, r, 200, "{\"token\":" + JSONObject.quote(editToken) + ",\"urls\":" + urls + "}");
+            }
+            return;
+        }
+        if (p.equals("/edit/pending")) {
+            if (!editOk(r.q.get("k"))) { json(out, r, 200, "{\"data\":null,\"expired\":true}"); return; }
+            String sv;
+            synchronized (lock) { sv = editSaved; editSaved = null; editAt = System.currentTimeMillis(); }
+            json(out, r, 200, "{\"data\":" + (sv != null ? sv : "null") + "}");
+            return;
+        }
+        // timeshift (1.0.11)
+        if (p.equals("/ts/start") && post) {
+            JSONObject b = parse(r.body);
+            String u = b == null ? "" : b.optString("url", "");
+            if (!u.matches("(?i)^https?://.+")) { json(out, r, 400, err("no url")); return; }
+            String e = tsStart(u);
+            if (e != null) { json(out, r, 502, err(e)); return; }
+            json(out, r, 200, tsInfo());
+            return;
+        }
+        if (p.equals("/ts/info")) {
+            TsRec t = tsRec;
+            if (t == null || (r.q.get("id") != null && !r.q.get("id").equals(t.id))) { json(out, r, 404, err("none")); return; }
+            json(out, r, 200, tsInfo());
+            return;
+        }
+        if (p.equals("/ts/stream.ts")) {
+            TsRec t = tsRec;
+            if (t == null || (r.q.get("id") != null && !r.q.get("id").equals(t.id))) { json(out, r, 404, err("none")); return; }
+            long at = System.currentTimeMillis();
+            try { at = Long.parseLong(r.q.get("t")); } catch (Exception ignored) {}
+            tsStream(t, out, at);
+            return;
+        }
+        if (p.equals("/ts/stop")) { tsStop(); json(out, r, 200, "{\"ok\":1}"); return; }
+        if (p.equals("/edit/close")) { synchronized (lock) { editToken = null; editData = null; editSaved = null; } json(out, r, 200, "{\"ok\":1}"); return; }
 
         if (p.equals("/session") && post) {
             JSONArray urls = new JSONArray();
@@ -396,6 +467,161 @@ final class Helper {
     }
     private void wrongCode() {
         synchronized (lock) { if (sessionToken != null && ++wrong >= 20) { log("too many wrong phone codes: session closed"); sessionToken = null; pending.clear(); } }
+    }
+    /* ---------- timeshift: the live channel kept in pieces of about 4 s (60 min or 800 MB at most, in the app's
+       cache), read back by the player from /ts/stream.ts?t=<time>, then followed as it comes. One channel at a time:
+       the provider sees one connection, this one. ---------- */
+    private static final long TS_SEG_MS = 4000, TS_MAX_MS = 60 * 60 * 1000L, TS_MAX_BYTES = 800L * 1024 * 1024;
+    private static final class Seg { int n; long t, bytes; File file; boolean done; }
+    private static final class TsRec {
+        String id, url, err = ""; final ArrayList<Seg> segs = new ArrayList<>(); int next = 0, retries = 0; long total = 0, max = TS_MAX_BYTES, started = System.currentTimeMillis();
+        volatile boolean stopped = false, live = false; volatile Got got;
+    }
+    private volatile TsRec tsRec = null;
+    private final Object tsLock = new Object();
+    private File tsDir() { File d = new File(ctx.getCacheDir(), "timeshift"); if (!d.exists()) d.mkdirs(); return d; }
+    private void tsStop() {
+        TsRec t;
+        synchronized (tsLock) { t = tsRec; tsRec = null; if (t != null) { t.stopped = true; for (Seg sg : t.segs) sg.file.delete(); } tsLock.notifyAll(); }
+        if (t != null && t.got != null) t.got.close();
+    }
+    private String tsInfo() {
+        TsRec t = tsRec;
+        if (t == null) return err("none");
+        try {
+            JSONObject o = new JSONObject();
+            JSONArray a = new JSONArray();
+            synchronized (tsLock) { for (Seg sg : t.segs) a.put(sg.t); o.put("from", t.segs.isEmpty() ? 0 : t.segs.get(0).t); o.put("bytes", t.total); }
+            o.put("id", t.id); o.put("live", t.live); o.put("err", t.err); o.put("to", System.currentTimeMillis()); o.put("segs", a);
+            return o.toString();
+        } catch (Exception e) { return err(e.getMessage()); }
+    }
+    /* Starts reading the channel; null when its first bytes came, or why it could not */
+    private String tsStart(String url) {
+        tsStop();
+        File[] old = tsDir().listFiles();
+        if (old != null) for (File f : old) f.delete();
+        final TsRec t = new TsRec();
+        t.id = newToken(); t.url = url;
+        synchronized (tsLock) { tsRec = t; }
+        final java.util.concurrent.CountDownLatch first = new java.util.concurrent.CountDownLatch(1);
+        final String[] why = { null };
+        log("timeshift: recording " + redact(url).replaceAll("^(https?://[^/]+).*$", "$1/..."));
+        pool.execute(() -> tsRun(t, first, why));
+        try { if (!first.await(20, java.util.concurrent.TimeUnit.SECONDS)) why[0] = "timeout"; } catch (InterruptedException e) { why[0] = "stopped"; }
+        if (why[0] != null) { if (tsRec == t) tsStop(); return why[0]; }
+        return null;
+    }
+    private void tsRun(TsRec t, java.util.concurrent.CountDownLatch first, String[] why) {
+        byte[] buf = new byte[65536], rest = new byte[0];
+        while (!t.stopped) {
+            Got g = null;
+            try {
+                g = get(t.url, 20000);
+                t.got = g;
+                if (g.status != 200) throw new IOException("HTTP " + g.status);
+                t.live = true; t.err = "";
+                if (first.getCount() > 0) first.countDown();
+                boolean synced = false;
+                rest = new byte[0];
+                int n;
+                while (!t.stopped && (n = g.in.read(buf)) > 0) {
+                    byte[] c = new byte[rest.length + n];
+                    System.arraycopy(rest, 0, c, 0, rest.length);
+                    System.arraycopy(buf, 0, c, rest.length, n);
+                    int off = 0;
+                    if (!synced) {                                         // start on a packet (0x47 every 188 bytes)
+                        while (off + 376 < c.length && !(c[off] == 0x47 && c[off + 188] == 0x47 && c[off + 376] == 0x47)) off++;
+                        if (off + 376 >= c.length) { rest = c; continue; }
+                        synced = true;
+                    }
+                    int whole = (c.length - off) - ((c.length - off) % 188);
+                    rest = java.util.Arrays.copyOfRange(c, off + whole, c.length);
+                    if (whole > 0) tsWrite(t, c, off, whole);
+                }
+                if (t.stopped) break;
+                throw new IOException("the channel stopped");
+            } catch (Exception e) {
+                t.live = false;
+                if (t.stopped) break;
+                if (first.getCount() > 0) { why[0] = String.valueOf(e.getMessage()); first.countDown(); return; }
+                if (++t.retries > 5) { t.err = String.valueOf(e.getMessage()); log("timeshift: gave up (" + t.err + ")"); synchronized (tsLock) { tsLock.notifyAll(); } return; }
+                log("timeshift: " + e.getMessage() + ", reconnecting");
+                try { Thread.sleep(2000); } catch (InterruptedException x) { return; }
+            } finally { if (g != null) g.close(); }
+        }
+    }
+    private void tsWrite(TsRec t, byte[] c, int off, int len) throws IOException {
+        long now = System.currentTimeMillis();
+        Seg cur;
+        synchronized (tsLock) {
+            cur = t.segs.isEmpty() ? null : t.segs.get(t.segs.size() - 1);
+            if (cur == null || cur.done || now - cur.t >= TS_SEG_MS) {
+                if (cur != null) cur.done = true;
+                cur = new Seg(); cur.n = t.next++; cur.t = now; cur.file = new File(tsDir(), "s" + cur.n + ".ts");
+                t.segs.add(cur);
+            }
+        }
+        try (java.io.FileOutputStream f = new java.io.FileOutputStream(cur.file, true)) { f.write(c, off, len); }
+        synchronized (tsLock) {
+            cur.bytes += len; t.total += len;
+            if (t.retries > 0 && now - t.started > 60000) t.retries = 0;
+            while (t.segs.size() > 2 && (t.total > t.max || now - t.segs.get(0).t > TS_MAX_MS)) { Seg o = t.segs.remove(0); t.total -= o.bytes; o.file.delete(); }
+            tsLock.notifyAll();
+        }
+    }
+    /* The buffer from the piece of that moment, then the channel as it comes, until the player closes */
+    private void tsStream(TsRec t, OutputStream out, long at) throws IOException {
+        int n;
+        synchronized (tsLock) {
+            int i = 0;
+            while (i + 1 < t.segs.size() && t.segs.get(i + 1).t <= at) i++;
+            n = t.segs.isEmpty() ? 0 : t.segs.get(i).n;
+        }
+        out.write(("HTTP/1.1 200 OK\r\nContent-Type: video/mp2t\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n").getBytes(StandardCharsets.UTF_8));
+        long pos = 0;
+        byte[] buf = new byte[65536];
+        java.io.RandomAccessFile f = null;
+        try {
+            while (tsRec == t && !t.stopped) {
+                Seg cur = null;
+                synchronized (tsLock) {
+                    for (Seg sg : t.segs) if (sg.n == n) { cur = sg; break; }
+                    if (cur == null) {
+                        if (!t.segs.isEmpty() && t.segs.get(0).n > n) { n = t.segs.get(0).n; pos = 0; if (f != null) { f.close(); f = null; } continue; }
+                        if (!t.err.isEmpty()) return;
+                        try { tsLock.wait(1000); } catch (InterruptedException e) { return; }
+                        continue;
+                    }
+                }
+                if (f == null) f = new java.io.RandomAccessFile(cur.file, "r");
+                f.seek(pos);
+                int got = f.read(buf);
+                if (got > 0) { out.write(buf, 0, got); pos += got; continue; }
+                boolean done; long size;
+                synchronized (tsLock) { done = cur.done; size = cur.bytes; }
+                if (done && pos >= size) { f.close(); f = null; n++; pos = 0; continue; }
+                if (!t.err.isEmpty()) return;
+                synchronized (tsLock) { try { tsLock.wait(500); } catch (InterruptedException e) { return; } }
+            }
+        } finally { if (f != null) try { f.close(); } catch (IOException ignored) {} }
+    }
+
+    private boolean editOk(String k) {
+        synchronized (lock) { return editToken != null && k != null && k.equals(editToken) && System.currentTimeMillis() - editAt < EDIT_MS; }
+    }
+    private void editWrongCode() {
+        synchronized (lock) { if (editToken != null && ++editWrong >= 20) { log("too many wrong editor codes: closed"); editToken = null; editData = null; editSaved = null; } }
+    }
+    private String editPage(String lang, String token) {
+        boolean fr = lang != null && lang.toLowerCase(Locale.US).startsWith("fr");
+        String name = (token != null ? "edit-" : "edit-expired-") + (fr ? "fr" : "en") + ".html";
+        try (InputStream in = ctx.getAssets().open("helper/" + name)) {
+            String html = new String(readAll(in), StandardCharsets.UTF_8);
+            return token != null ? html.replace("\"__APLTV_TOKEN__\"", JSONObject.quote(token)) : html;
+        } catch (IOException e) {
+            return "<!doctype html><meta charset=utf-8><p>APL TV</p>";
+        }
     }
     private static String newToken() {
         String A = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";

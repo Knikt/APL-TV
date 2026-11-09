@@ -100,7 +100,7 @@
     TV.drop = function (key) { delete memo[key]; try { global.localStorage.removeItem(PFX + key); } catch (e) {} };
 
     var DEFAULTS = { pictureMode: "fit", language: "auto", sounds: true, showAdult: false, mergeQuality: true, autoPreview: false, motion: true, startTab: "home", lastChannel: null, timeFormat: "24",
-                     audioLang: "auto", audioLang2: "orig", subLang: "auto", subLang2: "off", subSize: "m", subColor: "white", subBg: "outline", subPos: "low", autoNext: false, resumePrompt: true, autoUpdate: true, screenSaver: "auto", tidyCats: true, tidyNames: true };
+                     audioLang: "auto", audioLang2: "orig", subLang: "auto", subLang2: "off", subSize: "m", subColor: "white", subBg: "outline", subPos: "low", autoNext: false, resumePrompt: true, autoUpdate: true, screenSaver: "auto", tidyCats: true, tidyNames: true, kbLayout: "auto", timeshift: true };
     var prefs = TV.load("prefs", {}) || {};
     var prefListeners = [];
     TV.pref = function (k) { return Object.prototype.hasOwnProperty.call(prefs, k) ? prefs[k] : DEFAULTS[k]; };
@@ -214,7 +214,7 @@
                 x.onreadystatechange = function () {
                     if (x.readyState !== 4 || done) return;
                     done = true; clearTimeout(timer);
-                    resolve({ status: x.status, text: opts.type ? null : x.responseText, body: opts.type ? x.response : null });
+                    resolve({ status: x.status, text: opts.type ? null : x.responseText, body: opts.type ? x.response : null, url: x.responseURL || url });
                 };
                 if (opts.onprogress) x.onprogress = opts.onprogress;
                 x.send(opts.body || null);

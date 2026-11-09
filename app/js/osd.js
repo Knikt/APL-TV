@@ -27,6 +27,8 @@
     var iconIndex = 0, tabIndex = 0, pop = null, subsOn = false;
     var ext = null, extTimer = null, delayMs = 0, os = { state: "idle", list: [] };
     var seen = { ms: 0, at: 0 }, nextShown = false, nextTimer = null, nextLeft = 0;
+    var streamQ = null, qFor = null, qAsked = false;   // the stream's own qualities (Quality button), read once it plays
+    var tsh = null, tsTarget = null, tsJumpTimer = null, tsPoll = 0;   // timeshift (below)
 
     function build() {
         root = TV.$("osd");
@@ -62,7 +64,7 @@
     }
 
     /* The bar stays while you use it (buttons, a menu, the cursor, paused) */
-    function busy() { return root.classList.contains("has-list") || !!scrub || !!pop || zone !== (mode === "live" ? "live" : "track") || (vod && TV.player.state() === "PAUSED"); }
+    function busy() { return root.classList.contains("has-list") || !!scrub || !!pop || zone !== (mode === "live" ? "live" : "track") || (vod && TV.player.state() === "PAUSED") || !!(tsh && tsh.paused) || tsTarget !== null; }
     function show(ms) {
         root.classList.add("is-shown");
         clearTimeout(hideTimer);
@@ -75,6 +77,7 @@
         if (!root) build();
         mode = m; open = true;
         zone = m === "live" ? "live" : "track"; iconIndex = 0; tabIndex = 0;
+        streamQ = null; qFor = null; qAsked = false;
         closePop(true);
         root.className = "osd is-on" + (m === "vod" ? " osd--vod" : "");
         applySubStyle();
@@ -86,10 +89,13 @@
         var ticks = 0;
         clockTimer = setInterval(function () {
             if (mode === "vod" && vod) checkNextCard();
+            if (pop && pop.kind === "info") refreshPop();
+            watchQualities();
+            if (tsh) tsTick();
             var shown = root.classList.contains("is-shown");
             if (shown) tickClock();
             if (!shown) return;
-            if (mode === "live") { if (++ticks % 15 === 0) drawLive(); } else drawVod();
+            if (mode === "live") { if (++ticks % 15 === 0 || tsh) drawLive(); } else drawVod();
         }, 1000);
         TV.pushNav(screen);
     }
@@ -311,14 +317,105 @@
         var tr = TV.player.tracks(), audio = tr.filter(function (t) { return t.type === "AUDIO"; }), curA = TV.player.currentTrack("AUDIO");
         var codecs = { "audio/x-ac3": "Dolby Digital", "audio/ac3": "Dolby Digital", "audio/x-eac3": "Dolby Digital Plus", "audio/eac3": "Dolby Digital Plus", "audio/mpeg": "MPEG",
                        "audio/x-dts": "DTS", "audio/dts": "DTS", "audio/mp4a-latm": "AAC", "audio/aac": "AAC", "audio/x-opus": "Opus", "audio/opus": "Opus", "audio/x-truehd": "Dolby TrueHD" };
-        if (!audio.length) return [{ label: T("Only one audio track"), run: function () {} }];
-        return audio.map(function (a, i) {
+        var items;
+        if (!audio.length) {
+            var st = TV.player.stats() || {};
+            items = [{ label: T("Sound of the Video"), sub: [codecName(st.acodec), chName(st.channels)].filter(Boolean).join(" · "), check: true, run: function () { closePop(); } }];
+        } else items = audio.map(function (a, i) {
             var cn = codecs[String(a.codec).toLowerCase()] || String(a.codec || "").replace(/^audio\/(x-)?/i, "").toUpperCase();
             var extra = [a.channels ? (a.channels >= 8 ? "7.1" : a.channels >= 6 ? "5.1" : a.channels == 2 ? T("Stereo") : "") : "", cn].filter(Boolean).join(" · ");
             return { label: langName(a.lang) || T("Track {n}", { n: i + 1 }), sub: extra, check: a.index === curA, run: function () {
                 TV.player.selectTrack("AUDIO", a.index); TV.log("audio track " + a.index + " (" + a.lang + ")"); closePop();
             } };
         });
+        // the language you hear now, for the next movies and episodes
+        var now = null;
+        audio.forEach(function (a) { if (a.index === curA) now = a; });
+        var l = now && norm(now.lang);
+        if (audio.length > 1 && l && LANG_NAMES[l] && wantLang(TV.pref("audioLang")) !== l) {
+            items.push({ head: T("Settings") });
+            items.push({ label: T("Always Start in {lang}", { lang: LANG_NAMES[l] }), sub: T("Movies and series that have it"), run: function () {
+                TV.setPref("audioLang", l); TV.toast(T("Audio language: {lang}", { lang: LANG_NAMES[l] })); closePop();
+            } });
+        }
+        return items;
+    }
+
+    /* ---------- Quality: the channel's versions (4K, FHD, HD…) and the stream's own qualities ---------- */
+    function variantsOf(c) {
+        if (!c) return [];
+        if (c.variants && c.variants.length > 1) return c.variants;
+        for (var i = 0; i < ctx.length; i++) if (ctx[i].variants && ctx[i].variants.some(function (v) { return v.id === c.id; })) return ctx[i].variants;
+        return [];
+    }
+    function hasQuality() { return (mode === "live" && variantsOf(ch).length > 1) || !!(streamQ && streamQ.list.length > 1); }
+    function watchQualities() {
+        var pc = TV.player.current();
+        if (pc !== qFor) { qFor = pc; streamQ = null; qAsked = false; }
+        if (!pc || qAsked || TV.player.state() !== "PLAYING") return;
+        qAsked = true;
+        TV.player.qualities().then(function (q) {
+            if (!open || TV.player.current() !== pc) return;
+            var had = hasQuality();
+            streamQ = q;
+            if (q) TV.log("stream qualities: " + q.list.map(function (x) { return x.h ? x.h + "p" : mbps(x.bw); }).join(", ") + (q.native ? " (player)" : ""));
+            if (hasQuality() !== had) { if (mode === "live") drawLive(); else { vb = null; drawVod(); } }
+        });
+    }
+    function qName(q) { return q.h ? q.h + "p" + (q.h >= 2000 ? " · 4K" : q.h >= 1080 ? " · Full HD" : q.h >= 720 ? " · HD" : "") : mbps(q.bw); }
+    function qualityItems() {
+        var items = [], vs = mode === "live" ? variantsOf(ch) : [];
+        if (vs.length > 1) {
+            items.push({ head: T("Versions of This Channel") });
+            vs.forEach(function (v) {
+                items.push({ label: v.q || T("Standard"), sub: v.raw || v.name, check: !!ch && v.id === ch.id, run: function () {
+                    closePop();
+                    if (!ch || v.id === ch.id) return;
+                    prevCh = ch; ch = v;
+                    errBox.classList.remove("is-on");
+                    drawLive(); show();
+                    TV.live.playChannel(v, TV.player.FULL); if (onZap) onZap(v);
+                } });
+            });
+        }
+        if (streamQ && streamQ.list.length > 1) {
+            items.push({ head: T("Stream Quality") });
+            var pick = function (id) { return function () { closePop(); streamQ.current = id; stateBox.classList.add("is-on"); TV.player.setQuality(id); show(); }; };
+            items.push({ label: T("Automatic"), sub: T("The best your connection allows"), check: streamQ.current === "auto", run: pick("auto") });
+            streamQ.list.forEach(function (q) { items.push({ label: qName(q), sub: q.bw ? mbps(q.bw) : "", check: streamQ.current === q.id, run: pick(q.id) }); });
+        }
+        if (!items.length) items.push({ label: T("Only one quality"), run: function () { closePop(); } });
+        return items;
+    }
+
+    /* ---------- Stream Info: what plays, as the player sees it (kept current while it is open) ---------- */
+    function mbps(b) { b = +b || 0; return b >= 1e6 ? (b / 1e6).toFixed(b >= 1e7 ? 0 : 1) + " Mb/s" : Math.round(b / 1000) + " kb/s"; }
+    var CODECS = [[/^(avc|h\.?264|x264)/, "H.264"], [/^(hvc|hev|h\.?265|x265)/, "HEVC"], [/^av0?1/, "AV1"], [/^vp0?9/, "VP9"], [/^vp0?8/, "VP8"],
+                  [/^(mpeg2|mp2v|mpeg-2|mpeg2video)/, "MPEG-2"], [/^(mp4a\.(69|6b|40\.34)|mp3|mpga)/, "MP3"], [/^(mp4a|aac|mpeg4-generic)/, "AAC"],
+                  [/^(ac-?3|dolby ?digital$)/, "Dolby Digital"], [/^(ec-?3|e-?ac-?3)/, "Dolby Digital Plus"], [/^ac-?4/, "Dolby AC-4"], [/^(true-?hd|mlp)/, "Dolby TrueHD"], [/^(dolby-vision|dv(h|a)[e1v])/, "Dolby Vision"],
+                  [/^dts[-.]?(hd|h|l|ma)/, "DTS-HD"], [/^dts/, "DTS"], [/^opus/, "Opus"], [/^flac/, "FLAC"], [/^(mpeg|mp2|mp1)/, "MPEG"], [/^(pcm|lpcm|raw)/, "PCM"]];
+    function codecName(c) {
+        var x = String(c || "").toLowerCase().replace(/^(video|audio)\//, "").replace(/^(x-|vnd\.)/, "").trim();
+        if (!x) return "";
+        for (var i = 0; i < CODECS.length; i++) if (CODECS[i][0].test(x)) return CODECS[i][1];
+        return x.toUpperCase();
+    }
+    function chName(n) { n = +n || 0; return n >= 8 ? "7.1" : n >= 6 ? "5.1" : n === 2 ? T("Stereo") : n === 1 ? "Mono" : n ? n + " ch" : ""; }
+    function infoItems() {
+        var s = TV.player.stats() || {}, items = [];
+        function row(label, value) { if (value) items.push({ label: label, value: value, run: function () {} }); }
+        var fps = +s.fps ? Math.round(+s.fps * 100) / 100 : 0;
+        row(T("Picture"), s.w ? s.w + " × " + s.h + (fps ? " · " + T("{n} fps", { n: fps }) : "") : "");
+        row(T("Video Format"), [codecName(s.vcodec), s.hdr || ""].filter(Boolean).join(" · "));
+        row(T("Video Bitrate"), +s.vbitrate > 0 ? mbps(s.vbitrate) : "");
+        row(T("Sound"), [codecName(s.acodec), chName(s.channels), +s.rate ? (s.rate >= 1000 ? Math.round(s.rate / 100) / 10 : s.rate) + " kHz" : "", +s.abitrate > 0 ? mbps(s.abitrate) : ""].filter(Boolean).join(" · "));
+        row(T("Connection Speed"), +s.bandwidth > 0 ? mbps(s.bandwidth) : "");
+        row(T("Buffer"), s.buffered !== undefined && s.buffered >= 0 ? T("{n} s ahead", { n: Math.round(s.buffered) }) : "");
+        row(T("Dropped Frames"), s.dropped !== undefined ? String(s.dropped) + (s.frames ? " / " + s.frames : "") : "");
+        if (streamQ && streamQ.list.length > 1) row(T("Stream Quality"), streamQ.current === "auto" ? T("Automatic") : qName(streamQ.list.filter(function (q) { return q.id === streamQ.current; })[0] || {}));
+        row(T("Stream"), [s.format || "", s.engine || ""].filter(Boolean).join(" · "));
+        if (items.length < 2) items.unshift({ label: T("Waiting for the picture…"), run: function () {} });
+        return items;
     }
     /* Picture Size: the whole picture (black bars if needed), stretched to the whole screen, or the shape the video asks for */
     function pictureItems() {
@@ -329,7 +426,9 @@
             return { label: m[1], sub: m[2], check: m[0] === cur, run: function () { TV.setPref("pictureMode", m[0]); TV.player.setPicture(m[0]); closePop(); } };
         });
     }
-    function itemsFor(kind) { return kind === "subs" ? subsItems() : kind === "picture" ? pictureItems() : audioItems(); }
+    function itemsFor(kind) { return kind === "subs" ? subsItems() : kind === "picture" ? pictureItems() : kind === "quality" ? qualityItems() : kind === "info" ? infoItems() : audioItems(); }
+    var POP_TITLE = { subs: "Subtitles", picture: "Picture Size", quality: "Quality", info: "Stream Info", audio: "Audio" };
+    var BTN_ICON = { subs: "cc", audio: "speaker", quality: "quality", picture: "aspect", info: "info" };
     function openPop(kind) {
         pop = { kind: kind, index: 0 };
         if (kind !== "sync") {
@@ -356,14 +455,14 @@
         var items = pop.items = itemsFor(pop.kind);
         if (pop.index >= items.length) pop.index = items.length - 1;
         while (items[pop.index] && items[pop.index].head) pop.index++;
-        var html = "<div class='osd__pophead'>" + esc(pop.kind === "subs" ? T("Subtitles") : pop.kind === "picture" ? T("Picture Size") : T("Audio")) + "</div><div class='osd__poplist'>";
+        var html = "<div class='osd__pophead'>" + esc(T(POP_TITLE[pop.kind] || "Audio")) + "</div><div class='osd__poplist'>";
         items.forEach(function (it, i) {
             if (it.head) { html += "<div class='osd__popsec'>" + esc(it.head) + "</div>"; return; }
             html += "<div class='osd__popitem" + (i === pop.index ? " is-focused" : "") + "' data-i='" + i + "'><span class='osd__popcheck'>" + (it.check ? TV.icon("check", 24) : "") + "</span>" +
                 "<span class='osd__poptxt'><b>" + esc(it.label) + "</b>" + (it.sub ? "<small>" + esc(it.sub) + "</small>" : "") + "</span>" + (it.value ? "<em>" + esc(it.value) + "</em>" : "") + "</div>";
         });
         popEl.innerHTML = html + "</div>";
-        popEl.className = "osd__pop is-on";
+        popEl.className = "osd__pop is-on" + (pop.kind === "info" ? " is-info" : "");
         var f = popEl.querySelector(".is-focused"), listBox = popEl.querySelector(".osd__poplist");
         if (f && listBox) listBox.scrollTop = Math.max(0, f.offsetTop - listBox.clientHeight / 2 + f.offsetHeight / 2);
     }
@@ -407,13 +506,16 @@
 
     /* ---------- live ---------- */
     function liveIcons() {
-        var tr = TV.player.tracks(), a = tr.filter(function (t) { return t.type === "AUDIO"; }).length, s = tr.filter(function (t) { return t.type === "TEXT"; }).length;
-        var out = [];
+        var s = TV.player.tracks().filter(function (t) { return t.type === "TEXT"; }).length, out = [];
+        if (tsh) out.push("golive");                          // behind live: a button to catch up (no Stop key on many remotes)
+        if (tsOn()) out.push("ts");
         if (s) out.push("subs");
-        if (a > 1) out.push("audio");
-        out.push("picture");
+        out.push("audio");
+        if (hasQuality()) out.push("quality");
+        out.push("picture", "info");
         return out;
     }
+    function vodIcons() { return ["subs", "audio"].concat(hasQuality() ? ["quality"] : [], ["picture", "info"]); }
     function drawLive() {
         if (!ch) return;
         var n = TV.epg.now(ch), cur = n && n.cur, next = n && n.next, logo = el("div", "osd__logo");
@@ -426,12 +528,17 @@
             "<div class='osd__title'>" + esc(cur ? cur[2] : T("No programme information")) + "</div>" +
             (cur ? "<div class='osd__time'><span>" + TV.hhmm(cur[0]) + "</span><div class='bar'><i style='width:" + Math.round(TV.epg.progress(cur) * 100) + "%'></i></div><span>" + TV.hhmm(cur[1]) + "</span><span>" +
                 esc(T("{n} min left", { n: Math.max(1, Math.round((cur[1] - Date.now()) / 60000)) })) + "</span></div>" : "") +
-            (next ? "<div class='osd__next'>" + esc(T("Next")) + " · <b>" + TV.hhmm(next[0]) + "</b>  " + esc(next[2]) + "</div>" : "");
+            (next ? "<div class='osd__next'>" + esc(T("Next")) + " · <b>" + TV.hhmm(next[0]) + "</b>  " + esc(next[2]) + "</div>" : "") + tsLine();
         bar.appendChild(txt);
         var icons = liveIcons();
         if (icons.length) {
             var box = el("div", "pv__icons osd__liveicons");
-            icons.forEach(function (k, i) { box.appendChild(el("div", "pv__btn" + (zone === "icons" && i === iconIndex ? " is-focused" : ""), TV.icon(k === "subs" ? "cc" : k === "audio" ? "speaker" : "aspect", 30))); });
+            if (iconIndex >= icons.length) iconIndex = icons.length - 1;
+            icons.forEach(function (k, i) {
+                var on = zone === "icons" && i === iconIndex ? " is-focused" : "";
+                if (k === "golive") { box.appendChild(el("div", "pv__btn pv__btn--text" + on, TV.icon("fwd10", 24) + "<span>" + esc(T("Back to Live")) + "</span>")); return; }
+                box.appendChild(el("div", "pv__btn" + on, TV.icon(k === "ts" ? (tsh && tsh.paused ? "play" : "pause") : BTN_ICON[k], 30)));
+            });
             bar.appendChild(box);
         }
     }
@@ -447,6 +554,7 @@
     }
     function zapTo(c) {
         if (!c || (ch && c.id === ch.id)) return;
+        if (tsh) tsLive(true);
         prevCh = ch; ch = c;
         errBox.classList.remove("is-on");
         drawLive(); show();
@@ -483,9 +591,151 @@
             { label: T("Watch in Multiview"), icon: "grid", run: function () { var c = ch; finish(); TV.multiview.open([c]); } }
         ];
         if (liveIcons().indexOf("subs") >= 0) items.push({ label: T("Subtitles"), icon: "cc", run: function () { openPop("subs"); } });
-        if (liveIcons().indexOf("audio") >= 0) items.push({ label: T("Audio"), icon: "speaker", run: function () { openPop("audio"); } });
+        items.push({ label: T("Audio"), icon: "speaker", run: function () { openPop("audio"); } });
+        if (hasQuality()) items.push({ label: T("Quality"), icon: "quality", run: function () { openPop("quality"); } });
+        items.push({ label: T("Stream Info"), icon: "info", run: function () { openPop("info"); } });
+        if (tsh) items.unshift({ label: T("Back to Live"), icon: "fwd10", run: function () { tsLive(); } });
+        else if (tsOn()) items.unshift({ label: T("Pause Live TV"), icon: "pause", run: function () { tsPause(); } });
         sleepItem(items);
         TV.menu(ch.num + "  " + ch.name, items);
+    }
+
+    /* ---------- timeshift: pause a channel, go back in it ----------
+       ⏯ (or the bar's first button, or OK while paused) pauses: the helper service (js/helper.js) starts keeping the
+       channel from that moment and the player then reads it from the service, so the provider sees one connection.
+       While behind live: ◀ ▶ 10 s (held: 30 s), ⏯ pause again, ⏹ or Back to Live (menu) to catch up. Another channel,
+       or leaving full screen, goes back to live and the service lets the channel go. */
+    function tsOn() { return TV.pref("timeshift") !== false && !!TV.helper && !!TV.helper.tsStart && mode === "live"; }
+    function tsSource(c) {
+        var cur = TV.player.current(), u = (cur && cur.url) || D.streamUrl(c);   // the real address (a portal's already asked)
+        if (/^https?:\/\/(127\.0\.0\.1|localhost)[:\/]/i.test(u)) return null;
+        // an Xtream channel in HLS: its MPEG-TS address (the service keeps MPEG-TS)
+        if (/\.m3u8(\?|$)/i.test(u)) { var src = D.sourceOf(c); if (src && src.type === "xtream") u = u.replace(/\.m3u8(\?|$)/i, ".ts$1"); else return null; }
+        return /^https?:\/\//i.test(u) ? u : null;
+    }
+    /* The moment shown (ms since 1970): where the copy started plus how far the player went in it */
+    function tsNow() {
+        if (!tsh) return Date.now();
+        if (tsh.paused || tsh.start === null || tsh.pos0 === null) return tsh.at;
+        return Math.min(Date.now(), tsh.start + Math.max(0, TV.player.position() * 1000 - tsh.pos0));
+    }
+    function tsPlayFrom(t, thenPause) {
+        var my = tsh;
+        TV.helper.tsInfo(my.id).then(function (info) {
+            if (tsh !== my) return;
+            my.from = info.from || my.from; my.segs = info.segs || [];
+            var start = my.segs.length ? my.segs[0] : t;
+            my.segs.forEach(function (s) { if (s <= t) start = s; });
+            my.start = start; my.pos0 = null; my.at = start; my.paused = false; my.wantPause = !!thenPause; my.busy = false;
+            stateBox.classList.add("is-on");
+            TV.live.playChannel(my.ch, TV.player.FULL, TV.helper.tsUrl(my.id, start), {
+                onTime: function (ms) {
+                    if (tsh !== my) return;
+                    if (my.pos0 === null) my.pos0 = ms;
+                    if (my.wantPause) { my.wantPause = false; my.at = tsNow(); my.paused = true; my.pausedAt = Date.now(); TV.player.pause(); stateBox.classList.remove("is-on"); drawLive(); show(0); }
+                },
+                onError: function () { if (tsh !== my) return false; tsLost(); return true; }
+            });
+            drawLive(); show(0);
+        }, function () { if (tsh === my) tsLost(); });
+    }
+    function tsPause() {
+        if (!tsOn() || !ch) return false;
+        if (tsh) {
+            if (tsh.busy) return true;
+            if (tsh.paused) { tsResume(); return true; }
+            tsh.at = tsNow(); tsh.paused = true; tsh.pausedAt = Date.now();
+            TV.player.pause(); drawLive(); show(0);
+            return true;
+        }
+        var url = tsSource(ch);
+        if (!url) { TV.toast(T("Pause is not available for this channel.")); return true; }
+        var c = ch, t0 = Date.now(), my;
+        TV.player.pause();
+        my = tsh = { id: null, ch: c, at: t0, from: t0, segs: [], start: null, pos0: null, paused: true, pausedAt: t0, busy: true };
+        drawLive(); show(0);
+        TV.log("timeshift: pause " + c.name);
+        function started(info) {
+            if (tsh !== my) { TV.helper.tsStop(); return; }
+            my.id = info.id; my.from = info.from || t0;
+            tsPlayFrom(t0, true);                          // the first moment kept, paused
+        }
+        TV.helper.tsStart(url).then(started, function (e) {
+            if (tsh !== my) return;
+            if (e.old) {
+                tsh = null; TV.player.resume(); drawLive();
+                TV.toast(TV.ANDROID ? T("Pausing live TV needs the new version of the app (.apk) once.") : T("Pausing live TV needs the new install once (APL Launcher Setup or the new package)."), true);
+                return;
+            }
+            // one connection at a time at some providers: the player lets go, the service tries again
+            TV.log("timeshift: " + e.message + ", once more without the player");
+            TV.player.stop();
+            setTimeout(function () {
+                if (tsh !== my) return;
+                TV.helper.tsStart(url).then(started, function (e2) {
+                    if (tsh !== my) return;
+                    TV.log("timeshift: " + e2.message);
+                    tsh = null; TV.toast(T("Pause is not available for this channel."));
+                    TV.live.playChannel(c, TV.player.FULL); drawLive();
+                });
+            }, 700);
+        });
+        return true;
+    }
+    function tsResume() {
+        if (!tsh || tsh.busy || !tsh.paused) return;
+        // a short pause: the same stream goes on (the service waited for it); a long one: opened again where it was
+        if (tsh.start !== null && tsh.pos0 !== null && Date.now() - tsh.pausedAt < 60000) {
+            var pos = TV.player.position() * 1000;
+            tsh.start = tsh.at; tsh.pos0 = pos; tsh.paused = false;
+            TV.player.resume(); drawLive(); show();
+            return;
+        }
+        tsPlayFrom(tsh.at, false);
+    }
+    function tsJump(dir) {
+        if (!tsh || tsh.busy) return;
+        if (tsTarget === null) tsTarget = tsNow();
+        var step = TV.isHeld() ? 30000 : 10000;
+        tsTarget = Math.max(tsh.from || 0, Math.min(Date.now(), tsTarget + dir * step));
+        TV.sound.tick(); drawLive(); show(0);
+        clearTimeout(tsJumpTimer);
+        tsJumpTimer = setTimeout(function () {
+            var t = tsTarget; tsTarget = null;
+            if (!tsh || t === null) return;
+            if (Date.now() - t < 6000) { tsLive(); return; }       // back at the live edge
+            tsPlayFrom(t, false);
+        }, 800);
+    }
+    function tsLive(quiet) {
+        if (!tsh) return;
+        var c = tsh.ch;
+        tsh = null; tsTarget = null; clearTimeout(tsJumpTimer);
+        TV.helper.tsStop();
+        TV.log("timeshift: back to live");
+        if (quiet) return;
+        TV.live.playChannel(c, TV.player.FULL);
+        if (open) { drawLive(); show(); }
+    }
+    function tsLost() {
+        if (!tsh) return;
+        TV.toast(T("The paused channel was lost: back to live."));
+        tsLive();
+    }
+    function tsTick() {
+        if (!tsh || !tsh.id || ++tsPoll % 3) return;
+        var my = tsh;
+        TV.helper.tsInfo(my.id).then(function (i) { if (tsh === my) { my.from = i.from || my.from; my.segs = i.segs || my.segs; if (i.err && !i.live) TV.log("timeshift: " + i.err); } },
+                                     function () { if (tsh === my) tsLost(); });
+    }
+    function tsLine() {
+        if (!tsh) return "";
+        var now = Date.now(), from = Math.min(tsh.from || now, now - 1000), at = tsTarget !== null ? tsTarget : tsNow(), behind = Math.max(0, now - at);
+        var pct = TV.clamp((at - from) / (now - from) * 100, 0, 100);
+        var label = tsh.busy ? T("Pausing…") : behind < 4000 ? T("Live") : "−" + TV.duration(Math.round(behind / 1000));
+        return "<div class='osd__ts" + (tsh.paused ? " is-paused" : "") + "'><span class='osd__tsicon'>" + TV.icon(tsh.paused ? "pause" : "play", 22) + "</span>" +
+            "<div class='bar'><i style='width:" + pct.toFixed(1) + "%'></i></div><b>" + esc(label) + "</b></div>" +
+            "<div class='osd__tshint'>" + esc(T("◀ ▶ 10 s  ·  Play/Pause  ·  ▲ Back to Live")) + "</div>";
     }
 
     /* ---------- movies and episodes ---------- */
@@ -552,16 +802,16 @@
         return t;
     }
     function buildVodBar() {
-        var tabs = vodTabs();
+        var tabs = vodTabs(), kinds = vodIcons();
         bar.innerHTML = "<div class='pv'><div class='pv__top'><div class='pv__titles'><div class='pv__subline'><span class='pv__age'></span><span class='pv__sub'></span></div><div class='pv__title'></div></div>" +
-            "<div class='pv__icons'><div class='pv__btn'>" + TV.icon("cc", 30) + "</div><div class='pv__btn'>" + TV.icon("speaker", 30) + "</div><div class='pv__btn'>" + TV.icon("aspect", 30) + "</div></div></div>" +
+            "<div class='pv__icons'>" + kinds.map(function (k) { return "<div class='pv__btn'>" + TV.icon(BTN_ICON[k], 30) + "</div>"; }).join("") + "</div></div>" +
             "<div class='osd__seek'><div class='bar'><i></i><em></em><b class='osd__bubble'><span></span><small></small></b><u></u></div></div>" +
             "<div class='pv__times'><span class='osd__now'></span><span class='pv__pp'></span><span class='pv__end'></span><span class='osd__left'></span></div>" +
             "<div class='pv__tabs'>" + tabs.map(function (t) { return "<div class='pv__tab'>" + esc(t.label) + "</div>"; }).join("") + "</div></div>";
         var q = function (s) { return bar.querySelector(s); };
         vb = { root: bar.firstChild, age: q(".pv__age"), pp: q(".pv__pp"), title: q(".pv__title"), sub: q(".pv__sub"), now: q(".osd__now"), left: q(".osd__left"), end: q(".pv__end"),
                fill: q(".bar i"), range: q(".bar em"), bubble: q(".osd__bubble"), bt: q(".osd__bubble span"), bd: q(".osd__bubble small"), dot: q(".bar u"), seek: q(".osd__seek"),
-               icons: [].slice.call(bar.querySelectorAll(".pv__btn")), tabs: [].slice.call(bar.querySelectorAll(".pv__tab")), tabDefs: tabs, last: {} };
+               icons: [].slice.call(bar.querySelectorAll(".pv__btn")), tabs: [].slice.call(bar.querySelectorAll(".pv__tab")), tabDefs: tabs, kinds: kinds, last: {} };
         vb.title.textContent = vod.title;
         vb.sub.textContent = vod.sub || "";
         vb.age.innerHTML = vod.age || "";
@@ -687,6 +937,8 @@
         var items = [{ label: T("Start Over"), icon: "restart", run: function () { scrub = null; TV.player.seekTo(0); show(); } },
                      { label: T("Subtitles"), icon: "cc", run: function () { openPop("subs"); } },
                      { label: T("Audio"), icon: "speaker", run: function () { openPop("audio"); } }];
+        if (hasQuality()) items.push({ label: T("Quality"), icon: "quality", run: function () { openPop("quality"); } });
+        items.push({ label: T("Stream Info"), icon: "info", run: function () { openPop("info"); } });
         if (vod && vod.prev) items.push({ label: T("Previous Episode") + "  ·  " + vod.prev.label, icon: "back10", run: function () { goEpisode(vod.prev); } });
         if (vod && vod.next) items.push({ label: T("Next Episode") + "  ·  " + vod.next.label, icon: "fwd10", run: function () { goEpisode(vod.next); } });
         sleepItem(items);
@@ -720,6 +972,7 @@
     function buffering(b) { stateBox.classList.toggle("is-on", !!b); if (!b) errBox.classList.remove("is-on"); }
     function finish(keepPlayer) {
         var last = ch;
+        if (tsh) tsLive();                                // the picture under Live TV is live again
         try {
             if (mode === "vod" && vod) {
                 var r = D.resumeOf(vod.resumeKey);
@@ -768,6 +1021,14 @@
             if (TV.isBack(code) || code === K.UP || code === K.DOWN) { zone = "live"; drawLive(); show(); return; }
             return;
         }
+        // timeshift: ⏯ pauses and resumes, ◀ ▶ (or ⏪ ⏩) 10 s back or forward (held: 30 s), ⏹ back to live
+        if ((code === K.PAUSE || code === K.PLAYPAUSE) && !(tsh && tsh.paused) && tsPause()) return;
+        if ((code === K.PLAY || code === K.PLAYPAUSE) && tsh && tsh.paused) { tsResume(); return; }
+        if (tsh && (code === K.LEFT || code === K.RW)) { tsJump(-1); return; }
+        if (tsh && (code === K.RIGHT || code === K.FF)) { tsJump(1); return; }
+        if (tsh && code === K.STOP) { tsLive(); return; }
+        if (tsh && code === K.UP) { zone = "icons"; iconIndex = 0; TV.sound.tick(); drawLive(); show(0); return; }
+        if (code === K.RW && tsOn()) { TV.toast(T("Pause the channel first: APL TV keeps it from that moment.")); return; }
         switch (code) {
             case K.UP: case K.CH_UP: zap(-1); return;
             case K.DOWN: case K.CH_DOWN: zap(1); return;
@@ -836,7 +1097,8 @@
         ok: function () {
             if (pop) { popOk(); return; }
             if (mode === "live") {
-                if (zone === "icons") { var k = liveIcons()[iconIndex]; if (k) openPop(k); return; }
+                if (zone === "icons") { var k = liveIcons()[iconIndex]; if (k === "golive") { zone = "live"; iconIndex = 0; tsLive(); return; } if (k === "ts") { if (tsh && tsh.paused) tsResume(); else tsPause(); drawLive(); return; } if (k) openPop(k); return; }
+                if (tsh && tsh.paused && !root.classList.contains("has-list")) { tsResume(); return; }
                 if (root.classList.contains("has-list")) {
                     var c = vlist.current();
                     if (c && ch && c.id === ch.id) closeList(); else if (c) { zapTo(c); vlist.refresh(); }
@@ -846,7 +1108,7 @@
                 return;
             }
             if (zone === "next") { goEpisode(vod.next); return; }
-            if (zone === "icons") { openPop(["subs", "audio", "picture"][iconIndex] || "subs"); return; }
+            if (zone === "icons") { openPop((vb && vb.kinds[iconIndex]) || "subs"); return; }
             if (zone === "tabs") {
                 var t = vb.tabDefs[tabIndex];
                 if (t && t.id === "prev") goEpisode(vod.prev);

@@ -199,22 +199,25 @@
         if (!cards) return;
         for (var k in cards.cards) { var it = cards.items[k]; cards.cards[k].classList.toggle("is-playing", !!(playing && it && it.id === playing.id)); }
     }
-    function playChannel(ch, rect) {
+    /* url: another address for the channel (timeshift: the helper's copy of it); more: callbacks of the caller too */
+    function playChannel(ch, rect, url, more) {
         if (!built) build();
         playing = ch;
         markPlaying();
         wait.classList.remove("is-hidden");
         D.pushRecent(ch.id);
         TV.setPref("lastChannel", ch.id);
-        TV.player.play(D.streamUrl(ch), {
+        more = more || {};
+        TV.player.play(url || D.streamUrl(ch), {
             live: true, rect: rect || FULL, uhd: ch.q === "4K",
             onBuffering: function (b) { if (TV.osd.isOpen()) TV.osd.buffering(b); else wait.classList.toggle("is-hidden", !b); },
             onPlaying: function () { wait.classList.add("is-hidden"); if (TV.osd.isOpen()) TV.osd.buffering(false); },
             // the picture moves: no spinner left, in Live TV or full screen
-            onTime: function () { if (!wait.classList.contains("is-hidden")) wait.classList.add("is-hidden"); if (TV.osd.isOpen()) TV.osd.buffering(false); },
+            onTime: function (ms) { if (!wait.classList.contains("is-hidden")) wait.classList.add("is-hidden"); if (TV.osd.isOpen()) TV.osd.buffering(false); if (more.onTime) more.onTime(ms); },
             onReconnect: function () { if (TV.osd.isOpen()) TV.osd.buffering(true); else wait.classList.remove("is-hidden"); },
             onError: function (e) {
                 TV.log("channel " + ch.name + " failed: " + e);
+                if (more.onError && more.onError(e) === true) return;
                 wait.classList.add("is-hidden");
                 if (TV.osd.isOpen()) TV.osd.error(T("This channel is not available right now."), String(e));
                 else TV.toast(T("This channel is not available right now."));
@@ -446,5 +449,5 @@
     setInterval(function () { view.refresh(); }, 60000);
     TV.views = TV.views || {};
     TV.views.live = view;
-    TV.live = { play: function (ch, ctx) { fullScreen(ch, ctx); }, findNumber: findNumber, playChannel: function (ch, rect) { playChannel(ch, rect); }, pickCategory: pickCategory, guideMenu: guideMenu };
+    TV.live = { play: function (ch, ctx) { fullScreen(ch, ctx); }, findNumber: findNumber, playChannel: function (ch, rect, url, more) { playChannel(ch, rect, url, more); }, pickCategory: pickCategory, guideMenu: guideMenu };
 })(window);

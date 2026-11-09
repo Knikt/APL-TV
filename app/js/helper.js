@@ -117,6 +117,26 @@
             });
         },
         session: function () { return call("/session", { method: "POST", body: "{}" }).then(json); },
+        /* The phone editor (1.0.11): the playlist goes to the helper, the phone's changes come back */
+        editStart: function (data) {
+            return call("/edit/start", { method: "POST", timeout: 30000, body: JSON.stringify(data) }).then(function (r) {
+                if (r.status === 404 || r.status === 403) { var n = new Error("helper too old"); n.old = true; throw n; }
+                return json(r);
+            });
+        },
+        editPending: function (token) { return call("/edit/pending?k=" + encodeURIComponent(token), { timeout: 8000 }).then(json); },
+        editClose: function () { return call("/edit/close", { timeout: 5000 }).catch(function () {}); },
+        /* Timeshift (1.0.11): the service keeps the channel; the player reads it back from tsUrl */
+        tsStart: function (url) {
+            return call("/ts/start", { method: "POST", timeout: 30000, body: JSON.stringify({ url: url }) }).then(function (r) {
+                if (r.status === 404) { var n = new Error("helper too old"); n.old = true; throw n; }
+                if (r.status !== 200) { var e; try { e = new Error(JSON.parse(r.text).error); } catch (x) { e = new Error("HTTP " + r.status); } throw e; }
+                return json(r);
+            });
+        },
+        tsInfo: function (id) { return call("/ts/info?id=" + encodeURIComponent(id), { timeout: 6000 }).then(function (r) { if (r.status !== 200) throw new Error("none"); return json(r); }); },
+        tsStop: function () { return call("/ts/stop", { timeout: 5000 }).catch(function () {}); },
+        tsUrl: function (id, t) { return hosts()[baseIndex] + "/ts/stream.ts?id=" + encodeURIComponent(id) + "&t=" + Math.floor(t); },
         pending: function (token) { return call("/pending?k=" + encodeURIComponent(token), { timeout: 8000 }).then(json); },
         close: function () { return call("/session/close", { timeout: 5000 }).catch(function () {}); },
         shelf: function (data) { return call("/shelf", { method: "POST", timeout: 8000, body: JSON.stringify(data) }).catch(function () {}); },

@@ -16,8 +16,8 @@ A = os.path.join(ROOT, "app")
 # Load order (boot.js loads them one by one, in this order). *.local.js are never downloaded.
 SCRIPTS = [
     "js/lang-fr.js", "js/i18n.js", "js/keys.local.js", "js/dev.local.js", "js/core.js", "js/android.js", "js/nav.js", "js/qr.js", "js/helper.js",
-    "js/smart.js", "js/stalker.js", "js/data.js", "js/epg.js", "js/meta.js", "js/player.js", "js/ui.js", "js/home.js", "js/live.js", "js/guide.js",
-    "js/vod.js", "js/detail.js", "js/person.js", "js/search.js", "js/settings.js", "js/multiview.js", "js/osd.js", "js/voice.js",
+    "js/smart.js", "js/stalker.js", "js/media.js", "js/data.js", "js/epg.js", "js/meta.js", "js/player.js", "js/ui.js", "js/home.js", "js/live.js", "js/guide.js",
+    "js/vod.js", "js/library.js", "js/detail.js", "js/person.js", "js/search.js", "js/settings.js", "js/multiview.js", "js/osd.js", "js/voice.js",
     "js/saver.js", "js/updater.js", "js/app.js",
 ]
 STYLES = ["css/tv.css", "css/tv2.css"]

@@ -1,6 +1,7 @@
 /* ============================================================
    data.js: your playlists, turned into one tidy catalog.
-   Sources: M3U playlists and Xtream accounts (several allowed).
+   Sources: M3U playlists, Xtream accounts, Stalker portals and media
+   servers: Jellyfin, Emby, Plex (several allowed).
    An M3U address that is really an Xtream one (get.php?username=…)
    becomes an Xtream source: you get covers, plots and the TV guide.
    Catalog (kept in IndexedDB, refreshed every 6 hours in the background):
@@ -47,8 +48,9 @@
         if (src.type === "xtream") src.server = normServer(src.server);
         if (src.type === "m3u") src.url = String(src.url || "").trim();
         if (src.type === "stalker" && TV.stalker) { src.portal = TV.stalker.normPortal(src.portal); src.mac = TV.stalker.normMac(src.mac) || String(src.mac || "").trim(); }
+        if (src.type === "jellyfin" && TV.media) { src.server = TV.media.normServer(src.server); if (!String(src.name || "").trim()) src.autoName = true; }
         src.id = src.id || TV.uid();
-        src.name = String(src.name || "").trim() || hostName(src.type === "xtream" ? src.server : src.type === "stalker" ? src.portal : src.url) || T("My playlist");
+        src.name = String(src.name || "").trim() || hostName(src.type === "xtream" || src.type === "jellyfin" ? src.server : src.type === "stalker" ? src.portal : src.url) || T("My playlist");
         list.push(src);
         saveSources(list);
         return src;
@@ -158,6 +160,13 @@
     function loadStalker(src, progress) {
         if (!TV.stalker) return Promise.reject(new Error("no Stalker support"));
         return TV.stalker.load(src, progress, { id: src.id, v: CATALOG_V, at: Date.now(), type: "stalker", live: { cats: [], chans: [] }, movies: { cats: [], items: [] }, series: { cats: [], items: [] }, failed: {} });
+    }
+
+    /* ---------- media servers (Jellyfin, Emby, Plex): js/media.js, in the same catalog shape ---------- */
+    function isMedia(src) { return !!src && (src.type === "jellyfin" || src.type === "plex"); }
+    function loadMedia(src, progress) {
+        if (!TV.media) return Promise.reject(new Error("no media server support"));
+        return TV.media.load(src, progress, { id: src.id, v: CATALOG_V, at: Date.now(), type: src.type, live: { cats: [], chans: [] }, movies: { cats: [], items: [] }, series: { cats: [], items: [] }, failed: {} });
     }
 
     /* ---------- M3U ---------- */
@@ -288,6 +297,16 @@
             if (epg) m.epg.push({ src: src.id, url: epg, xtream: src.type === "xtream" });
         });
         if (tidyCats) ["live", "movies", "series"].forEach(function (k) { m[k].cats = S.sortCategories(m[k].cats); });
+        // your own order (set on the phone): the categories you placed first, the others after as they were
+        var ord = TV.pref("catOrder") || {};
+        ["live", "movies", "series"].forEach(function (k) {
+            var o = ord[k];
+            if (!o || !o.length) return;
+            var pos = {};
+            o.forEach(function (key, i) { if (!(key in pos)) pos[key] = i; });
+            m[k].cats = m[k].cats.map(function (c, i) { var p = pos[catKey(c)]; return [p === undefined ? 1e9 + i : p, i, c]; })
+                .sort(function (a, b) { return a[0] - b[0] || a[1] - b[1]; }).map(function (r) { return r[2]; });
+        });
         merged = m;
         applyOff();
         groupCache = {}; idxCache = {}; topLists = {}; genreLists = {}; trendLists = {};
@@ -296,7 +315,7 @@
 
     var retryTimers = {};
     function loadSource(src, progress) {
-        return (src.type === "xtream" ? loadXtream(src, progress) : src.type === "stalker" ? loadStalker(src, progress) : loadM3U(src, progress)).then(function (c) {
+        return (src.type === "xtream" ? loadXtream(src, progress) : src.type === "stalker" ? loadStalker(src, progress) : isMedia(src) ? loadMedia(src, progress) : loadM3U(src, progress)).then(function (c) {
             /* The movies or the series did not come (the provider too slow, an error): the ones from before stay,
                instead of an empty Movies tab until the next refresh, and APL TV asks again in 10 minutes. */
             var prev = cats[src.id], failed = c.failed || {}, missed = [];
@@ -625,6 +644,59 @@
         return list.sort(function (a, b) { return (!a.id) - (!b.id) || b.items - a.items; });
     }
     function offCats() { return offCount; }
+
+    /* ---------- edited on the phone (Settings > Edit on Your Phone, js/settings.js; the page: service.js) ----------
+       What the phone gets: the categories of each kind in their order (hidden or not), your groups, your favorites
+       and the channels' names to find them. What comes back: the same, changed. */
+    function editData() {
+        var out = { v: 1, kinds: {}, groups: chanGroups(), favs: favIds(), chans: [] };
+        if (!merged) return out;
+        var adult = TV.pref("showAdult");
+        ["live", "movies", "series"].forEach(function (k) {
+            out.kinds[k] = merged[k].cats.filter(function (c) { return adult || !c.adult; }).map(function (c) {
+                return { key: catKey(c), name: c.name + (c.srcName ? " (" + c.srcName + ")" : ""), count: c.count || 0, off: !!c.off };
+            });
+        });
+        var chans = merged.live.chans;
+        for (var i = 0; i < chans.length && out.chans.length < 40000; i++) {
+            var c = chans[i], ct = catOf(c);
+            if (!adult && ct.adult) continue;
+            out.chans.push([c.id, c.name + (c.q ? " " + c.q : ""), ct.name || ""]);
+        }
+        return out;
+    }
+    function applyPhoneEdit(d) {
+        if (!d || typeof d !== "object") return false;
+        var kinds = d.kinds || {}, one = TV.pref("hiddenCats") || {}, copy = {}, k, groups = TV.pref("hiddenGroups") || [], byKey = {};
+        for (k in one) copy[k] = one[k];
+        if (merged) ["live", "movies", "series"].forEach(function (x) { merged[x].cats.forEach(function (c) { byKey[catKey(c)] = c; }); });
+        var order = {};
+        ["live", "movies", "series"].forEach(function (x) {
+            var list = Array.isArray(kinds[x]) ? kinds[x] : null;
+            if (!list) return;
+            order[x] = [];
+            list.forEach(function (it) {
+                if (!it || typeof it.key !== "string") return;
+                order[x].push(it.key);
+                var c = byKey[it.key];
+                if (!c) return;
+                var off = !!it.off, inGroup = groups.indexOf(c.grp) >= 0;
+                if (off === inGroup) delete copy[it.key]; else copy[it.key] = off ? 1 : 0;
+            });
+        });
+        TV.setPref("hiddenCats", copy);
+        var ord = TV.pref("catOrder") || {}, newOrd = {};
+        ["live", "movies", "series"].forEach(function (x) { newOrd[x] = order[x] || ord[x] || []; });
+        TV.setPref("catOrder", newOrd);
+        if (Array.isArray(d.groups)) {
+            saveGroups(d.groups.filter(function (g) { return g && String(g.name || "").trim(); }).map(function (g) {
+                return { id: g.id ? String(g.id) : TV.uid(), name: String(g.name).trim().slice(0, 40), ids: (Array.isArray(g.ids) ? g.ids : []).map(String).slice(0, 2000) };
+            }));
+        }
+        if (Array.isArray(d.favs)) { TV.save("favs", d.favs.map(String).slice(0, 2000)); fire("favs"); }
+        rebuild();
+        return true;
+    }
     /* A provider category whose name carries a hidden theme ("FR| LGBT", "Horreur"): everything in it is hidden */
     var catThemeCache = {};
     function catNameHidden(name) {
@@ -971,6 +1043,7 @@
     }
     function vodInfo(item) {
         var src = sourceOf(item);
+        if (isMedia(src) && TV.media && item.kind === "movie") return Promise.resolve(TV.media.info(item));
         if (!src || src.type !== "xtream" || item.kind !== "movie") return Promise.resolve(null);
         return xApi(src, "get_vod_info", "vod_id=" + item.sid).catch(function () { return null; });
     }
@@ -985,6 +1058,7 @@
         var src = sourceOf(item);
         if (!src) return Promise.resolve({ seasons: {}, info: {} });
         if (src.type === "stalker" && TV.stalker) return TV.stalker.seriesInfo(src, item);
+        if (isMedia(src) && TV.media) return TV.media.seriesInfo(src, item);
         return xApi(src, "get_series_info", "series_id=" + item.seriesId).then(function (j) {
             var seasons = {};
             var eps = j && j.episodes || {};
@@ -1052,7 +1126,7 @@
         myList: myList, inMyList: inMyList, toggleMyList: toggleMyList,
         setResume: setResume, resumeOf: resumeOf, continueWatching: continueWatching, isDone: isDone, markWatched: markWatched, recentlyWatched: recentlyWatched,
         forget: forget, resumeChanged: resumeChanged,
-        isHidden: isHidden, setHidden: setHidden, preferVersion: preferVersion, setCatOff: setCatOff, setGroupOff: setGroupOff, offGroups: offGroups, offCats: offCats, hiddenList: hiddenList, unhide: unhide, versionKey: versionKey,
+        isHidden: isHidden, setHidden: setHidden, preferVersion: preferVersion, setCatOff: setCatOff, setGroupOff: setGroupOff, editData: editData, applyPhoneEdit: applyPhoneEdit, offGroups: offGroups, offCats: offCats, hiddenList: hiddenList, unhide: unhide, versionKey: versionKey,
         buildThemes: buildThemes, checkTheme: checkTheme, themesOn: themesOn, catNameHidden: catNameHidden,
         itemsIn: itemsIn, vodUrl: vodUrl, vodInfo: vodInfo, seriesInfo: seriesInfo, search: search,
         xApi: xApi, parseM3U: parseM3U, pack: pack, unpack: unpack, findTitles: findTitles, titleIndex: titleIndex, genreItems: genreItems,

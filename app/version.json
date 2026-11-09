@@ -1,8 +1,8 @@
 {
- "version": "1.0.10",
+ "version": "1.0.11",
  "loader": 1,
  "reinstall": "1.0.1",
- "notes": "Keep your playlist as it is (your order, your names) or let APL TV tidy it: asked once, and in Settings",
+ "notes": "Jellyfin, Emby and Plex as sources with their own tab, pause and rewind live TV, Stream Info and Quality in the player, a search keyboard like a computer's, and your playlist edited on your phone.",
  "platforms": {
   "tizen": {
    "reinstall": "1.0.1"
@@ -26,6 +26,7 @@
   "js/helper.js",
   "js/smart.js",
   "js/stalker.js",
+  "js/media.js",
   "js/data.js",
   "js/epg.js",
   "js/meta.js",
@@ -35,6 +36,7 @@
   "js/live.js",
   "js/guide.js",
   "js/vod.js",
+  "js/library.js",
   "js/detail.js",
   "js/person.js",
   "js/search.js",

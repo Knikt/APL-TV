@@ -230,7 +230,7 @@
 .osd__seek.is-scrubbing .bar u { transform: scale(1.4); }
 
 /* ---------- 7. Search: the list moves inside a full-screen frame ---------- */
-.search__results { top: 0; padding-top: 540px; box-sizing: border-box; }
+.search__results { top: 0; padding-top: 610px; box-sizing: border-box; }
 .search__in { will-change: transform; }
 .search__field, .kb { transition: transform 360ms var(--glide), opacity 240ms ease; }
 .is-results .kb { opacity: 0; transform: translateY(-30px); }
@@ -295,6 +295,21 @@
 .osd__popitem.is-focused small { color: #6e6e73; }
 .osd__popitem em { font-style: normal; font-size: 23px; color: rgba(255,255,255,0.6); flex: none; }
 .osd__popitem.is-focused em { color: #6e6e73; }
+/* Stream Info: a small table that stays current */
+.osd__pop.is-info { width: 780px; }
+/* timeshift: how far behind live */
+.osd__ts { display: flex; align-items: center; gap: 16px; margin-top: 14px; font-size: 24px; }
+.osd__ts .bar { flex: 1; }
+.osd__ts .bar i { background: #ff9f0a; }
+.osd__ts b { color: #ff9f0a; font-variant-numeric: tabular-nums; min-width: 110px; text-align: right; }
+.osd__tsicon { display: flex; color: #ff9f0a; }
+.osd__tshint { margin-top: 6px; font-size: 18px; color: rgba(255,255,255,0.55); }
+.pv__btn--text { width: auto; padding: 0 26px 0 20px; gap: 10px; font-size: 22px; font-weight: 600; white-space: nowrap; }
+.osd__pop.is-info .osd__popcheck { display: none; }
+.osd__pop.is-info .osd__popitem { padding: 8px 18px; font-size: 23px; }
+.osd__pop.is-info .osd__poptxt b { font-weight: 500; color: rgba(255,255,255,0.7); }
+.osd__pop.is-info .osd__popitem em { color: #fff; font-variant-numeric: tabular-nums; max-width: 470px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.osd__pop.is-info .osd__popitem.is-focused b, .osd__pop.is-info .osd__popitem.is-focused em { color: #1c1c1e; }
 .osd__sync { display: flex; align-items: center; justify-content: center; gap: 34px; padding: 18px 0 14px; font-size: 46px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .osd__sync span { font-size: 28px; opacity: 0.55; }
 .osd__pophint { padding: 0 30px 6px; font-size: 19px; line-height: 1.35; color: rgba(255,255,255,0.55); text-align: center; }
@@ -416,6 +431,8 @@
 .no-gap .pv__tabs > .dot { margin-left: calc(14px + 16px); }
 .no-gap .osd__popitem > * + * { margin-left: 12px; }
 .no-gap .osd__popitem > .dot { margin-left: calc(14px + 12px); }
+.no-gap .osd__ts > * + * { margin-left: 16px; }
+.no-gap .osd__ts > .dot { margin-left: calc(14px + 16px); }
 .no-gap .osd__sync > * + * { margin-left: 34px; }
 .no-gap .osd__sync > .dot { margin-left: calc(14px + 34px); }
 .no-gap .osd__nextbtn > * + * { margin-left: 10px; }

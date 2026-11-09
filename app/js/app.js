@@ -11,9 +11,9 @@
     "use strict";
 
     var TV = global.TV, el = TV.el, esc = TV.esc, T = TV.t, D = TV.data;
-    TV.VERSION = "1.0.10";
+    TV.VERSION = "1.0.11";
     TV.DONATE = "https://ko-fi.com/knikt";     // the Ko-fi page for donations (Settings > About, README, .github/FUNDING.yml)
-    var TABS = [
+    var BASE = [
         { id: "home", label: T("Home") },
         { id: "live", label: T("Live TV") },
         { id: "guide", label: T("Guide") },
@@ -22,9 +22,14 @@
         { id: "search", icon: "search", label: T("Search") },
         { id: "settings", icon: "gear", label: T("Settings") }
     ];
+    var TABS = BASE.slice(), mediaIds = "";
     var tabEls = [], tabIndex = 0, focusOn = "tabs", current = null;
 
+    /* The tabs, with one per media server (Plex, Jellyfin, Emby: js/library.js) after Series */
     function buildTabs() {
+        var media = TV.library ? TV.library.tabs() : [];
+        mediaIds = media.map(function (t) { return t.id + "=" + t.label; }).join(",");
+        TABS = BASE.slice(0, 5).concat(media, BASE.slice(5));
         var nav = TV.$("tabs");
         nav.innerHTML = "";
         tabEls = TABS.map(function (t) {
@@ -107,6 +112,19 @@
     function askQuit() {
         TV.alert({ title: T("Quit APL TV?"), buttons: [{ label: T("Quit"), run: function () { TV.player.stop(); TV.exit(); } }, { label: T("Cancel") }], focus: 1 });
     }
+
+    // a media server added or removed: its tab comes or goes
+    D.onChange(function () {
+        if (!TV.library || !tabEls.length) return;
+        var now = TV.library.tabs().map(function (t) { return t.id + "=" + t.label; }).join(",");
+        if (now === mediaIds) return;
+        var was = TABS[tabIndex] && TABS[tabIndex].id;
+        buildTabs();
+        var ids = TABS.map(function (t) { return t.id; });
+        if (current && ids.indexOf(current) < 0) { go("home"); return; }
+        tabIndex = Math.max(0, ids.indexOf(was));
+        paintTabs();
+    });
 
     TV.shell = {
         screen: screen, go: go, toTabs: toTabs, toView: toView,

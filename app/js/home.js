@@ -31,13 +31,14 @@
         var e = el("div", "empty");
         e.style.top = "300px";
         e.innerHTML = "<div class='empty__title'>" + esc(T("Welcome to APL TV")) + "</div><div class='empty__text'>" +
-            esc(T("Add your M3U playlist or your Xtream account: scan a QR code with your phone, or type it with the remote.")) + "</div>";
+            esc(T("Add your M3U playlist or your Xtream account: scan a QR code with your phone, or type it with the remote. Or your own media server: Jellyfin, Emby, Plex.")) + "</div>";
         var b1 = el("div", "btn btn--primary", TV.icon("phone", 30) + esc(T("Add from Your Phone")));
         var b2 = el("div", "btn", TV.icon("keyboard", 30) + esc(T("Use the Remote")));
-        e.appendChild(b1); e.appendChild(b2);
+        var b3 = el("div", "btn", TV.icon("film", 30) + esc(T("Your Media Server")));
+        e.appendChild(b1); e.appendChild(b2); e.appendChild(b3);
         page.appendChild(e);
-        heroNav = new TV.Nav({ onSelect: function (i) { if (i === 0) TV.setup.phone(); else TV.setup.remote(); } });
-        heroNav.setTiles([b1, b2]);
+        heroNav = new TV.Nav({ onSelect: function (i) { if (i === 0) TV.setup.phone(); else if (i === 1) TV.setup.remote(); else TV.setup.media(); } });
+        heroNav.setTiles([b1, b2, b3]);
         heroNav.blur();
         strips = [];
         TV.bg("");

@@ -79,11 +79,13 @@ js = (
     "global.APLTV_NO_START = true; var s = require(process.argv[1]); var fs = require('fs'), path = require('path'), out = process.argv[2];"
     "[['en', 'en-US'], ['fr', 'fr-FR']].forEach(function (l) {"
     " fs.writeFileSync(path.join(out, 'phone-' + l[0] + '.html'), s.phonePage(l[1], '__APLTV_TOKEN__', true));"
-    " fs.writeFileSync(path.join(out, 'expired-' + l[0] + '.html'), s.phonePage(l[1], '', false)); });"
+    " fs.writeFileSync(path.join(out, 'expired-' + l[0] + '.html'), s.phonePage(l[1], '', false));"
+    " fs.writeFileSync(path.join(out, 'edit-' + l[0] + '.html'), s.editPage(l[1], '__APLTV_TOKEN__', true));"
+    " fs.writeFileSync(path.join(out, 'edit-expired-' + l[0] + '.html'), s.editPage(l[1], '', false)); });"
     "process.exit(0);"          # service.js keeps a timer running: leave right away
 )
 subprocess.check_call(["node", "-e", js, os.path.join(A, "service", "service.js"), helper_dir])
-for name in ("phone-en.html", "phone-fr.html"):
+for name in ("phone-en.html", "phone-fr.html", "edit-en.html", "edit-fr.html"):
     if '"__APLTV_TOKEN__"' not in open(os.path.join(helper_dir, name), encoding="utf-8").read():
         sys.exit(name + ": the code placeholder is missing, update tools/make-android.py")
 

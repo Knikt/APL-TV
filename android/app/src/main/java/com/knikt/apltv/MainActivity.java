@@ -181,6 +181,10 @@ public class MainActivity extends Activity {
         @JavascriptInterface public void select(String type, int index) { player.select(type, index); }
         @JavascriptInterface public void subtitles(boolean on) { player.subtitles(on); }
         @JavascriptInterface public void property(String key, String value) { player.property(key, value); }
+        /* 1.0.11: Stream Info and the Quality button */
+        @JavascriptInterface public String stats() { return player.stats(); }
+        @JavascriptInterface public String videoTracks() { return player.videoJson(); }
+        @JavascriptInterface public void selectVideo(int index) { player.selectVideo(index); }
         @JavascriptInterface public void suspend() { player.suspend(); }
         @JavascriptInterface public void restore() { player.restore(); }
     }

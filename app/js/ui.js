@@ -670,8 +670,8 @@
         }
         function onKey(e) {
             var c = e.keyCode;
-            if (c === 13 || c === TV.KEY.DONE) { e.preventDefault(); finish(true); }
-            else if (c === TV.KEY.CANCEL || c === TV.KEY.RETURN || c === 27) { e.preventDefault(); finish(c === TV.KEY.RETURN ? true : false); }
+            if (c === 13 || c === TV.KEY.DONE) { e.preventDefault(); e.stopPropagation(); if (TV.swallowEnter) TV.swallowEnter(); finish(true); }
+            else if (c === TV.KEY.CANCEL || c === TV.KEY.RETURN || c === 27) { e.preventDefault(); e.stopPropagation(); if (TV.swallowEnter) TV.swallowEnter(); finish(c === TV.KEY.RETURN ? true : false); }
         }
         function onInput() { if (o.onInput) o.onInput(inp.value); }
         function onBlur() { setTimeout(function () { finish(true); }, 50); }

@@ -3,13 +3,19 @@
    An on-screen keyboard (no need for the Samsung one), results as you
    type: channels first, then movies, then series. Accents and case do
    not matter ("cine" finds "Ciné+").
+   The keyboard is laid out like a computer's (AZERTY in French, QWERTY
+   otherwise) or in alphabetical order (Settings > Display, or its own
+   key). Its last key opens the TV's own keyboard (Gboard on Android TV,
+   Samsung's or LG's), with the results as you type there too.
    ============================================================ */
 (function (global) {
     "use strict";
 
     var TV = global.TV, el = TV.el, esc = TV.esc, T = TV.t, D = TV.data;
     var root, field, kbEl, results, resIn, kbNav, strips = [], zone = "kb", query = "", visible = false, first = "";
-    var KEYS = "abcdefghijklmnopqrstuvwxyz0123456789".split("");
+    var ROWS = { qwerty: ["1234567890", "qwertyuiop", "asdfghjkl'", "zxcvbnm-"], azerty: ["1234567890", "azertyuiop", "qsdfghjklm", "wxcvbn'-"],
+                 abc: ["1234567890", "abcdefghij", "klmnopqrst", "uvwxyz'-"] };
+    function layout() { var l = TV.pref("kbLayout"); return ROWS[l] ? l : (TV.lang === "fr" ? "azerty" : "qwerty"); }
 
     function build() {
         root = TV.$("v-search");
@@ -20,21 +26,50 @@
         resIn = el("div", "search__in");
         results.appendChild(resIn);
         root.appendChild(field); root.appendChild(kbEl); root.appendChild(results);
-        var tiles = [];
-        KEYS.forEach(function (k) { var t = el("div", "kb__key", k.toUpperCase()); t._k = k; kbEl.appendChild(t); tiles.push(t); });
-        [["space", T("Space")], ["del", "⌫ " + T("Delete")], ["clear", T("Clear")]].forEach(function (k) {
-            var t = el("div", "kb__key kb__key--wide", esc(k[1])); t._k = k[0]; kbEl.appendChild(t); tiles.push(t);
-        });
         // cross 20: Right and Left stay on the row (Right on Space went up to X instead of Delete)
         kbNav = new TV.Nav({ cross: 20, onSelect: function (i, t) { type(t._k); } });
-        kbNav.setTiles(tiles);
+        drawKeys();
         kbNav.blur();
         drawField();
+    }
+    /* The keys, in four rows (figures, then the letters as on a computer's keyboard, or in alphabetical order);
+       on the right Delete, Clear, Space and the TV's own keyboard; bottom left, the other layout */
+    function drawKeys(keepOn) {
+        var lay = layout(), tiles = [], focusAt = 0, sw = null, cur = kbNav.current(), was = cur && cur._k;
+        var acts = [["del", "⌫ " + esc(T("Delete"))], ["clear", esc(T("Clear"))], ["space", esc(T("Space"))], ["tvkb", TV.icon("keyboard", 30) + "<span>" + esc(T("TV Keyboard")) + "</span>"]];
+        kbEl.innerHTML = "";
+        kbEl.className = "kb kb--" + lay;
+        function key(k, label, cls, parent) { var t = el("div", "kb__key" + (cls ? " " + cls : ""), label); t._k = k; parent.appendChild(t); tiles.push(t); return t; }
+        ROWS[lay].forEach(function (r, i) {
+            var row = el("div", "kb__row");
+            kbEl.appendChild(row);
+            if (i === 3) sw = key("layout", esc(lay === "abc" ? (TV.lang === "fr" ? "AZERTY" : "QWERTY") : "ABC"), "kb__key--alt", row);
+            r.split("").forEach(function (k) { key(k, k.toUpperCase(), "", row); });
+            key(acts[i][0], acts[i][1], "kb__key--act" + (acts[i][0] === "tvkb" ? " kb__key--tv" : ""), row);
+        });
+        if (keepOn === "layout") focusAt = tiles.indexOf(sw);
+        else if (was) tiles.forEach(function (t, i) { if (t._k === was) focusAt = i; });
+        kbNav.setTiles(tiles, focusAt);
+    }
+    /* The TV's own keyboard (Gboard, Samsung's, LG's): what you type there searches as you type */
+    function tvKeyboard() {
+        var before = query;
+        TV.editText({ value: query,
+            onInput: function (v) { query = String(v || "").slice(0, 60); drawField(); runSoon(); },
+            onDone: function (v) { query = String(v || "").slice(0, 60); drawField(); run(); paint(); },
+            onCancel: function () { query = before; drawField(); run(); paint(); } });
     }
     function drawField() {
         field.innerHTML = TV.icon("search", 36) + "<span>" + (query ? esc(query) : "<span class='search__ph'>" + esc(T("Channels, movies, series")) + "</span>") + "<i class='caret'></i></span>";
     }
     function type(k) {
+        if (k === "tvkb") { tvKeyboard(); return; }
+        if (k === "layout") {
+            // ABC, or the computer layout of your language; remembered (also in Settings > Display)
+            TV.setPref("kbLayout", layout() === "abc" ? (TV.lang === "fr" ? "azerty" : "qwerty") : "abc");
+            drawKeys("layout"); paint();
+            return;
+        }
         if (k === "del") query = query.slice(0, -1);
         else if (k === "clear") query = "";
         else if (k === "space") { if (query && query.slice(-1) !== " ") query += " "; }
@@ -74,12 +109,12 @@
         root.classList.toggle("is-results", si >= 0);
         document.body.classList.toggle("in-results", si >= 0 && visible);
         var y = 0;
-        if (si >= 0) y = 170 - 540 - (strips[si].root.offsetTop - strips[0].root.offsetTop);
+        if (si >= 0) y = 170 - 610 - (strips[si].root.offsetTop - strips[0].root.offsetTop);
         resIn.style.transform = "translateY(" + y + "px)";
     }
 
     var view = {
-        show: function () { if (!root) build(); visible = true; TV.bg("", "dark"); paint(); },
+        show: function () { if (!root) build(); else if (kbEl.className !== "kb kb--" + layout()) drawKeys(); visible = true; TV.bg("", "dark"); paint(); },
         hide: function () { visible = false; TV.$("bg").classList.remove("is-dark"); document.body.classList.remove("in-results"); },
         enter: function () { zone = "kb"; paint(); },
         blur: function () { paint(); },
