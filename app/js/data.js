@@ -781,9 +781,10 @@
     function isDone(id) { var e = resumes()[id]; return !!(e && e.done); }
     /* Marked by hand (OK held): watched or not, a movie, an episode, or many episodes at once */
     function markWatched(item, eps, on) {
-        var r = resumes(), list = eps && eps.length ? eps : [null];
+        var r = resumes(), list = eps && eps.length ? eps : [null], keys = [];
         list.forEach(function (ep) {
             var k = ep ? item.id + "|" + ep.id : item.id;
+            keys.push(k);
             if (on) r[k] = { pos: 1, dur: 1, item: item.id, ep: ep ? ep.id : null, done: true, manual: true, at: Date.now() };
             else delete r[k];
         });
@@ -791,7 +792,13 @@
         TV.save("resume", r);
         fire("resume");
         // the same on your Jellyfin or Emby server (js/media.js; other sources: nothing)
-        if (TV.media && TV.media.played) TV.media.played(item, eps, on);
+        if (TV.media && TV.media.played) TV.media.played(item, eps, on).then(function (ok) { if (ok && on) serverHas(keys); });
+    }
+    /* Your media server took these (it answered): if it drops one later (marked unwatched there), so does APL TV */
+    function serverHas(keys) {
+        var r = resumes(), any = false;
+        keys.forEach(function (k) { if (r[k] && !r[k].srv) { r[k].srv = true; any = true; } });
+        if (any) TV.save("resume", r);
     }
     /* Out of "Continue Watching" (OK held): where you were is forgotten, what you finished stays ticked */
     function forget(item) {
@@ -816,13 +823,18 @@
         (list || []).forEach(function (s) {
             if (!s || !s.key) return;
             var mine = r[s.key];
+            // nothing on the server: what it had (srv) was dropped there (marked unwatched) and goes here too;
+            // APL TV's own history, which the server never had, stays
+            if (s.none) { if (mine && mine.srv) { delete r[s.key]; changed = true; } return; }
+            // the server knows this one now: if it drops it later, so does APL TV
+            if (mine && !mine.srv) { mine.srv = true; changed = true; }
             if (mine && mine.at >= s.at) return;
             // watched on both sides: nothing to change (a mark by hand stays one, out of Recently Watched)
             if (mine && mine.done && s.done) return;
             // taken out of Continue Watching after that: it stays out (a watched one still gets its tick)
             if (!s.done && f[s.item] >= s.at) return;
             if (s.gone) { if (mine) { delete r[s.key]; changed = true; } return; }
-            var e = { pos: s.pos, dur: s.dur, item: s.item, ep: s.ep || null, at: s.at };
+            var e = { pos: s.pos, dur: s.dur, item: s.item, ep: s.ep || null, at: s.at, srv: true };
             if (s.done) e.done = true;
             if (s.epLabel) e.epLabel = s.epLabel;
             // a series' own line (js/osd.js save): the episode to resume, or the next one ("Up Next")
@@ -1162,7 +1174,7 @@
         pushRecent: pushRecent, recentChannels: recentChannels,
         myList: myList, inMyList: inMyList, toggleMyList: toggleMyList,
         setResume: setResume, resumeOf: resumeOf, continueWatching: continueWatching, isDone: isDone, markWatched: markWatched, recentlyWatched: recentlyWatched,
-        forget: forget, resumeChanged: resumeChanged, syncResumes: syncResumes,
+        forget: forget, resumeChanged: resumeChanged, syncResumes: syncResumes, serverHas: serverHas,
         isHidden: isHidden, setHidden: setHidden, preferVersion: preferVersion, setCatOff: setCatOff, setGroupOff: setGroupOff, editData: editData, applyPhoneEdit: applyPhoneEdit, offGroups: offGroups, offCats: offCats, hiddenList: hiddenList, unhide: unhide, versionKey: versionKey,
         buildThemes: buildThemes, checkTheme: checkTheme, themesOn: themesOn, catNameHidden: catNameHidden,
         itemsIn: itemsIn, vodUrl: vodUrl, vodInfo: vodInfo, seriesInfo: seriesInfo, search: search,

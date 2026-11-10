@@ -107,16 +107,26 @@
     function tmdbOf(p) { p = p || {}; return String(p.Tmdb || p.tmdb || p.TMDB || ""); }
     /* "2024-05-01T20:15:42.1234567Z": 7 decimals, which older TV engines cannot read. In ms, or 0 (none, or "0001-01-01") */
     function jfDate(s) { var t = Date.parse(String(s || "").replace(/(\.\d{3})\d+/, "$1")); return t > 0 ? t : 0; }
-    /* Where the server says you are in a movie or an episode (its UserData), for js/data.js syncResumes, or null.
-       Watched there: done, as the server decided with its own resume settings. */
+    /* Where the server says you are in a movie or an episode (its UserData), for js/data.js syncResumes.
+       Watched there: done, as the server decided with its own resume settings. Nothing at all ("none"):
+       never played there, or marked unwatched there (the server then forgets the date too). */
     function jfSeen(x, key, itemId, epId, epLabel) {
         var u = x.UserData || {}, at = jfDate(u.LastPlayedDate), pos = Math.round((u.PlaybackPositionTicks || 0) / 1e7), dur = Math.round((x.RunTimeTicks || 0) / 1e7);
         var e = { key: key, at: at, item: itemId, ep: epId || null };
         if (u.Played) { e.pos = dur || 1; e.dur = dur || 1; e.done = true; }
         else if (pos > 0) { e.pos = pos; e.dur = dur; if (epLabel) e.epLabel = epLabel; }
         else if (at) e.gone = true;
-        else return null;
+        else e.none = true;
         return e;
+    }
+    /* A movie's page opens: its state on the server right now (marked unwatched there, watched on the phone…),
+       before the page shows "Watched". 4 s at most, no new sign-in; no answer: as APL TV knew it. */
+    function jfMovie(src, item) {
+        if (!src.token || !src.base || !src.userId || !item.sid) return Promise.resolve(false);
+        return getJSON(src.base + "/Users/" + src.userId + "/Items?" + qs({ Ids: item.sid, EnableUserData: "true", api_key: src.token }), jfAuth(src, src.token), 4000).then(function (j) {
+            var x = j && j.Items && j.Items[0];
+            return x && x.Id === item.sid && TV.data.syncResumes ? TV.data.syncResumes([jfSeen(x, item.id, item.id, null)]) : false;
+        }).catch(function () { return false; });
     }
     function jfItems(src, viewId, type, onItems, progress) {
         var start = 0, total = 0, got = 0;
@@ -404,8 +414,12 @@
         var part = decodeURIComponent(m[3]);
         return (src.base ? Promise.resolve(src.base) : plexBase(src)).then(function (b) { return b + part + (part.indexOf("?") >= 0 ? "&" : "?") + plexQ(src.token); });
     }
-    /* The movie's page: its plot, length and TMDB id from the server (no extra request) */
-    function info(item) { return { info: { plot: item.plot || "", tmdb_id: item.tmdb || "", duration_secs: item.dur || 0, backdrop_path: item.backdrop ? [item.backdrop] : [] } }; }
+    /* The movie's page: its plot, length and TMDB id from the server (already in the catalog), once its watched
+       state is fresh (Jellyfin and Emby: one small request) */
+    function info(item) {
+        var src = src0(item.src), d = { info: { plot: item.plot || "", tmdb_id: item.tmdb || "", duration_secs: item.dur || 0, backdrop_path: item.backdrop ? [item.backdrop] : [] } };
+        return (src && src.type === "jellyfin" ? jfMovie(src, item) : Promise.resolve(false)).then(function () { return d; });
+    }
 
     TV.media = { load: load, seriesInfo: seriesInfo, resolve: resolve, info: info, normServer: normServer, report: report, fresh: fresh, played: played,
                  plex: { pin: plexPin, check: plexCheck, servers: plexServers } };

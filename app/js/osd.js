@@ -825,10 +825,13 @@
     function tell(event) {
         if (!vod || !TV.media || !TV.media.report || vod.told === "stop") return;
         if (event === "start" ? vod.told : !vod.told) return;
-        var dur = TV.player.duration();
+        var dur = TV.player.duration(), key = vod.resumeKey;
         vod.told = event === "stop" ? "stop" : "start";
         // finished: its whole length, so the server counts it as watched with its own settings
-        TV.media.report(vod.url, event, vod.ended && dur ? dur : TV.player.position());
+        TV.media.report(vod.url, event, vod.ended && dur ? dur : TV.player.position()).then(function (ok) {
+            // the server has where you stopped: marked unwatched there later, it goes here too (js/data.js)
+            if (ok && event === "stop" && D.serverHas) D.serverHas([key]);
+        });
     }
     /* Where you are, every 10 s. Finished (past 94 %): marked watched; an episode's series then waits on the next one */
     function save(ended) {
