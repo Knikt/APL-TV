@@ -1,8 +1,8 @@
 {
- "version": "1.0.12",
+ "version": "1.0.13",
  "loader": 1,
  "reinstall": "1.0.1",
- "notes": "The sound in your language from another version of a title, drag and drop in the phone editor, playlists from providers that answer 403, and APL Launcher's Continue Watching on LG.",
+ "notes": "APL Launcher's Continue Watching and Last Channel on Android TV too (with this version's .apk): OK on a card opens APL TV right in the film, at its minute, or on the channel.",
  "platforms": {
   "tizen": {
    "reinstall": "1.0.1"

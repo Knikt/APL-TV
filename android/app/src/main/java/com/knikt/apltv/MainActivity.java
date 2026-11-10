@@ -3,6 +3,7 @@ package com.knikt.apltv;
 import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.content.Context;
+import android.content.Intent;
 import android.graphics.Color;
 import android.os.Bundle;
 import android.util.SparseIntArray;
@@ -18,6 +19,8 @@ import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.FrameLayout;
 
+import org.json.JSONObject;
+
 /* APL TV on Android: the same web app as on Samsung and LG, in a WebView, over the video.
    - The page (assets/app) is drawn transparent over the video plane (Player.java, ExoPlayer), as on
      Samsung where AVPlay is under the page.
@@ -30,6 +33,8 @@ public class MainActivity extends Activity {
     private Player player;
     private Helper helper;
     private volatile boolean editing = false;
+    // What APL TV was opened for (APL Launcher's Top Shelf: resume=<title>, channel=<channel>…), read once by the page
+    private volatile String request = "";
 
     private static final SparseIntArray KEYS = new SparseIntArray();
     static {
@@ -72,6 +77,7 @@ public class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle state) {
         super.onCreate(state);
+        takeRequest(getIntent());
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         FrameLayout root = new FrameLayout(this);
         root.setBackgroundColor(Color.BLACK);
@@ -132,6 +138,32 @@ public class MainActivity extends Activity {
         web.requestFocus();
     }
 
+    /* ---------- what APL TV is opened for ----------
+       Samsung's app control data and LG's launch parameters are Intent extras here: APL Launcher's Top Shelf
+       opens APL TV with resume=<title> or channel=<channel> (js/app.js readRequest). Opened again while
+       running: the page hears "appcontrol", as on Samsung. */
+    private static final String[] REQUEST_KEYS = { "resume", "title", "channel", "tab", "search", "play" };
+    private boolean takeRequest(Intent i) {
+        if (i == null || i.getExtras() == null) return false;
+        JSONObject o = new JSONObject();
+        try {
+            for (String k : REQUEST_KEYS) {
+                String v = i.getStringExtra(k);
+                if (v != null && v.length() > 0 && v.length() <= 120) o.put(k, v);
+            }
+        } catch (Exception e) { return false; }
+        if (o.length() == 0) return false;
+        request = o.toString();
+        return true;
+    }
+    @Override
+    protected void onNewIntent(Intent i) {
+        super.onNewIntent(i);
+        setIntent(i);
+        if (takeRequest(i) && web != null)
+            web.evaluateJavascript("(function(){var e=document.createEvent('Event');e.initEvent('appcontrol',false,false);window.dispatchEvent(e);})()", null);
+    }
+
     /* ---------- the remote ---------- */
     @Override
     public boolean dispatchKeyEvent(KeyEvent e) {
@@ -155,6 +187,10 @@ public class MainActivity extends Activity {
         @JavascriptInterface public void exit() { runOnUiThread(() -> { player.close(); finishAndRemoveTask(); }); }
         @JavascriptInterface public void background() { runOnUiThread(() -> moveTaskToBack(true)); }
         @JavascriptInterface public void startHelper() { helper.start(); }
+        // What APL TV was opened for, once ("" when nothing)
+        @JavascriptInterface public String request() { String r = request; request = ""; return r; }
+        // APL Launcher's Top Shelf (ShelfProvider.java)
+        @JavascriptInterface public void shelf(String json) { ShelfProvider.write(MainActivity.this, json); }
         @JavascriptInterface public void editing(boolean on) {
             editing = on;
             runOnUiThread(() -> {
@@ -189,7 +225,13 @@ public class MainActivity extends Activity {
         @JavascriptInterface public void restore() { player.restore(); }
     }
 
-    @Override protected void onPause() { super.onPause(); if (web != null) web.onPause(); }
+    @Override protected void onPause() {
+        super.onPause();
+        if (web == null) return;
+        // APL Launcher's Top Shelf gets what you were just watching (js/app.js pushShelf)
+        web.evaluateJavascript("window.TV&&TV.shelfNow&&TV.shelfNow()", null);
+        web.onPause();
+    }
     @Override protected void onResume() { super.onResume(); if (web != null) web.onResume(); }
     @Override protected void onStop() { super.onStop(); if (player != null) player.suspend(); }
     @Override protected void onStart() { super.onStart(); if (player != null) player.restore(); }

@@ -10,6 +10,11 @@
     <uses-feature android:name="android.software.leanback" android:required="false" />
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
 
+    <!-- APL Launcher: ShelfProvider checks that it is the one reading the Top Shelf -->
+    <queries>
+        <package android:name="com.knikt.apllauncher" />
+    </queries>
+
     <application
         android:label="APL TV"
         android:icon="@mipmap/ic_launcher"
@@ -34,5 +39,11 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- APL Launcher's Top Shelf: what you were watching and your last channel, for APL Launcher only -->
+        <provider
+            android:name=".ShelfProvider"
+            android:authorities="com.knikt.apltv.shelf"
+            android:exported="true" />
     </application>
 </manifest>

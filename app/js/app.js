@@ -11,7 +11,7 @@
     "use strict";
 
     var TV = global.TV, el = TV.el, esc = TV.esc, T = TV.t, D = TV.data;
-    TV.VERSION = "1.0.12";
+    TV.VERSION = "1.0.13";
     TV.DONATE = "https://ko-fi.com/knikt";     // the Ko-fi page for donations (Settings > About, README, .github/FUNDING.yml)
     var BASE = [
         { id: "home", label: T("Home") },
@@ -146,6 +146,8 @@
         try {
             var m = {};
             if (TV.WEBOS) m = webosParams(params);
+            // Android: the Intent's extras, kept by MainActivity.java until read (once)
+            else if (TV.ANDROID) { var a = global.APLAndroid; m = (a && a.request && JSON.parse(a.request() || "{}")) || {}; }
             else {
                 var req = global.tizen.application.getCurrentApplication().getRequestedAppControl();
                 var data = (req && req.appControl && req.appControl.data) || [];
@@ -184,7 +186,12 @@
        What you were watching and your channels, with the data to open each one here (app control
        "resume", "title", "channel"). Sent when you leave APL TV and every few minutes. */
     function pushShelf() {
-        if (!(TV.TIZEN || TV.WEBOS) || !D.catalog() || !TV.helper || !TV.helper.shelf) return;     // APL Launcher: Samsung and LG screens
+        // APL Launcher: Samsung and LG screens through the helper service (/tmp/apltv-shelf.json), Android through
+        // the app itself (ShelfProvider.java, a new .apk: an older one has no Bridge.shelf and gets nothing)
+        var A = global.APLAndroid;
+        var send = TV.ANDROID ? (A && A.shelf ? function (o) { A.shelf(JSON.stringify(o)); } : null)
+                 : (TV.TIZEN || TV.WEBOS) && TV.helper && TV.helper.shelf ? TV.helper.shelf : null;
+        if (!send || !D.catalog()) return;
         try {
             var cont = D.continueWatching().slice(0, 12).map(function (x) {
                 var it = x.item, r = x.resume;
@@ -199,12 +206,13 @@
             var watched = D.recentlyWatched().slice(0, 12).map(function (it) { return { title: it.title || it.name, kind: it.kind, poster: TV.sized(it.poster || "", "w342"), data: { title: it.id } }; });
             var lc = D.channel(TV.pref("lastChannel")), ln = lc && TV.epg.now(lc), lcur = ln && ln.cur;
             var last = lc ? { name: lc.name, num: lc.num, logo: lc.logo || "", now: lcur ? lcur[2] : "", progress: lcur ? Math.round(TV.epg.progress(lcur) * 100) / 100 : 0, data: { channel: lc.id } } : null;
-            TV.helper.shelf({ v: 1, app: "APLTVMedia.TV", at: Date.now(), lang: TV.lang, continueWatching: cont, lastChannel: last, channels: chans, recentlyWatched: watched,
-                              favorites: !!D.favChannels().length });
+            send({ v: 1, app: "APLTVMedia.TV", at: Date.now(), lang: TV.lang, continueWatching: cont, lastChannel: last, channels: chans, recentlyWatched: watched,
+                   favorites: !!D.favChannels().length });
         } catch (e) { TV.log("shelf: " + e.message); }
     }
     setInterval(function () { if (!document.hidden) pushShelf(); }, 5 * 60 * 1000);
     TV.pushShelf = function () { clearTimeout(shelfSoon); shelfSoon = setTimeout(pushShelf, 1500); };
+    TV.shelfNow = pushShelf;      // Android: MainActivity.java, when APL TV goes to the background
     var shelfSoon = null;
     var themesBuilt = false;
     D.onChange(function (w) { if (w === "catalog" && !themesBuilt && D.catalog()) { themesBuilt = true; setTimeout(D.buildThemes, 1500); } });
