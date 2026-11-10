@@ -169,6 +169,21 @@
         function link() { return src.base + "/Videos/" + encodeURIComponent(id) + "/stream?" + qs({ static: "true", MediaSourceId: id, api_key: src.token, ApiKey: src.kind === "jellyfin" ? src.token : "", DeviceId: deviceId() }); }
         return src.token ? Promise.resolve(link()) : jfLogin(src).then(link);
     }
+    /* Where you are, told to the server: started, every 10 s, stopped. Other clients then show the same
+       resume point, and the server decides with its own resume settings when a video counts as watched.
+       Only Jellyfin and Emby: any other address sends nothing. A server that does not answer changes
+       nothing either (no message): playback goes on and the position stays in APL TV. */
+    var REPORT = { start: "/Sessions/Playing", progress: "/Sessions/Playing/Progress", stop: "/Sessions/Playing/Stopped" };
+    function report(url, event, pos) {
+        var m = String(url || "").match(/^media:([^:]+):jf:(.+)$/), src = m && src0(m[1]);
+        if (!src || !src.token || !src.base || !REPORT[event]) return Promise.resolve(false);
+        var id = decodeURIComponent(m[2]), h = jfAuth(src, src.token);
+        h["Content-Type"] = "application/json";
+        // the file itself is played (static stream): DirectPlay, and its only version is the item
+        var body = { ItemId: id, MediaSourceId: id, PlayMethod: "DirectPlay", CanSeek: true, PositionTicks: Math.max(0, Math.round((pos || 0) * 1e7)) };
+        return TV.http(src.base + REPORT[event], { method: "POST", headers: h, body: JSON.stringify(body), timeout: 10000 })
+            .then(function (r) { return r.status >= 200 && r.status < 300; }, function () { return false; });
+    }
 
     /* ---------- Plex ---------- */
     function plexTv() { return (TV.PREVIEW || TV.DEV) && TV.load("plexTv", "") || "https://plex.tv"; }
@@ -308,6 +323,6 @@
     /* The movie's page: its plot, length and TMDB id from the server (no extra request) */
     function info(item) { return { info: { plot: item.plot || "", tmdb_id: item.tmdb || "", duration_secs: item.dur || 0, backdrop_path: item.backdrop ? [item.backdrop] : [] } }; }
 
-    TV.media = { load: load, seriesInfo: seriesInfo, resolve: resolve, info: info, normServer: normServer,
+    TV.media = { load: load, seriesInfo: seriesInfo, resolve: resolve, info: info, normServer: normServer, report: report,
                  plex: { pin: plexPin, check: plexCheck, servers: plexServers } };
 })(window);
