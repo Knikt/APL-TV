@@ -5,6 +5,7 @@
    ============================================================ */
 window.TV_LANG_FR = {
     /* 1.0.11: Stream Info, Quality, Audio */
+    "The server does not know this address (error 404). Check your playlist's address (for an Xtream login, only the server and its port). If it is right, your provider may have closed this account or changed its address.": "Le serveur ne connaît pas cette adresse (erreur 404). Vérifie l'adresse de ta playlist (pour un compte Xtream, seulement le serveur et son port). Si elle est bonne, ton fournisseur a peut-être fermé ce compte ou changé d'adresse.",
     "Your provider refused the connection (error {code}). Check that your subscription is active and not already in use on another screen; some providers also block VPNs or other countries.": "Ton fournisseur a refusé la connexion (erreur {code}). Vérifie que ton abonnement est actif et pas déjà utilisé sur un autre écran ; certains fournisseurs bloquent aussi les VPN ou les autres pays.",
     "The server says: “{text}”": "Le serveur dit : « {text} »",
     "No {lang} sound in this version": "Pas de son en {lang} dans cette version",

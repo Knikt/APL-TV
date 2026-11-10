@@ -6,7 +6,8 @@
    - the whole interface moves by a few pixels every 2 minutes, like the
      TV's own "screen shift" (the video itself does not move);
    - after 5 minutes without the remote while nothing plays: the screen
-     saver, pictures from your catalog slowly moving, dimmed, with the time,
+     saver, pictures from your catalog slowly moving (titles for all audiences
+     only), dimmed, with the time,
      the date and the title in a corner, which changes every 3 minutes. Any
      key brings APL TV back (that key does nothing else).
    A video playing is never covered: it moves by itself.
@@ -111,13 +112,14 @@
             });
         } catch (e) {}
         items.sort(function () { return Math.random() - 0.5; });
-        items.slice(0, 24).forEach(function (it) {
-            if (!TV.meta || !TV.meta.lookup) return;
+        // more than it shows: only the titles for all audiences are kept
+        items.slice(0, 48).forEach(function (it) {
+            if (!TV.meta || !TV.meta.lookup || !TV.meta.allAges) return;
             TV.meta.lookup(it).then(function (m) {
                 var url = (m && m.backdrop) || it.backdrop;
                 if (!url) return;
-                // the same rule as Home's banner: no adult-rated title here either
-                (TV.meta.bannerSafe ? TV.meta.bannerSafe(it) : Promise.resolve(true)).then(function (ok) {
+                // all audiences only (Tous publics, U, G…): nothing rated -10, -12 or above, nothing unrated
+                TV.meta.allAges(it).then(function (ok) {
                     if (ok && !pics.some(function (p) { return p.url === url; })) pics.push({ url: url, title: (m && m.title) || it.title || it.name || "" });
                 });
             }).catch(function () {});

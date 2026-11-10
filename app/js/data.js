@@ -74,7 +74,7 @@
         if (action) u += "&action=" + action;
         if (extra) u += "&" + extra;
         // the full lists of a big account (100,000 movies) can take minutes to arrive on a TV
-        return TV.fetchJSON(u, { timeout: !action ? 20000 : /_streams$|^get_series$/.test(action) ? 240000 : 90000 });
+        return TV.fetchJSON(u, { provider: true, timeout: !action ? 20000 : /_streams$|^get_series$/.test(action) ? 240000 : 90000 });
     }
     function xAuth(src) {
         return xApi(src, "").then(function (j) {
@@ -257,7 +257,7 @@
 
     function loadM3U(src, progress) {
         progress(T("Downloading {name}…", { name: src.name }));
-        return TV.fetchText(src.url, { timeout: 180000 }).then(function (text) { return parseM3U(text, src, progress); });
+        return TV.fetchText(src.url, { provider: true, timeout: 180000 }).then(function (text) { return parseM3U(text, src, progress); });
     }
 
     /* ---------- the merged catalog ---------- */

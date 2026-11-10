@@ -563,9 +563,10 @@
         if (named[up] !== undefined) return cc === "CA" && up === "R" ? 18 : named[up];
         return isNaN(n) ? -1 : n;
     }
-    /* The big banner of Home and the screen saver show only titles without an adult rating (PG-13 at most in
-       the US, under 18 in the UK and Germany): an "all audiences" film can still have a racy backdrop
-       (Charlie Wilson's War: all audiences in France, R in the US). Rows and search keep everything. */
+    /* The big banner of Home shows only titles without an adult rating (PG-13 at most in the US, under 18 in
+       the UK and Germany): an "all audiences" film can still have a racy backdrop (Charlie Wilson's War: all
+       audiences in France, R in the US). Rows and search keep everything. On LG, and in the screen saver
+       everywhere: all audiences only (allAges, below). */
     var bannerMemo = {};
     function bannerSafe(item) {
         if (!item) return Promise.resolve(false);
@@ -579,6 +580,26 @@
             });
         }).then(function (ok) { bannerMemo[item.id] = ok; return ok; }, function () { return true; });
     }
+    /* All audiences only: the screen saver everywhere, and on LG the big banner of Home (the titles it
+       recommends). Every rating known for the title, in the screen's country and in the big ones (US, UK,
+       Germany, France), is for all ages: Tous publics, U, G, PG, FSK 0 or 6. Not -10, -12, PG-13, 12A, FSK 12
+       and above. A title with no known rating stays out. */
+    var allMemo = {};
+    function allAges(item) {
+        if (!item) return Promise.resolve(false);
+        if (allMemo[item.id] !== undefined) return Promise.resolve(allMemo[item.id]);
+        return lookup(item).then(function (m) {
+            if (!m || !m.tmdbId) return false;
+            return certs(item.kind === "series" ? "tv" : "movie", m.tmdbId).then(function (c) {
+                var worst = -1;
+                ["US", "GB", "DE", "FR", ageCountry()].forEach(function (cc) {
+                    if (c && rated(c[cc])) worst = Math.max(worst, minAge(cc, c[cc]));
+                });
+                return worst >= 0 && worst < 10;
+            });
+        }).then(function (ok) { allMemo[item.id] = ok; return ok; }, function () { return false; });
+    }
+    if (TV.WEBOS) { bannerSafe = allAges; bannerMemo = allMemo; }
     function bannerKnown(item) { return item ? bannerMemo[item.id] : undefined; }
     function inScale(cc, n, kind) {
         if (cc === "FR") return n < 10 ? "TP" : n < 12 ? "10" : n < 16 ? "12" : n < 18 ? "16" : "18";
@@ -621,5 +642,5 @@
     function testKey(k) {
         return TV.fetchJSON(API + "/configuration?api_key=" + encodeURIComponent(String(k || "").trim()), { timeout: 12000, noProxy: true }).then(function (j) { return !!(j && j.images); }, function () { return false; });
     }
-    TV.meta = { setKey: setKey, testKey: testKey, keySource: function () { return global.TV_KEYS && global.TV_KEYS.tmdb ? "setup" : (TV.load("tmdbKey", "") ? "settings" : ""); }, certs: certs, certBadge: certBadge, ageCountries: COUNTRIES, ageCountry: ageCountry, themeWords: themeWords, themes: themes, themeMatch: themeMatch, themeTitles: themeTitles, bannerSafe: bannerSafe, bannerKnown: bannerKnown, similar: similar, byPerson: byPerson, collection: collection, genres: genres, genreTitles: genreTitles, topRated: topRated, trending: trending, person: person, lookup: lookup, want: want, clearQueue: clearQueue, season: season, img: img, fmt: fmt, imdbBadge: imdbBadge, known: known, enabled: function () { return !!KEY; } };
+    TV.meta = { setKey: setKey, testKey: testKey, keySource: function () { return global.TV_KEYS && global.TV_KEYS.tmdb ? "setup" : (TV.load("tmdbKey", "") ? "settings" : ""); }, certs: certs, certBadge: certBadge, ageCountries: COUNTRIES, ageCountry: ageCountry, themeWords: themeWords, themes: themes, themeMatch: themeMatch, themeTitles: themeTitles, bannerSafe: bannerSafe, bannerKnown: bannerKnown, allAges: allAges, similar: similar, byPerson: byPerson, collection: collection, genres: genres, genreTitles: genreTitles, topRated: topRated, trending: trending, person: person, lookup: lookup, want: want, clearQueue: clearQueue, season: season, img: img, fmt: fmt, imdbBadge: imdbBadge, known: known, enabled: function () { return !!KEY; } };
 })(window);

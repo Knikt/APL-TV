@@ -86,7 +86,8 @@
            An installed helper from before 1.0.7 does not know it: "needs the new install". */
         sget: function (url, headers, timeout) {
             return call("/sget", { method: "POST", body: JSON.stringify({ url: url, headers: headers || {}, t: timeout || 60000 }), timeout: (timeout || 60000) + 5000 }).then(function (r) {
-                if (r.status === 404) { var n = new Error("helper too old"); n.old = true; throw n; }
+                // a helper from before 1.0.7 answers its own "not found"; any other 404 is the server's
+                if (r.status === 404 && /^\s*\{\s*"error"\s*:\s*"not found"\s*\}\s*$/.test(r.text || "")) { var n = new Error("helper too old"); n.old = true; throw n; }
                 if (r.status >= 200 && r.status < 300) return r.text;
                 var e = new Error("HTTP " + r.status); e.status = r.status; e.body = r.text; throw e;
             });

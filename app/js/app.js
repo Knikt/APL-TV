@@ -11,7 +11,7 @@
     "use strict";
 
     var TV = global.TV, el = TV.el, esc = TV.esc, T = TV.t, D = TV.data;
-    TV.VERSION = "1.0.13";
+    TV.VERSION = "1.0.14";
     TV.DONATE = "https://ko-fi.com/knikt";     // the Ko-fi page for donations (Settings > About, README, .github/FUNDING.yml)
     var BASE = [
         { id: "home", label: T("Home") },

@@ -226,6 +226,10 @@
        in (VLC first). What worked is remembered for that server: its next requests go that way at once, and the
        player gives the same name for its streams (player.js). */
     var REFUSED = { 401: 1, 403: 1, 406: 1, 451: 1 };
+    /* Some panels hide their refusal behind a 404 ("not found") for a name they don't let in. For the provider's own
+       requests (opts.provider: its playlist, its Xtream API), a 404 is asked again too; and once a request was
+       refused, a 404 under another name never ends the tries. */
+    function refused(status, opts) { return !!REFUSED[status] || (status === 404 && !!opts.provider); }
     var PLAYER_UAS = ["VLC/3.0.21 LibVLC/3.0.21", "IPTVSmartersPro", "okhttp/4.12.0"];
     var hostUa = null;
     function hostKey(url) { var m = String(url || "").match(/^https?:\/\/([^\/?#]+)/i); return m ? m[1].toLowerCase() : ""; }
@@ -245,9 +249,10 @@
         t = (m ? m[1] : /</.test(t) ? "" : t).replace(/\s+/g, " ").trim();
         return !t || t.length > 140 || !/[a-z]{3}/i.test(t) || /^[\[{]/.test(t) ? "" : TV.redact(t);
     }
-    function refusedError(status, body) {
+    function refusedError(status, body, provider) {
         var e = new Error(status === 403 || status === 451 ? T("Your provider refused the connection (error {code}). Check that your subscription is active and not already in use on another screen; some providers also block VPNs or other countries.", { code: status }) :
-            status === 401 ? T("The server refused this username or password.") : "HTTP " + status);
+            status === 401 ? T("The server refused this username or password.") :
+            status === 404 && provider ? T("The server does not know this address (error 404). Check your playlist's address (for an Xtream login, only the server and its port). If it is right, your provider may have closed this account or changed its address.") : "HTTP " + status);
         var said = serverSays(body);
         if (said) e.message += " " + T("The server says: “{text}”", { text: said });
         e.status = status;
@@ -257,7 +262,7 @@
         var known = TV.uaFor(url), tries = (ownDone ? [] : [""]).concat(PLAYER_UAS), i = 0, old = false, last = { status: status, body: body };
         if (known) tries = [known].concat(tries.filter(function (u) { return u !== known && !(u === "" && known === helperUa()); }));
         return (function next() {
-            if (i >= tries.length) throw refusedError(last.status || 403, last.body);
+            if (i >= tries.length) throw refusedError(last.status || 403, last.body, opts.provider);
             var ua = tries[i++];
             if (ua && old) return next();                  // a helper from before 1.0.7: only its own request
             return (ua ? TV.helper.sget(url, { "User-Agent": ua }, opts.timeout) : TV.helper.fetch(url, opts.timeout)).then(function (text) {
@@ -265,8 +270,8 @@
                 return text;
             }, function (e) {
                 if (e.old) { old = true; return next(); }
-                if (!REFUSED[e.status]) throw e;           // another answer (not found, the network): that is the real one
-                last = { status: e.status, body: e.body };
+                if (!REFUSED[e.status] && e.status !== 404) throw e;   // another answer (the network…): that is the real one
+                if (e.status !== 404 || !last.status) last = { status: e.status, body: e.body };   // a refusal says more than a 404
                 return next();
             });
         })();
@@ -274,7 +279,7 @@
     // Through the helper's own request; refused there too, as the players that panels let in
     function viaHelper(url, opts) {
         return TV.helper.fetch(url, opts.timeout).catch(function (e) {
-            if (!REFUSED[e.status]) throw e;
+            if (!refused(e.status, opts)) throw e;
             TV.log("refused by the server (" + e.status + "), even through the helper: asked again as a player");
             return askAgain(url, opts, e.status, e.body, true);
         });
@@ -286,11 +291,11 @@
                 TV.log("direct fetch refused, through the helper: " + url.split("?")[0]);
                 return viaHelper(url, opts);
             }
-            if (REFUSED[r.status] && proxy) {
+            if (refused(r.status, opts) && proxy) {
                 TV.log("refused by the server (" + r.status + "): asked again through the helper");
                 return askAgain(url, opts, r.status, r.text);
             }
-            throw refusedError(r.status, r.text);
+            throw refusedError(r.status, r.text, opts.provider);
         }, function (e) {
             if (proxy && e.message !== "timeout") return viaHelper(url, opts);
             throw e;
