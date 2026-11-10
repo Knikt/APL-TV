@@ -800,6 +800,27 @@
     }
     /* After a video: the rows and covers that show progress are drawn again */
     function resumeChanged() { fire("resume"); }
+    /* What your Jellyfin or Emby server knows (js/media.js), title by title: the most recent of the server's
+       and APL TV's wins. "gone": the server has no resume point any more (reset, or started again). */
+    function syncResumes(list) {
+        var r = resumes(), changed = false;
+        (list || []).forEach(function (s) {
+            if (!s || !s.key) return;
+            var mine = r[s.key];
+            if (mine && mine.at >= s.at) return;
+            if (s.gone) { if (mine) { delete r[s.key]; changed = true; } return; }
+            var e = { pos: s.pos, dur: s.dur, item: s.item, ep: s.ep || null, at: s.at };
+            if (s.done) e.done = true;
+            if (s.epLabel) e.epLabel = s.epLabel;
+            r[s.key] = e;
+            changed = true;
+        });
+        if (!changed) return false;
+        trimResumes(r);
+        TV.save("resume", r);
+        fire("resume");
+        return true;
+    }
     /* "Recently Watched": what you played lately, finished or not, the latest first (marks by hand left out) */
     function recentlyWatched(kind) {
         var r = resumes(), seen = {}, out = [];
@@ -1125,7 +1146,7 @@
         pushRecent: pushRecent, recentChannels: recentChannels,
         myList: myList, inMyList: inMyList, toggleMyList: toggleMyList,
         setResume: setResume, resumeOf: resumeOf, continueWatching: continueWatching, isDone: isDone, markWatched: markWatched, recentlyWatched: recentlyWatched,
-        forget: forget, resumeChanged: resumeChanged,
+        forget: forget, resumeChanged: resumeChanged, syncResumes: syncResumes,
         isHidden: isHidden, setHidden: setHidden, preferVersion: preferVersion, setCatOff: setCatOff, setGroupOff: setGroupOff, editData: editData, applyPhoneEdit: applyPhoneEdit, offGroups: offGroups, offCats: offCats, hiddenList: hiddenList, unhide: unhide, versionKey: versionKey,
         buildThemes: buildThemes, checkTheme: checkTheme, themesOn: themesOn, catNameHidden: catNameHidden,
         itemsIn: itemsIn, vodUrl: vodUrl, vodInfo: vodInfo, seriesInfo: seriesInfo, search: search,

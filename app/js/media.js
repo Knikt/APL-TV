@@ -105,11 +105,24 @@
         return src.base + "/Items/" + x.Id + "/Images/" + kind + "?" + qs({ maxWidth: w, quality: 90, tag: tag });
     }
     function tmdbOf(p) { p = p || {}; return String(p.Tmdb || p.tmdb || p.TMDB || ""); }
+    /* "2024-05-01T20:15:42.1234567Z": 7 decimals, which older TV engines cannot read. In ms, or 0 (none, or "0001-01-01") */
+    function jfDate(s) { var t = Date.parse(String(s || "").replace(/(\.\d{3})\d+/, "$1")); return t > 0 ? t : 0; }
+    /* Where the server says you are in a movie or an episode (its UserData), for js/data.js syncResumes, or null.
+       Watched there: done, as the server decided with its own resume settings. */
+    function jfSeen(x, key, itemId, epId, epLabel) {
+        var u = x.UserData || {}, at = jfDate(u.LastPlayedDate), pos = Math.round((u.PlaybackPositionTicks || 0) / 1e7), dur = Math.round((x.RunTimeTicks || 0) / 1e7);
+        var e = { key: key, at: at, item: itemId, ep: epId || null };
+        if (u.Played) { e.pos = dur || 1; e.dur = dur || 1; e.done = true; }
+        else if (pos > 0) { e.pos = pos; e.dur = dur; if (epLabel) e.epLabel = epLabel; }
+        else if (at) e.gone = true;
+        else return null;
+        return e;
+    }
     function jfItems(src, viewId, type, onItems, progress) {
         var start = 0, total = 0, got = 0;
         function page() {
             var q = qs({ ParentId: viewId, Recursive: "true", IncludeItemTypes: type, Fields: "Overview,ProviderIds,DateCreated", EnableImageTypes: "Primary,Backdrop",
-                         ImageTypeLimit: 1, SortBy: "DateCreated", SortOrder: "Descending", StartIndex: start, Limit: PAGE });
+                         ImageTypeLimit: 1, SortBy: "DateCreated", SortOrder: "Descending", StartIndex: start, Limit: PAGE, EnableUserData: "true" });
             return jfGet(src, "/Users/" + src.userId + "/Items?" + q, 120000).then(function (j) {
                 var items = (j && j.Items) || [];
                 total = j && j.TotalRecordCount || items.length;
@@ -123,6 +136,7 @@
     }
     function jfLoad(src, progress, out) {
         progress(T("Connecting to {name}…", { name: src.name }));
+        var seen = [];
         return jfLogin(src).then(function () {
             return jfGet(src, "/Users/" + src.userId + "/Views");
         }).then(function (v) {
@@ -139,7 +153,11 @@
                             var base = { src: src.id, name: x.Name || "", year: x.ProductionYear || 0, poster: jfImg(src, x, "Primary", 500), backdrop: jfImg(src, x, "Backdrop", 1280) || undefined,
                                          cat: cat.id, rating: x.CommunityRating || 0, added: Math.floor((Date.parse(x.DateCreated || "") || 0) / 1000), plot: x.Overview || "", tmdb: tmdbOf(x.ProviderIds) };
                             if (series) { base.id = src.id + "|s" + x.Id; base.seriesId = x.Id; base.kind = "series"; }
-                            else { base.id = src.id + "|m" + x.Id; base.sid = x.Id; base.kind = "movie"; base.url = "media:" + src.id + ":jf:" + x.Id; base.dur = Math.round((x.RunTimeTicks || 0) / 1e7); }
+                            else {
+                                base.id = src.id + "|m" + x.Id; base.sid = x.Id; base.kind = "movie"; base.url = "media:" + src.id + ":jf:" + x.Id; base.dur = Math.round((x.RunTimeTicks || 0) / 1e7);
+                                var s = jfSeen(x, base.id, base.id, null);
+                                if (s) seen.push(s);
+                            }
                             part.items.push(base);
                         });
                     }, function () { progress((series ? T("Loading series…") : T("Loading movies…")) + " " + part.items.length); });
@@ -150,17 +168,25 @@
             out.movies.cats = out.movies.cats.filter(function (c) { return out.movies.items.some(function (m) { return m.cat === c.id; }); });
             out.series.cats = out.series.cats.filter(function (c) { return out.series.items.some(function (m) { return m.cat === c.id; }); });
             out.account = { server: src.serverName || "", kind: src.kind };
+            // the movies you started or watched elsewhere (phone, web): Continue Watching and the ticks
+            if (seen.length && TV.data.syncResumes) TV.data.syncResumes(seen);
             return out;
         });
     }
     function jfSeries(src, item) {
-        return jfGet(src, "/Shows/" + encodeURIComponent(item.seriesId) + "/Episodes?" + qs({ UserId: src.userId, Fields: "Overview,ProviderIds", EnableImageTypes: "Primary" }), 60000).then(function (j) {
-            var seasons = {};
+        return jfGet(src, "/Shows/" + encodeURIComponent(item.seriesId) + "/Episodes?" + qs({ UserId: src.userId, Fields: "Overview,ProviderIds", EnableImageTypes: "Primary", EnableUserData: "true" }), 60000).then(function (j) {
+            var seasons = {}, seen = [];
             ((j && j.Items) || []).forEach(function (x) {
                 var s = x.ParentIndexNumber !== undefined && x.ParentIndexNumber !== null ? x.ParentIndexNumber : 1;
                 (seasons[s] = seasons[s] || []).push({ id: x.Id, season: s, episode: x.IndexNumber || 0, title: x.Name || "", url: "media:" + src.id + ":jf:" + x.Id,
                     image: jfImg(src, x, "Primary", 600), plot: x.Overview || "", dur: Math.round((x.RunTimeTicks || 0) / 1e7) });
+                // the same key and label as an episode played here (js/detail.js playEp)
+                var label = T("S{s} E{e}", { s: s, e: x.IndexNumber || 0 }) + (x.Name ? " · " + x.Name : "");
+                var w = jfSeen(x, item.id + "|" + x.Id, item.id, x.Id, label);
+                if (w) seen.push(w);
             });
+            // the episodes you started or watched elsewhere, before the page draws its ticks
+            if (seen.length && TV.data.syncResumes) TV.data.syncResumes(seen);
             Object.keys(seasons).forEach(function (s) { seasons[s].sort(function (a, b) { return a.episode - b.episode; }); });
             return { seasons: seasons, info: { plot: item.plot || "", tmdb: item.tmdb || "" } };
         });
