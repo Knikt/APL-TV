@@ -790,6 +790,8 @@
         trimResumes(r);
         TV.save("resume", r);
         fire("resume");
+        // the same on your Jellyfin or Emby server (js/media.js; other sources: nothing)
+        if (TV.media && TV.media.played) TV.media.played(item, eps, on);
     }
     /* Out of "Continue Watching" (OK held): where you were is forgotten, what you finished stays ticked */
     function forget(item) {
@@ -815,6 +817,8 @@
             if (!s || !s.key) return;
             var mine = r[s.key];
             if (mine && mine.at >= s.at) return;
+            // watched on both sides: nothing to change (a mark by hand stays one, out of Recently Watched)
+            if (mine && mine.done && s.done) return;
             // taken out of Continue Watching after that: it stays out (a watched one still gets its tick)
             if (!s.done && f[s.item] >= s.at) return;
             if (s.gone) { if (mine) { delete r[s.key]; changed = true; } return; }

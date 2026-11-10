@@ -173,6 +173,21 @@
             return out;
         });
     }
+    /* Marked by hand (js/data.js markWatched): a movie, or episodes (one, a season, the whole series). The server
+       hears it too (its PlayedItems), so every client shows the same: watched, or not watched and back to the
+       start. One episode after the other. Only Jellyfin and Emby; a server that does not answer changes nothing. */
+    function played(item, eps, on) {
+        var src = item && src0(item.src);
+        if (!src || src.type !== "jellyfin" || !src.token || !src.base || !src.userId) return Promise.resolve(false);
+        var ids = (eps && eps.length ? eps.map(function (e) { return e && e.id; }) : [item.sid]).filter(function (id) { return !!id; }), h = jfAuth(src, src.token);
+        if (!ids.length) return Promise.resolve(false);
+        return ids.reduce(function (p, id) {
+            return p.then(function (ok) {
+                return TV.http(src.base + "/Users/" + src.userId + "/PlayedItems/" + encodeURIComponent(id), { method: on ? "POST" : "DELETE", headers: h, timeout: 10000 })
+                    .then(function (r) { return ok && r.status >= 200 && r.status < 300; }, function () { return false; });
+            });
+        }, Promise.resolve(true));
+    }
     /* "S1 E2 · Its name": the same label as an episode played here (js/detail.js playEp) */
     function jfLabel(x) {
         var s = x.ParentIndexNumber !== undefined && x.ParentIndexNumber !== null ? x.ParentIndexNumber : 1;
@@ -392,6 +407,6 @@
     /* The movie's page: its plot, length and TMDB id from the server (no extra request) */
     function info(item) { return { info: { plot: item.plot || "", tmdb_id: item.tmdb || "", duration_secs: item.dur || 0, backdrop_path: item.backdrop ? [item.backdrop] : [] } }; }
 
-    TV.media = { load: load, seriesInfo: seriesInfo, resolve: resolve, info: info, normServer: normServer, report: report, fresh: fresh,
+    TV.media = { load: load, seriesInfo: seriesInfo, resolve: resolve, info: info, normServer: normServer, report: report, fresh: fresh, played: played,
                  plex: { pin: plexPin, check: plexCheck, servers: plexServers } };
 })(window);
