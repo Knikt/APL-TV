@@ -404,6 +404,7 @@ final class Helper {
         if (p.equals("/epg") && post) {
             JSONObject b = parse(r.body);
             if (b == null || !b.optString("url").matches("(?i)^https?://.*")) { json(out, r, 400, err("bad request")); return; }
+            learnUa(b);
             Epg e;
             try { e = loadXmltv(b.getString("url")); } catch (Exception x) { json(out, r, 502, err(x.getMessage())); return; }
             long now = System.currentTimeMillis();
@@ -429,6 +430,7 @@ final class Helper {
         if (p.equals("/epg/match") && post) {
             JSONObject b = parse(r.body);
             if (b == null || !b.optString("url").matches("(?i)^https?://.*") || b.optJSONArray("names") == null) { json(out, r, 400, err("bad request")); return; }
+            learnUa(b);
             long now = System.currentTimeMillis();
             try {
                 String res = matchXmltv(b.getString("url"), b.getJSONArray("names"), b.optLong("from", now - 4 * 3600 * 1000L), b.optLong("to", now + 26 * 3600 * 1000L));
@@ -760,8 +762,21 @@ final class Helper {
     }
     /* Reads a guide block by block; each <channel> or <programme> goes to "each" */
     private interface Blocks { void each(boolean programme, String attrs, String inner); }
+    /* A guide whose server only lets some players in: the name the app learned for it, or VLC after a refusal
+       (403) under APL TV's own name */
+    private static final String VLC_UA = "VLC/3.0.21 LibVLC/3.0.21";
+    private final ConcurrentHashMap<String, String> epgUa = new ConcurrentHashMap<>();
+    private void learnUa(JSONObject b) { String ua = b.optString("ua"); if (!ua.isEmpty() && ua.length() < 200) epgUa.put(b.optString("url"), ua); }
     private void readXmltv(String target, int timeoutMs, Blocks each) throws IOException {
-        try (Got g = get(target, timeoutMs)) {
+        String known = epgUa.get(target);
+        Got first = get(target, timeoutMs, 0, false, known == null ? null : java.util.Collections.singletonMap("User-Agent", known));
+        if ((first.status == 403 || first.status == 401) && known == null) {
+            first.close();
+            log("epg refused (" + first.status + "): asked again as VLC");
+            first = get(target, timeoutMs, 0, false, java.util.Collections.singletonMap("User-Agent", VLC_UA));
+            if (first.status == 200) epgUa.put(target, VLC_UA);
+        }
+        try (Got g = first) {
             if (g.status != 200) throw new IOException("HTTP " + g.status);
             Reader rd = new InputStreamReader(g.in, StandardCharsets.UTF_8);
             StringBuilder buf = new StringBuilder();

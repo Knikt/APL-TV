@@ -11,7 +11,7 @@
     "use strict";
 
     var TV = global.TV, el = TV.el, esc = TV.esc, T = TV.t, D = TV.data;
-    TV.VERSION = "1.0.11";
+    TV.VERSION = "1.0.12";
     TV.DONATE = "https://ko-fi.com/knikt";     // the Ko-fi page for donations (Settings > About, README, .github/FUNDING.yml)
     var BASE = [
         { id: "home", label: T("Home") },
@@ -184,7 +184,7 @@
        What you were watching and your channels, with the data to open each one here (app control
        "resume", "title", "channel"). Sent when you leave APL TV and every few minutes. */
     function pushShelf() {
-        if (!TV.TIZEN || !D.catalog() || !TV.helper || !TV.helper.shelf) return;     // APL Launcher is on Samsung screens
+        if (!(TV.TIZEN || TV.WEBOS) || !D.catalog() || !TV.helper || !TV.helper.shelf) return;     // APL Launcher: Samsung and LG screens
         try {
             var cont = D.continueWatching().slice(0, 12).map(function (x) {
                 var it = x.item, r = x.resume;

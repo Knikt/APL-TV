@@ -232,6 +232,9 @@
         }
         try {
             av.open(url);
+            // A server that only lets some players in (core.js remembered which): the same name for its streams
+            var ua = TV.uaFor ? TV.uaFor(url) : "";
+            if (ua || TV.ANDROID) { try { av.setStreamingProperty("USER_AGENT", ua); } catch (e) { TV.log("user agent: " + e.message); } }
             av.setListener({
                 onbufferingstart: function () { if (cur && cur.token === my) { buffering = true; emit("onBuffering", true); } },
                 onbufferingprogress: function () {},

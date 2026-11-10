@@ -88,23 +88,24 @@
             return call("/sget", { method: "POST", body: JSON.stringify({ url: url, headers: headers || {}, t: timeout || 60000 }), timeout: (timeout || 60000) + 5000 }).then(function (r) {
                 if (r.status === 404) { var n = new Error("helper too old"); n.old = true; throw n; }
                 if (r.status >= 200 && r.status < 300) return r.text;
-                var e = new Error("HTTP " + r.status); e.status = r.status; throw e;
+                var e = new Error("HTTP " + r.status); e.status = r.status; e.body = r.text; throw e;
             });
         },
         fetch: function (url, timeout) {
             return call("/fetch?u=" + encodeURIComponent(url) + "&t=" + (timeout || 120000), { timeout: (timeout || 120000) + 5000 }).then(function (r) {
                 if (r.status >= 200 && r.status < 300) return r.text;
-                var e = new Error("HTTP " + r.status); e.status = r.status; throw e;
+                var e = new Error("HTTP " + r.status); e.status = r.status; e.body = r.text; throw e;
             });
         },
         epg: function (url, ids, from, to, names) {
-            return call("/epg", { method: "POST", timeout: 300000, body: JSON.stringify({ url: url, ids: ids, from: from, to: to, names: !!names }) }).then(function (r) {
+            // ua: the player's name this server lets in, when it refused the screen's own requests (core.js)
+            return call("/epg", { method: "POST", timeout: 300000, body: JSON.stringify({ url: url, ids: ids, from: from, to: to, names: !!names, ua: TV.uaFor(url) }) }).then(function (r) {
                 if (r.status !== 200) throw new Error("guide: " + (json(r).error || r.status));
                 return json(r);
             });
         },
         epgMatch: function (url, names, from, to) {
-            return call("/epg/match", { method: "POST", timeout: 240000, body: JSON.stringify({ url: url, names: names, from: from, to: to }) }).then(function (r) {
+            return call("/epg/match", { method: "POST", timeout: 240000, body: JSON.stringify({ url: url, names: names, from: from, to: to, ua: TV.uaFor(url) }) }).then(function (r) {
                 if (r.status !== 200) throw new Error("guide: " + (json(r).error || r.status));
                 return json(r);
             });

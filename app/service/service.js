@@ -22,7 +22,7 @@ var zlib = require("zlib");
 var os = require("os");
 var crypto = require("crypto");
 
-var PORT = 8765, VERSION = "1.0.11";
+var PORT = 8765, VERSION = "1.0.12";
 var IDLE_MS = 15 * 60 * 1000, SESSION_MS = 20 * 60 * 1000;
 var UA = "APL TV/" + VERSION + " (" + (global.APLTV_PLATFORM || "Tizen") + ")";
 
@@ -403,6 +403,21 @@ var EPG_KEEP_MS = 10 * 60 * 1000;
 setInterval(function () {
     Object.keys(epgCache).forEach(function (k) { var c = epgCache[k]; if (c && !c.waiting && Date.now() - (c.used || c.at) > EPG_KEEP_MS) delete epgCache[k]; });
 }, 60 * 1000);
+/* A guide whose server only lets some players in: the name the app learned for it (core.js), or VLC after a
+   refusal (403) under APL TV's own name */
+var epgUa = {}, VLC_UA = "VLC/3.0.21 LibVLC/3.0.21";
+function getGuide(target, ms, cb) {
+    get(target, ms, function (err, res) {
+        if (!err && (res.status === 403 || res.status === 401) && !epgUa[target]) {
+            res.body.resume();
+            log("epg refused (" + res.status + "): asked again as VLC");
+            get(target, ms, function (e2, r2) { if (!e2 && r2.status === 200) epgUa[target] = VLC_UA; cb(e2, r2); }, 0, false, { "User-Agent": VLC_UA });
+            return;
+        }
+        cb(err, res);
+    }, 0, false, epgUa[target] ? { "User-Agent": epgUa[target] } : undefined);
+}
+function learnUa(b) { if (b && typeof b.ua === "string" && b.ua && b.ua.length < 200) epgUa[b.url] = b.ua; }
 function loadXmltv(target, cb) {
     var c = epgCache[target];
     if (c && !c.waiting && Date.now() - c.at < 3 * 3600 * 1000) { c.used = Date.now(); cb(null, c); return; }
@@ -411,7 +426,7 @@ function loadXmltv(target, cb) {
     epgCache[target] = entry;
     var from = Date.now() - 6 * 3600 * 1000, to = Date.now() + 3 * 86400 * 1000;
     log("epg: loading " + redact(target));
-    get(target, 240000, function (err, res) {
+    getGuide(target, 240000, function (err, res) {
         function done(e) {
             var w = entry.waiting; entry.waiting = null;
             if (e) { delete epgCache[target]; log("epg failed: " + e.message); }
@@ -469,7 +484,7 @@ function matchXmltv(target, names, from, to, cb) {
     var want = {}, idTo = {}, out = {}, count = 0;
     names.forEach(function (n) { want[n] = 1; });
     log("epg match: " + redact(target) + " for " + names.length + " names");
-    get(target, 180000, function (err, res) {
+    getGuide(target, 180000, function (err, res) {
         if (err) { cb(err); return; }
         if (res.status !== 200) { res.body.resume(); cb(new Error("HTTP " + res.status)); return; }
         var buf = "", done = false;
@@ -580,19 +595,23 @@ function editOk(k) { return !!(edit && k && k === edit.token && Date.now() - edi
 function editWrong() { if (edit && ++edit.wrong >= 20) { log("too many wrong editor codes: closed"); edit = null; } }
 var EDIT_TEXT = {
     en: { sub: "Hide or move your categories, make your groups of channels, order your favorites. Then send it all to the TV.", cats: "Categories", groups: "Groups", favs: "Favorites",
-          live: "TV", movies: "Movies", series: "Series", catsHint: "The switch hides or shows a category everywhere on the TV. \u25B2 \u25BC move it.", none: "Nothing here.",
-          groupsHint: "Your own lists of channels, shown in Live TV and the Guide after Favorites.", rename: "Rename", del: "Delete", addChans: "Add channels", newGroup: "New group",
-          favsHint: "Your favorite channels, in the order the TV shows them.", noChans: "No channels yet.", search: "Search a channel", done: "Done", noMatch: "No channel with this name.",
+          live: "TV", movies: "Movies", series: "Series", catsHint: "The switch hides or shows a category everywhere on the TV. Hold \u2261 and drag to move one, or tap categories to select them and move them all at once.", none: "Nothing here.",
+          groupsHint: "Your own lists of channels, shown in Live TV and the Guide after Favorites. Hold \u2261 and drag to move a channel.", rename: "Rename", del: "Delete", addChans: "Add channels", newGroup: "New group",
+          favsHint: "Your favorite channels, in the order the TV shows them. Hold \u2261 and drag to move one.", noChans: "No channels yet.", search: "Search a channel", done: "Done", noMatch: "No channel with this name.",
           groupName: "Name of the group", delGroup: "Delete the group \u201C{name}\u201D?", send: "Send to the TV", sent: "Sent!", sentHow: "Look at your TV: your changes are there.",
           again: "Keep editing", expired: "This code has expired", expiredHow: "On the TV, open APL TV \u203A Settings \u203A Edit on Your Phone, then scan the new code.",
-          noAnswer: "The TV did not answer. Is the phone on the same Wi-Fi?", error: "Something went wrong. Scan the code again.", loading: "Loading your playlist\u2026" },
+          noAnswer: "The TV did not answer. Is the phone on the same Wi-Fi?", error: "Something went wrong. Scan the code again.", loading: "Loading your playlist\u2026",
+          findCat: "Search a category", noCat: "No category with this name.", sel1: "1 selected", seln: "{n} selected", toTop: "To the top", toBottom: "To the bottom",
+          moveAfter: "Put after\u2026", placeHint: "Now tap the category they should come after.", cancel: "Cancel" },
     fr: { sub: "Masque ou d\u00E9place tes cat\u00E9gories, fais tes groupes de cha\u00EEnes, range tes favoris. Puis envoie tout \u00E0 la TV.", cats: "Cat\u00E9gories", groups: "Groupes", favs: "Favoris",
-          live: "TV", movies: "Films", series: "S\u00E9ries", catsHint: "L'interrupteur masque ou affiche une cat\u00E9gorie partout sur la TV. \u25B2 \u25BC la d\u00E9placent.", none: "Rien ici.",
-          groupsHint: "Tes propres listes de cha\u00EEnes, dans la TV en direct et le Guide apr\u00E8s les Favoris.", rename: "Renommer", del: "Supprimer", addChans: "Ajouter des cha\u00EEnes", newGroup: "Nouveau groupe",
-          favsHint: "Tes cha\u00EEnes favorites, dans l'ordre o\u00F9 la TV les montre.", noChans: "Pas encore de cha\u00EEne.", search: "Chercher une cha\u00EEne", done: "OK", noMatch: "Aucune cha\u00EEne avec ce nom.",
+          live: "TV", movies: "Films", series: "S\u00E9ries", catsHint: "L'interrupteur masque ou affiche une cat\u00E9gorie partout sur la TV. Maintiens \u2261 et fais glisser pour en d\u00E9placer une, ou touche des cat\u00E9gories pour les s\u00E9lectionner et les d\u00E9placer d'un coup.", none: "Rien ici.",
+          groupsHint: "Tes propres listes de cha\u00EEnes, dans la TV en direct et le Guide apr\u00E8s les Favoris. Maintiens \u2261 et fais glisser pour d\u00E9placer une cha\u00EEne.", rename: "Renommer", del: "Supprimer", addChans: "Ajouter des cha\u00EEnes", newGroup: "Nouveau groupe",
+          favsHint: "Tes cha\u00EEnes favorites, dans l'ordre o\u00F9 la TV les montre. Maintiens \u2261 et fais glisser pour en d\u00E9placer une.", noChans: "Pas encore de cha\u00EEne.", search: "Chercher une cha\u00EEne", done: "OK", noMatch: "Aucune cha\u00EEne avec ce nom.",
           groupName: "Nom du groupe", delGroup: "Supprimer le groupe \u00AB {name} \u00BB ?", send: "Envoyer \u00E0 la TV", sent: "C'est envoy\u00E9 !", sentHow: "Regarde ta TV : tes changements y sont.",
           again: "Continuer \u00E0 modifier", expired: "Ce code a expir\u00E9", expiredHow: "Sur la TV, ouvre APL TV \u203A R\u00E9glages \u203A Modifier sur ton t\u00E9l\u00E9phone, puis scanne le nouveau code.",
-          noAnswer: "La TV n'a pas r\u00E9pondu. Le t\u00E9l\u00E9phone est-il sur le m\u00EAme Wi-Fi ?", error: "Un probl\u00E8me est survenu. Scanne \u00E0 nouveau le code.", loading: "Chargement de ta playlist\u2026" }
+          noAnswer: "La TV n'a pas r\u00E9pondu. Le t\u00E9l\u00E9phone est-il sur le m\u00EAme Wi-Fi ?", error: "Un probl\u00E8me est survenu. Scanne \u00E0 nouveau le code.", loading: "Chargement de ta playlist\u2026",
+          findCat: "Chercher une cat\u00E9gorie", noCat: "Aucune cat\u00E9gorie avec ce nom.", sel1: "1 s\u00E9lectionn\u00E9e", seln: "{n} s\u00E9lectionn\u00E9es", toTop: "Tout en haut", toBottom: "Tout en bas",
+          moveAfter: "Placer apr\u00E8s\u2026", placeHint: "Touche maintenant la cat\u00E9gorie apr\u00E8s laquelle les mettre.", cancel: "Annuler" }
 };
 var EDIT_CSS = ".r{display:flex;align-items:center;gap:8px;padding:10px 12px;border-top:1px solid rgba(255,255,255,.08)}.card>.r:first-child{border-top:0}" +
     ".r .n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.r small{color:rgba(255,255,255,.5);font-size:13px;margin-left:4px}.r.off .n{opacity:.45}" +
@@ -603,52 +622,164 @@ var EDIT_CSS = ".r{display:flex;align-items:center;gap:8px;padding:10px 12px;bor
     "button.go2{width:100%;border:0;border-radius:14px;background:rgba(255,255,255,.12);color:#fff;font:600 17px inherit;padding:14px;margin:6px 0 14px}.r.head{background:rgba(255,255,255,.05)}" +
     ".bar{position:sticky;bottom:0;padding:16px 0 6px;background:linear-gradient(rgba(0,0,0,0),#000 35%)}.empty{padding:16px;color:rgba(255,255,255,.5);text-align:center}#kinds{margin-top:-8px}" +
     ".ov{position:fixed;left:0;top:0;right:0;bottom:0;background:#0b0d13;overflow:auto;padding:16px 16px 40px;z-index:5}.ovh{display:flex;gap:8px;position:sticky;top:0;background:#0b0d13;padding-bottom:10px;z-index:1}" +
-    ".ovh input{flex:1;background:rgba(255,255,255,.1);border-radius:12px;padding:12px 14px}.r.pick .ck{color:#0a84ff;font-size:20px;width:28px;text-align:center;flex:none}.r.pick.on .ck{color:#34c759}";
+    ".ovh input{flex:1;background:rgba(255,255,255,.1);border-radius:12px;padding:12px 14px}.r.pick .ck{color:#0a84ff;font-size:20px;width:28px;text-align:center;flex:none}.r.pick.on .ck{color:#34c759}" +
+    // dragging (the handle), selecting several categories, searching one
+    ".hd{flex:none;width:40px;height:36px;margin-right:-6px;display:flex;align-items:center;justify-content:center;font-size:26px;line-height:1;color:rgba(255,255,255,.5);" +
+    "touch-action:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;cursor:grab}.card.dragging{overflow:visible}.dragging .r{transition:transform .15s}" +
+    ".r.drag{position:relative;z-index:5;transition:none;background:#2a2e38;border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.65)}.bar{z-index:6}" +
+    ".r .sc{flex:none;width:24px;height:24px;border-radius:12px;border:2px solid rgba(255,255,255,.35);position:relative}" +
+    ".r.sel{background:rgba(10,132,255,.2)}.r.sel .sc{background:#0a84ff;border-color:#0a84ff}.r.sel .sc:after{content:'';position:absolute;left:6px;top:2px;width:6px;height:11px;border:solid #fff;border-width:0 2px 2px 0;transform:rotate(45deg)}" +
+    "input.find{display:block;background:rgba(255,255,255,.1);border-radius:12px;padding:12px 14px;margin:0 0 12px;-webkit-appearance:none}" +
+    ".selbox{background:#1f232c;border-radius:16px;padding:10px;margin-bottom:10px;box-shadow:0 -4px 24px rgba(0,0,0,.6),inset 0 1px 0 rgba(255,255,255,.1)}" +
+    ".selbar{display:flex;align-items:center;gap:8px}.selbar span{flex:1;font-size:15px;line-height:1.3;color:rgba(255,255,255,.9);padding-left:6px}" +
+    ".selacts{display:flex;gap:8px;margin-top:10px}.selacts button{flex:1;padding:12px 4px;background:rgba(255,255,255,.14)}" +
+    "@keyframes fl{from{background:rgba(52,199,89,.4)}to{background:rgba(52,199,89,0)}}.r.flash{animation:fl 1.8s ease-out}" +
+    ".placing .r{box-shadow:inset 3px 0 0 #0a84ff}.placing .r.sel{opacity:.45;box-shadow:none}.placing .sw,.placing .hd{pointer-events:none;opacity:.35}";
 function editScript() {
-    var D = null, tab = "cats", kind = "live", picker = null, byId = {};
+    var D = null, tab = "cats", kind = "live", picker = null, byId = {}, filter = "", placing = false, drag = null;
     var app = document.getElementById("app");
     function $(id) { return document.getElementById(id); }
     function h(v) { return String(v === null || v === undefined ? "" : v).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;" }[c]; }); }
     function fold(v) { v = String(v || "").toLowerCase(); return v.normalize ? v.normalize("NFD").replace(/[\u0300-\u036f]/g, "") : v; }
-    function move(list, i, d) { var j = i + d; if (j < 0 || j >= list.length) return; var t = list[i]; list[i] = list[j]; list[j] = t; }
     function seg(id, items, cur) { return "<div class=seg id=" + id + ">" + items.map(function (it) { return "<button type=button data-v='" + it[0] + "' class='" + (it[0] === cur ? "on" : "") + "'>" + h(it[1]) + "</button>"; }).join("") + "</div>"; }
     function listOf(l) { return l === "f" ? D.favs : D.groups[+l.slice(1)].ids; }
+    function cats() { return D.kinds[kind] || []; }
+    function selCount() { var n = 0; cats().forEach(function (c) { if (c.sel) n++; }); return n; }
     function chanRows(ids, l) {
         if (!ids.length) return "<div class=empty>" + h(L.noChans) + "</div>";
         return ids.map(function (id, i) {
             var c = byId[id];
-            return "<div class=r><span class=n>" + h(c ? c[1] : id) + (c && c[2] ? " <small>" + h(c[2]) + "</small>" : "") + "</span>" +
-                "<button class=mv data-a=cup data-l=" + l + " data-i=" + i + ">\u25B2</button><button class=mv data-a=cdown data-l=" + l + " data-i=" + i + ">\u25BC</button>" +
-                "<button class='mv red' data-a=cdel data-l=" + l + " data-i=" + i + ">\u2715</button></div>";
+            return "<div class=r data-row=" + i + "><span class=n>" + h(c ? c[1] : id) + (c && c[2] ? " <small>" + h(c[2]) + "</small>" : "") + "</span>" +
+                "<button class='mv red' data-a=cdel data-l=" + l + " data-i=" + i + ">\u2715</button><span class=hd>\u2261</span></div>";
         }).join("");
     }
     function draw() {
         var html = "<h1>APL <span>TV</span></h1><p class=sub>" + h(L.sub) + "</p>" + seg("tabs", [["cats", L.cats], ["groups", L.groups], ["favs", L.favs]], tab);
         if (tab === "cats") {
-            html += seg("kinds", [["live", L.live], ["movies", L.movies], ["series", L.series]], kind);
-            var list = D.kinds[kind] || [];
-            html += "<p class=hint>" + h(L.catsHint) + "</p><div class=card>";
-            if (!list.length) html += "<div class=empty>" + h(L.none) + "</div>";
-            list.forEach(function (c, i) {
-                html += "<div class='r" + (c.off ? " off" : "") + "'><span class=n>" + h(c.name) + " <small>" + h(c.count) + "</small></span>" +
-                    "<button class=mv data-a=up data-i=" + i + ">\u25B2</button><button class=mv data-a=down data-i=" + i + ">\u25BC</button>" +
-                    "<button class='sw" + (c.off ? "" : " on") + "' data-a=sw data-i=" + i + "><i></i></button></div>";
-            });
-            html += "</div>";
+            html += seg("kinds", [["live", L.live], ["movies", L.movies], ["series", L.series]], kind) + "<p class=hint>" + h(L.catsHint) + "</p>";
+            if (cats().length > 8) html += "<input class=find id=find type=search placeholder='" + h(L.findCat) + "' value='" + h(filter) + "' autocomplete=off autocorrect=off autocapitalize=off>";
+            html += "<div class=card id=cats data-list=cats></div>";
         } else if (tab === "groups") {
             html += "<p class=hint>" + h(L.groupsHint) + "</p>";
             D.groups.forEach(function (g, gi) {
-                html += "<div class=card><div class='r head'><span class=n>" + h(g.name) + " <small>" + g.ids.length + "</small></span>" +
+                html += "<div class=card data-list=g" + gi + "><div class='r head'><span class=n>" + h(g.name) + " <small>" + g.ids.length + "</small></span>" +
                     "<button class=sm data-a=gren data-g=" + gi + ">" + h(L.rename) + "</button><button class='sm red' data-a=gdel data-g=" + gi + ">" + h(L.del) + "</button></div>" +
                     chanRows(g.ids, "g" + gi) + "<button class=add data-a=gadd data-g=" + gi + ">+ " + h(L.addChans) + "</button></div>";
             });
             html += "<button class=go2 data-a=gnew>+ " + h(L.newGroup) + "</button>";
         } else {
-            html += "<p class=hint>" + h(L.favsHint) + "</p><div class=card>" + chanRows(D.favs, "f") + "<button class=add data-a=fadd>+ " + h(L.addChans) + "</button></div>";
+            html += "<p class=hint>" + h(L.favsHint) + "</p><div class=card data-list=f>" + chanRows(D.favs, "f") + "<button class=add data-a=fadd>+ " + h(L.addChans) + "</button></div>";
         }
-        html += "<div class=bar><button class=go id=send data-a=send>" + h(L.send) + "</button><div class=msg id=msg></div></div>";
+        html += "<div class=bar id=bar></div>";
         app.innerHTML = html;
+        if (tab === "cats") { drawCats(); var f = $("find"); if (f) f.oninput = function () { filter = this.value; drawCats(); }; }
+        drawBar();
     }
+    /* The categories of one kind: tap to select (several at once), the switch hides, the handle drags (not while searching) */
+    function drawCats() {
+        var box = $("cats"), list = cats(), q = fold(filter).trim(), out = "", shown = 0;
+        if (!box) return;
+        list.forEach(function (c, i) {
+            if (q && fold(c.name).indexOf(q) < 0) return;
+            shown++;
+            out += "<div class='r" + (c.off ? " off" : "") + (c.sel ? " sel" : "") + (c.flash ? " flash" : "") + "' data-row=" + i + ">" +
+                "<span class=sc data-a=sel data-i=" + i + "></span><span class=n data-a=sel data-i=" + i + ">" + h(c.name) + " <small>" + h(c.count) + "</small></span>" +
+                "<button class='sw" + (c.off ? "" : " on") + "' data-a=sw data-i=" + i + "><i></i></button>" + (q ? "" : "<span class=hd>\u2261</span>") + "</div>";
+        });
+        box.innerHTML = shown ? out : "<div class=empty>" + h(list.length ? L.noCat : L.none) + "</div>";
+        box.className = "card" + (placing ? " placing" : "");
+    }
+    function drawBar() {
+        var b = $("bar"), n = tab === "cats" ? selCount() : 0, top = "";
+        if (!b) return;
+        if (!n) placing = false;
+        if (placing) top = "<div class=selbox><div class=selbar><span>" + h(L.placeHint) + "</span><button class=sm data-a=pcancel>" + h(L.cancel) + "</button></div></div>";
+        else if (n) top = "<div class=selbox><div class=selbar><span>" + h((n === 1 ? L.sel1 : L.seln).replace("{n}", n)) + "</span><button class=sm data-a=sclear>" + h(L.cancel) + "</button></div>" +
+            "<div class=selacts><button class=sm data-a=stop>\u2191 " + h(L.toTop) + "</button><button class=sm data-a=sbottom>\u2193 " + h(L.toBottom) + "</button><button class=sm data-a=splace>" + h(L.moveAfter) + "</button></div></div>";
+        b.innerHTML = top + "<button class=go id=send data-a=send>" + h(L.send) + "</button><div class=msg id=msg></div>";
+    }
+    /* The selected categories, in their order: to the top, to the bottom, or right after another one */
+    function moveSel(where, after) {
+        var list = cats(), picked = [], rest = [];
+        list.forEach(function (c) { (c.sel ? picked : rest).push(c); });
+        if (!picked.length) return;
+        var k = where === "top" ? 0 : where === "bottom" ? rest.length : rest.indexOf(list[after]) + 1;
+        picked.forEach(function (c) { c.sel = false; c.flash = true; });
+        D.kinds[kind] = rest.slice(0, k).concat(picked, rest.slice(k));
+    }
+    /* What just moved flashes green, and comes into view if it is not */
+    function showMoved() {
+        var el = app.querySelector(".r.flash");
+        if (el) {
+            var r = el.getBoundingClientRect();
+            if (r.top < 70 || r.bottom > window.innerHeight - 170) { try { el.scrollIntoView({ block: "center" }); } catch (x) { el.scrollIntoView(); } }
+        }
+        if (D.kinds[kind]) D.kinds[kind].forEach(function (c) { c.flash = false; });
+    }
+
+    /* ---- dragging a row by its handle (categories, a group's channels, favorites). The page scrolls by itself near
+       the top and the bottom of the screen, so a category can go from the end of a long list to its start in one go. ---- */
+    function scrollY() { return window.pageYOffset || document.documentElement.scrollTop || 0; }
+    function point(e) { var t = (e.touches && e.touches[0]) || (e.changedTouches && e.changedTouches[0]); return t || e; }
+    function dragStart(e) {
+        if (drag || picker || placing) return;
+        var hd = e.target && e.target.closest ? e.target.closest(".hd") : null;
+        if (!hd) return;
+        var row = hd.parentNode, box = row.parentNode, rows = [].slice.call(box.querySelectorAll(".r[data-row]")), s = scrollY();
+        if (rows.length < 2 || !box.getAttribute("data-list")) return;
+        if (e.cancelable) e.preventDefault();
+        drag = { box: box, key: box.getAttribute("data-list"), row: row, rows: rows, from: rows.indexOf(row), y0: point(e).clientY, s0: s, h: row.offsetHeight,
+            mids: rows.map(function (r) { var b = r.getBoundingClientRect(); return b.top + s + b.height / 2; }) };
+        drag.to = drag.from; drag.y = drag.y0;
+        box.className += " dragging"; row.className += " drag";
+        drag.raf = requestAnimationFrame(tick);
+    }
+    function place() {
+        var d = drag, dy = d.y - d.y0 + scrollY() - d.s0, center = d.mids[d.from] + dy, to = 0, i;
+        d.row.style.transform = "translateY(" + dy + "px)";
+        for (i = 0; i < d.mids.length; i++) if (i !== d.from && d.mids[i] < center) to++;
+        if (to === d.to) return;
+        d.to = to;
+        for (i = 0; i < d.rows.length; i++) {
+            if (i === d.from) continue;
+            var sh = d.from < to && i > d.from && i <= to ? -d.h : d.from > to && i >= to && i < d.from ? d.h : 0;
+            d.rows[i].style.transform = sh ? "translateY(" + sh + "px)" : "";
+        }
+    }
+    // only once the finger goes toward an edge: a row taken near the bottom does not run away by itself
+    function tick() {
+        if (!drag) return;
+        var y = drag.y, bar = $("bar"), low = (bar ? bar.getBoundingClientRect().top : window.innerHeight - 100) - 30, v = 0;
+        if (y < 90 && y < drag.y0 - 8) v = -Math.min(32, Math.ceil((90 - y) / 3));
+        else if (y > low && y > drag.y0 + 8) v = Math.min(32, Math.ceil((y - low) / 3));
+        if (v) { window.scrollBy(0, v); place(); }
+        drag.raf = requestAnimationFrame(tick);
+    }
+    function dragMove(e) { if (!drag) return; if (e.cancelable) e.preventDefault(); drag.y = point(e).clientY; place(); }
+    function dragEnd() {
+        if (!drag) return;
+        var d = drag, list = d.key === "cats" ? cats() : listOf(d.key);
+        drag = null;
+        cancelAnimationFrame(d.raf);
+        if (d.to !== d.from && d.from >= 0) { var it = list.splice(d.from, 1)[0]; list.splice(d.to, 0, it); if (it && typeof it === "object") it.flash = true; }
+        draw();
+        showMoved();
+    }
+    if (window.PointerEvent) {
+        document.addEventListener("pointerdown", function (e) { if (!e.button) dragStart(e); });
+        document.addEventListener("pointermove", dragMove);
+        document.addEventListener("pointerup", dragEnd);
+        document.addEventListener("pointercancel", dragEnd);
+        // a finger on a handle never scrolls the page (older iPhones ignore touch-action)
+        document.addEventListener("touchstart", function (e) { if (e.target && e.target.closest && e.target.closest(".hd")) e.preventDefault(); }, { passive: false });
+        document.addEventListener("touchmove", function (e) { if (drag) e.preventDefault(); }, { passive: false });
+    } else {
+        document.addEventListener("touchstart", dragStart, { passive: false });
+        document.addEventListener("touchmove", dragMove, { passive: false });
+        document.addEventListener("touchend", dragEnd);
+        document.addEventListener("touchcancel", dragEnd);
+    }
+
     function drawPicker() {
         var q = fold(picker.q).trim(), list = listOf(picker.target), out = [], all = D.chans || [];
         for (var i = 0; i < all.length && out.length < 150; i++) if (!q || fold(all[i][1]).indexOf(q) >= 0) out.push(all[i]);
@@ -685,19 +816,37 @@ function editScript() {
     document.addEventListener("click", function (e) {
         var t = e.target;
         while (t && t.nodeType === 1 && !(t.getAttribute("data-a") || t.getAttribute("data-v") || t.getAttribute("data-id"))) t = t.parentNode;
-        if (!t || t.nodeType !== 1) return;
-        var a = t.getAttribute("data-a"), v = t.getAttribute("data-v"), id = t.getAttribute("data-id"), i = +t.getAttribute("data-i"), g = +t.getAttribute("data-g"), l = t.getAttribute("data-l");
+        var found = !!(t && t.nodeType === 1);
+        var a = found ? t.getAttribute("data-a") : null, v = found ? t.getAttribute("data-v") : null, id = found ? t.getAttribute("data-id") : null,
+            i = found ? +t.getAttribute("data-i") : -1, g = found ? +t.getAttribute("data-g") : -1, l = found ? t.getAttribute("data-l") : null;
         if (picker) {
             if (a === "pdone") { closePicker(); return; }
             if (id !== null) { var pl = listOf(picker.target), k = pl.indexOf(id); if (k >= 0) pl.splice(k, 1); else pl.push(id); drawPicker(); }
             return;
         }
-        if (v) { if (t.parentNode.id === "tabs") tab = v; else kind = v; draw(); return; }
-        var cats = D.kinds[kind];
-        if (a === "up" || a === "down") move(cats, i, a === "up" ? -1 : 1);
-        else if (a === "sw") cats[i].off = !cats[i].off;
-        else if (a === "cup" || a === "cdown") move(listOf(l), i, a === "cup" ? -1 : 1);
-        else if (a === "cdel") listOf(l).splice(i, 1);
+        // "Put after...": the category tapped now is the one the selection goes after
+        if (placing && tab === "cats") {
+            if (a === "pcancel") { placing = false; drawCats(); drawBar(); return; }
+            var r = e.target;
+            while (r && r.nodeType === 1 && r.getAttribute("data-row") === null) r = r.parentNode;
+            if (r && r.nodeType === 1 && r.parentNode && r.parentNode.id === "cats") {
+                var at = +r.getAttribute("data-row"), c = cats()[at];
+                if (!c || c.sel) return;
+                moveSel("after", at); placing = false; filter = ""; draw(); showMoved();
+                return;
+            }
+            if (!v && a !== "send") return;
+            placing = false;
+        }
+        if (!found) return;
+        if (v) { if (t.parentNode.id === "tabs") tab = v; else { kind = v; filter = ""; } draw(); return; }
+        var cs = cats();
+        if (a === "sel") { if (cs[i]) cs[i].sel = !cs[i].sel; drawCats(); drawBar(); return; }
+        if (a === "sw") { if (cs[i]) cs[i].off = !cs[i].off; drawCats(); return; }
+        if (a === "stop" || a === "sbottom") { moveSel(a === "stop" ? "top" : "bottom"); filter = ""; draw(); showMoved(); return; }
+        if (a === "splace") { placing = true; drawCats(); drawBar(); return; }
+        if (a === "sclear") { cs.forEach(function (x) { x.sel = false; }); drawCats(); drawBar(); return; }
+        if (a === "cdel") listOf(l).splice(i, 1);
         else if (a === "gnew") { var nm = prompt(L.groupName, ""); if (nm && nm.trim()) D.groups.push({ id: "", name: nm.trim().slice(0, 40), ids: [] }); }
         else if (a === "gren") { var nn = prompt(L.groupName, D.groups[g].name); if (nn && nn.trim()) D.groups[g].name = nn.trim().slice(0, 40); }
         else if (a === "gdel") { if (confirm(L.delGroup.replace("{name}", D.groups[g].name))) D.groups.splice(g, 1); }
@@ -879,6 +1028,7 @@ function handler(req, res) {
             var b = null;
             try { b = JSON.parse(body); } catch (e) {}
             if (!b || !/^https?:\/\//i.test(b.url || "")) { send(res, 400, { error: "bad request" }); return; }
+            learnUa(b);
             loadXmltv(b.url, function (err, e) {
                 if (err) { send(res, 502, { error: err.message }); return; }
                 var from = b.from || Date.now() - 3 * 3600 * 1000, to = b.to || Date.now() + 24 * 3600 * 1000;
@@ -912,6 +1062,7 @@ function handler(req, res) {
             var b = null;
             try { b = JSON.parse(body); } catch (e) {}
             if (!b || !/^https?:\/\//i.test(b.url || "") || !b.names) { send(res, 400, { error: "bad request" }); return; }
+            learnUa(b);
             matchXmltv(b.url, b.names, b.from || Date.now() - 4 * 3600 * 1000, b.to || Date.now() + 26 * 3600 * 1000, function (err, out) {
                 if (err) { send(res, 502, { error: err.message }); return; }
                 send(res, 200, { chans: out });

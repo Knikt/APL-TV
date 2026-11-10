@@ -82,7 +82,7 @@ final class Player {
         // IPTV MPEG-TS streams: keyframes not always marked, access units to be found
         DefaultExtractorsFactory ex = new DefaultExtractorsFactory()
             .setTsExtractorFlags(DefaultTsPayloadReaderFactory.FLAG_ALLOW_NON_IDR_KEYFRAMES | DefaultTsPayloadReaderFactory.FLAG_DETECT_ACCESS_UNITS);
-        DefaultHttpDataSource.Factory http = new DefaultHttpDataSource.Factory()
+        http = new DefaultHttpDataSource.Factory()
             .setUserAgent(UA).setAllowCrossProtocolRedirects(true).setConnectTimeoutMs(15000).setReadTimeoutMs(20000);
         DefaultLoadControl load = new DefaultLoadControl.Builder().setBufferDurationsMs(15000, 50000, 2500, 5000).build();
         meter = new DefaultBandwidthMeter.Builder(act).build();
@@ -193,7 +193,10 @@ final class Player {
     void method(String m) {
         ui.post(() -> view.setResizeMode(m != null && m.contains("FULL_SCREEN") ? AspectRatioFrameLayout.RESIZE_MODE_FILL : AspectRatioFrameLayout.RESIZE_MODE_FIT));
     }
+    private DefaultHttpDataSource.Factory http;
     void property(String key, String value) {
+        // a server that only lets some players in (the app remembered which): its streams under the same name
+        if ("USER_AGENT".equals(key)) { String ua = value == null || value.isEmpty() ? UA : value; ui.post(() -> { if (http != null) http.setUserAgent(ua); }); return; }
         // "the best quality from the start" (Samsung's ADAPTIVE_INFO STARTBITRATE=HIGHEST)
         if ("ADAPTIVE_INFO".equals(key) && value != null && value.contains("HIGHEST"))
             ui.post(() -> { if (selector != null) selector.setParameters(selector.buildUponParameters().setForceHighestSupportedBitrate(true)); });

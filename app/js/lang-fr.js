@@ -5,6 +5,13 @@
    ============================================================ */
 window.TV_LANG_FR = {
     /* 1.0.11: Stream Info, Quality, Audio */
+    "Your provider refused the connection (error {code}). Check that your subscription is active and not already in use on another screen; some providers also block VPNs or other countries.": "Ton fournisseur a refusé la connexion (erreur {code}). Vérifie que ton abonnement est actif et pas déjà utilisé sur un autre écran ; certains fournisseurs bloquent aussi les VPN ou les autres pays.",
+    "The server says: “{text}”": "Le serveur dit : « {text} »",
+    "No {lang} sound in this version": "Pas de son en {lang} dans cette version",
+    "“{title}” also exists in {lang} ({version}). Switch to it, at the same moment?": "« {title} » existe aussi en {lang} ({version}). Passer à cette version, au même moment ?",
+    "Watch in {lang}": "Regarder en {lang}",
+    "Keep This Version": "Garder cette version",
+    "This episode is not in that version.": "Cet épisode n'est pas dans cette version.",
     "Loading…": "Chargement…",
     "Nothing in this server's libraries yet.": "Rien dans les bibliothèques de ce serveur pour le moment.",
     "Back to Live": "Revenir au direct",

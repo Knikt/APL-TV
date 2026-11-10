@@ -77,6 +77,14 @@
                 if (!it.plot && info.info && info.info.plot) it.plot = info.info.plot;
                 var start = startEp();
                 if (start) seasonKeys.forEach(function (k, i) { if (seasons[k].indexOf(start.ep) >= 0) seasonIndex = i; });
+                // another version chosen during an episode (its sound in your language): the same episode, where it was
+                if (opts.playEp) {
+                    var want = opts.playEp, found = null;
+                    seasonKeys.forEach(function (k, i) { (seasons[k] || []).forEach(function (e) { if (!found && +e.season === +want.season && +e.episode === +want.episode) { found = e; seasonIndex = i; } }); });
+                    opts.playEp = null;
+                    if (found) setTimeout(function () { if (my === token) playEp(found, want.pos); }, 0);
+                    else TV.toast(T("This episode is not in that version."));
+                }
             }
             drawSoon();
             return meta && (!tmdbId || meta.tmdbId === tmdbId) ? meta : TV.meta.lookup(it, tmdbId);
@@ -451,5 +459,10 @@
     };
 
     TV.detail = { open: open, close: close, isOpen: function () { return isOpen; },
-        play: function (it, start) { if (it.kind === "movie") { item = it; meta = null; TV.meta.lookup(it).then(function (m) { meta = m; }); play(it, start); } else open(it); } };
+        play: function (it, start) { if (it.kind === "movie") { item = it; meta = null; TV.meta.lookup(it).then(function (m) { meta = m; }); play(it, start); } else open(it); },
+        /* Another version of what is playing (its sound in your language): the movie, or the same episode, at that moment */
+        playVersion: function (v, ep, pos) {
+            if (v.kind === "movie" || !ep) { item = v; meta = null; TV.meta.lookup(v).then(function (m) { meta = m; }); play(v, pos); if (isOpen) draw(); return; }
+            open(v, { back: true, playEp: { season: ep.season, episode: ep.episode, pos: pos } });
+        } };
 })(window);

@@ -1,8 +1,8 @@
 {
- "version": "1.0.11",
+ "version": "1.0.12",
  "loader": 1,
  "reinstall": "1.0.1",
- "notes": "Jellyfin, Emby and Plex as sources with their own tab, pause and rewind live TV, Stream Info and Quality in the player, a search keyboard like a computer's, and your playlist edited on your phone.",
+ "notes": "The sound in your language from another version of a title, drag and drop in the phone editor, playlists from providers that answer 403, and APL Launcher's Continue Watching on LG.",
  "platforms": {
   "tizen": {
    "reinstall": "1.0.1"

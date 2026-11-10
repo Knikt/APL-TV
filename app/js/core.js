@@ -221,19 +221,91 @@
             } catch (e) { done = true; clearTimeout(timer); reject(e); }
         });
     };
-    TV.fetchText = function (url, opts) {
-        opts = opts || {};
+    /* A provider that refuses the screen's own request (403: many panels block a browser's User-Agent, or the
+       Origin a TV app sends): the helper asks again without them, then under the names of players those panels let
+       in (VLC first). What worked is remembered for that server: its next requests go that way at once, and the
+       player gives the same name for its streams (player.js). */
+    var REFUSED = { 401: 1, 403: 1, 406: 1, 451: 1 };
+    var PLAYER_UAS = ["VLC/3.0.21 LibVLC/3.0.21", "IPTVSmartersPro", "okhttp/4.12.0"];
+    var hostUa = null;
+    function hostKey(url) { var m = String(url || "").match(/^https?:\/\/([^\/?#]+)/i); return m ? m[1].toLowerCase() : ""; }
+    function uaMap() { if (!hostUa) hostUa = TV.load("hostUA", {}) || {}; return hostUa; }
+    function helperUa() { return "APL TV/" + (TV.VERSION || "1") + " (" + (TV.WEBOS ? "webOS" : TV.ANDROID ? "Android" : "Tizen") + ")"; }
+    TV.uaFor = function (url) { var h = hostKey(url); return h && uaMap()[h] || ""; };
+    function rememberUa(url, ua) {
+        var m = uaMap(), h = hostKey(url);
+        if (!h || m[h] === ua) return;
+        m[h] = ua;
+        TV.save("hostUA", m);
+        TV.log("a server refused the screen's own request; it lets APL TV in as " + ua);
+    }
+    // What the server wrote with its refusal, when it is a short sentence ("Account expired", "Access denied")
+    function serverSays(body) {
+        var t = String(body || ""), m = t.match(/<title[^>]*>([^<]{2,140})<\/title>/i);
+        t = (m ? m[1] : /</.test(t) ? "" : t).replace(/\s+/g, " ").trim();
+        return !t || t.length > 140 || !/[a-z]{3}/i.test(t) || /^[\[{]/.test(t) ? "" : TV.redact(t);
+    }
+    function refusedError(status, body) {
+        var e = new Error(status === 403 || status === 451 ? T("Your provider refused the connection (error {code}). Check that your subscription is active and not already in use on another screen; some providers also block VPNs or other countries.", { code: status }) :
+            status === 401 ? T("The server refused this username or password.") : "HTTP " + status);
+        var said = serverSays(body);
+        if (said) e.message += " " + T("The server says: “{text}”", { text: said });
+        e.status = status;
+        return e;
+    }
+    function askAgain(url, opts, status, body, ownDone) {
+        var known = TV.uaFor(url), tries = (ownDone ? [] : [""]).concat(PLAYER_UAS), i = 0, old = false, last = { status: status, body: body };
+        if (known) tries = [known].concat(tries.filter(function (u) { return u !== known && !(u === "" && known === helperUa()); }));
+        return (function next() {
+            if (i >= tries.length) throw refusedError(last.status || 403, last.body);
+            var ua = tries[i++];
+            if (ua && old) return next();                  // a helper from before 1.0.7: only its own request
+            return (ua ? TV.helper.sget(url, { "User-Agent": ua }, opts.timeout) : TV.helper.fetch(url, opts.timeout)).then(function (text) {
+                rememberUa(url, ua || helperUa());
+                return text;
+            }, function (e) {
+                if (e.old) { old = true; return next(); }
+                if (!REFUSED[e.status]) throw e;           // another answer (not found, the network): that is the real one
+                last = { status: e.status, body: e.body };
+                return next();
+            });
+        })();
+    }
+    // Through the helper's own request; refused there too, as the players that panels let in
+    function viaHelper(url, opts) {
+        return TV.helper.fetch(url, opts.timeout).catch(function (e) {
+            if (!REFUSED[e.status]) throw e;
+            TV.log("refused by the server (" + e.status + "), even through the helper: asked again as a player");
+            return askAgain(url, opts, e.status, e.body, true);
+        });
+    }
+    function direct(url, opts, proxy) {
         return TV.http(url, opts).then(function (r) {
             if (r.status >= 200 && r.status < 300 && r.text !== null) return r.text;
-            if (r.status === 0 && TV.helper && !opts.noProxy) {
+            if (r.status === 0 && proxy) {
                 TV.log("direct fetch refused, through the helper: " + url.split("?")[0]);
-                return TV.helper.fetch(url, opts.timeout);
+                return viaHelper(url, opts);
             }
-            var e = new Error("HTTP " + r.status); e.status = r.status; throw e;
+            if (REFUSED[r.status] && proxy) {
+                TV.log("refused by the server (" + r.status + "): asked again through the helper");
+                return askAgain(url, opts, r.status, r.text);
+            }
+            throw refusedError(r.status, r.text);
         }, function (e) {
-            if (TV.helper && !opts.noProxy && e.message !== "timeout") return TV.helper.fetch(url, opts.timeout);
+            if (proxy && e.message !== "timeout") return viaHelper(url, opts);
             throw e;
         });
+    }
+    TV.fetchText = function (url, opts) {
+        opts = opts || {};
+        var proxy = !!(TV.helper && !opts.noProxy);
+        // A server known to refuse the screen's own request: straight the way that worked
+        if (proxy && TV.uaFor(url)) return askAgain(url, opts, 0, "").catch(function (e) {
+            if (e.status) throw e;
+            TV.log("helper: " + e.message + "; direct again");
+            return direct(url, opts, false);
+        });
+        return direct(url, opts, proxy);
     };
     TV.fetchJSON = function (url, opts) {
         return TV.fetchText(url, opts).then(function (t) {

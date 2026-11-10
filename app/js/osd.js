@@ -149,6 +149,7 @@
                 if (hit) { chosenAudio = hit; if (hit.index !== curA) TV.player.selectTrack("AUDIO", hit.index); break; }
             }
         }
+        if (audio.length) setTimeout(function () { offerVersion(audio); }, 1500);
         if (ext) return;                                   // OpenSubtitles chosen by you stays
         var sw = [TV.pref("subLang"), TV.pref("subLang2")], picked = null, heard = chosenAudio ? norm(chosenAudio.lang) : "";
         for (var j = 0; j < sw.length && !picked && subs.length; j++) {
@@ -339,6 +340,49 @@
             } });
         }
         return items;
+    }
+
+    /* ---------- the sound in your language from another version ----------
+       A movie or an episode whose sound is not in the language you want (Settings > Audio Language), when another
+       version of the same title is (VF, MULTI…): APL TV offers to switch to it, at the same moment. Asked once per
+       title; the version chosen is remembered (like Versions on the title's page). */
+    var versionAsked = {};
+    function versionLang(v, want) {
+        var c = D.catOf(v), text = (v.name || "") + " " + (c.name || "") + " " + (c.raw || "");
+        if (/\bMULTI\b/i.test(text)) return 2;
+        if (want === "fr" && /\b(VFF|VFQ|VFI|VF|TRUEFRENCH|FRENCH)\b/i.test(text)) return 3;
+        if (norm(c.lang) === want && !/\b(VOSTFR|VOSTA|VOST|SUBS?|SUBBED|VO)\b/i.test(text)) return 3;
+        return 0;
+    }
+    function offerVersion(audio) {
+        var o = vod, it = o && o.item, vs = it && it.versions, want = wantLang(TV.pref("audioLang"));
+        if (!open || !vs || vs.length < 2 || !want || want === "orig" || want === "none" || !LANG_NAMES[want]) return;
+        var langs = audio.map(function (a) { return norm(a.lang); }).filter(function (l) { return l && l !== "und"; });
+        if (!langs.length || langs.indexOf(want) >= 0) return;            // not known, or already there
+        var key = (it.title || it.name || "") + ":" + (it.year || "");
+        if (versionAsked[key]) return;
+        var best = null, bestScore = 0;
+        vs.forEach(function (v) { if (v.id === it.id) return; var sc = versionLang(v, want); if (sc > bestScore) { bestScore = sc; best = v; } });
+        if (!best) return;
+        versionAsked[key] = 1;
+        var c = D.catOf(best), q = (String(best.name || "").match(/\b(4K|UHD|FHD|HD|MULTI|VFF|VFQ|VF|TRUEFRENCH|FRENCH)\b/gi) || []).join(" ");
+        var what = [c.tag, q].filter(Boolean).join(" · ") || c.name || best.name, L = LANG_NAMES[want];
+        if (TV.lang === "fr" && want === "fr") L = "français";
+        TV.log("no " + want + " sound in this version: " + what + " offered");
+        TV.alert({ title: T("No {lang} sound in this version", { lang: L }),
+            message: T("“{title}” also exists in {lang} ({version}). Switch to it, at the same moment?", { title: o.title, lang: L, version: what }),
+            buttons: [{ label: T("Watch in {lang}", { lang: L }), run: function () { switchVersion(best); } }, { label: T("Keep This Version") }] });
+    }
+    function switchVersion(v) {
+        var o = vod;
+        if (!o || !TV.detail || !TV.detail.playVersion) return;
+        var pos = TV.player.position(), old = o.item, ep = o.ep;
+        v.versions = old.versions;
+        D.preferVersion(v);
+        TV.log("version switched for the sound");
+        finish(true);
+        if (!ep) D.forget(old);                            // its place is in the new version now
+        setTimeout(function () { TV.detail.playVersion(v, ep, pos); }, 0);
     }
 
     /* ---------- Quality: the channel's versions (4K, FHD, HD…) and the stream's own qualities ---------- */
