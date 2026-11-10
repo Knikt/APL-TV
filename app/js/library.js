@@ -174,7 +174,11 @@
             TV.detail.open(it);
         }
         var view = {
-            show: function () { if (!page) build(); visible = true; if (dirty || !strips.length) render(); paint(); },
+            show: function () {
+                if (!page) build(); visible = true; if (dirty || !strips.length) render(); paint();
+                // this server's Continue Watching, as other devices left it (Jellyfin and Emby)
+                if (TV.media && TV.media.fresh) TV.media.fresh(srcId);
+            },
             hide: function () { visible = false; clearInterval(heroTimer); document.body.classList.remove("in-rows"); },
             enter: function () { paint(true); },
             blur: function () { if (featured.length) zone = -1; paint(false); },

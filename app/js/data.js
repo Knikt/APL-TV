@@ -796,22 +796,34 @@
         var r = resumes();
         Object.keys(r).forEach(function (k) { if ((k === item.id || k.indexOf(item.id + "|") === 0) && !(r[k] && r[k].done && k !== item.id)) delete r[k]; });
         TV.save("resume", r);
+        var f = forgotten(), keys;
+        f[item.id] = Date.now();
+        keys = Object.keys(f);
+        if (keys.length > 500) keys.sort(function (a, b) { return f[a] - f[b]; }).slice(0, keys.length - 500).forEach(function (k) { delete f[k]; });
+        TV.save("resumeForgot", f);
         fire("resume");
     }
+    /* When each title was taken out of Continue Watching: a media server's older resume point does not bring it back */
+    function forgotten() { return TV.load("resumeForgot", {}) || {}; }
     /* After a video: the rows and covers that show progress are drawn again */
     function resumeChanged() { fire("resume"); }
     /* What your Jellyfin or Emby server knows (js/media.js), title by title: the most recent of the server's
        and APL TV's wins. "gone": the server has no resume point any more (reset, or started again). */
     function syncResumes(list) {
-        var r = resumes(), changed = false;
+        var r = resumes(), f = forgotten(), changed = false;
         (list || []).forEach(function (s) {
             if (!s || !s.key) return;
             var mine = r[s.key];
             if (mine && mine.at >= s.at) return;
+            // taken out of Continue Watching after that: it stays out (a watched one still gets its tick)
+            if (!s.done && f[s.item] >= s.at) return;
             if (s.gone) { if (mine) { delete r[s.key]; changed = true; } return; }
             var e = { pos: s.pos, dur: s.dur, item: s.item, ep: s.ep || null, at: s.at };
             if (s.done) e.done = true;
             if (s.epLabel) e.epLabel = s.epLabel;
+            // a series' own line (js/osd.js save): the episode to resume, or the next one ("Up Next")
+            if (s.series) e.series = true;
+            if (s.upNext) e.upNext = true;
             r[s.key] = e;
             changed = true;
         });

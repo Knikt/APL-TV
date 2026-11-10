@@ -173,6 +173,50 @@
             return out;
         });
     }
+    /* "S1 E2 · Its name": the same label as an episode played here (js/detail.js playEp) */
+    function jfLabel(x) {
+        var s = x.ParentIndexNumber !== undefined && x.ParentIndexNumber !== null ? x.ParentIndexNumber : 1;
+        return T("S{s} E{e}", { s: s, e: x.IndexNumber || 0 }) + (x.Name ? " · " + x.Name : "");
+    }
+    /* Continue Watching from the server when Home or its tab opens, without waiting for the catalog (refreshed
+       every 6 h): what is half watched (/Items/Resume), the episodes watched lately, and each series' next
+       episode (/Shows/NextUp). At most once a minute per server; quietly nothing when it does not answer. */
+    var FRESH_MS = 60000, freshAt = {};
+    function jfFresh(src) {
+        if (!src.token || !src.base || !src.userId || Date.now() - (freshAt[src.id] || 0) < FRESH_MS) return Promise.resolve(false);
+        freshAt[src.id] = Date.now();
+        function list(path, q) { q.EnableUserData = "true"; q.Limit = 50; return jfGet(src, path + "?" + qs(q), 20000).then(function (j) { return (j && j.Items) || []; }); }
+        return Promise.all([
+            list("/Users/" + src.userId + "/Items/Resume", { MediaTypes: "Video" }),
+            list("/Users/" + src.userId + "/Items", { IncludeItemTypes: "Episode", Filters: "IsPlayed", SortBy: "DatePlayed", SortOrder: "Descending", Recursive: "true" }),
+            list("/Shows/NextUp", { UserId: src.userId })
+        ]).then(function (r) {
+            var seen = [], last = {};
+            r[0].concat(r[1]).forEach(function (x) {
+                if (x.Type === "Movie") { var mid = src.id + "|m" + x.Id, m = jfSeen(x, mid, mid, null); if (m) seen.push(m); return; }
+                if (x.Type !== "Episode" || !x.SeriesId) return;
+                var sid = src.id + "|s" + x.SeriesId, label = jfLabel(x), e = jfSeen(x, sid + "|" + x.Id, sid, x.Id, label);
+                if (!e) return;
+                seen.push(e);
+                // when the series was last watched, for its next episode below
+                if (e.done) { if (e.at > (last[x.SeriesId] || 0)) last[x.SeriesId] = e.at; }
+                else if (e.pos) seen.push({ key: sid, at: e.at, item: sid, ep: x.Id, pos: e.pos, dur: e.dur, epLabel: label, series: true });
+            });
+            // the next episode carries no date: the one of the episode finished before it (none known: left out,
+            // so series watched long ago do not fill Continue Watching)
+            r[2].forEach(function (x) {
+                var u = x.UserData || {}, at = last[x.SeriesId];
+                if (!at || x.Type !== "Episode" || u.Played || u.PlaybackPositionTicks > 0) return;
+                var sid = src.id + "|s" + x.SeriesId;
+                seen.push({ key: sid, at: at, item: sid, ep: x.Id, pos: 0, dur: 0, epLabel: jfLabel(x), series: true, upNext: true });
+            });
+            return seen.length && TV.data.syncResumes ? TV.data.syncResumes(seen) : false;
+        }).catch(function () { return false; });
+    }
+    /* Every Jellyfin and Emby source (Home), or only one (its tab) */
+    function fresh(srcId) {
+        return Promise.all(TV.data.sources().filter(function (s) { return s.type === "jellyfin" && (!srcId || s.id === srcId); }).map(jfFresh));
+    }
     function jfSeries(src, item) {
         return jfGet(src, "/Shows/" + encodeURIComponent(item.seriesId) + "/Episodes?" + qs({ UserId: src.userId, Fields: "Overview,ProviderIds", EnableImageTypes: "Primary", EnableUserData: "true" }), 60000).then(function (j) {
             var seasons = {}, seen = [];
@@ -181,8 +225,7 @@
                 (seasons[s] = seasons[s] || []).push({ id: x.Id, season: s, episode: x.IndexNumber || 0, title: x.Name || "", url: "media:" + src.id + ":jf:" + x.Id,
                     image: jfImg(src, x, "Primary", 600), plot: x.Overview || "", dur: Math.round((x.RunTimeTicks || 0) / 1e7) });
                 // the same key and label as an episode played here (js/detail.js playEp)
-                var label = T("S{s} E{e}", { s: s, e: x.IndexNumber || 0 }) + (x.Name ? " · " + x.Name : "");
-                var w = jfSeen(x, item.id + "|" + x.Id, item.id, x.Id, label);
+                var w = jfSeen(x, item.id + "|" + x.Id, item.id, x.Id, jfLabel(x));
                 if (w) seen.push(w);
             });
             // the episodes you started or watched elsewhere, before the page draws its ticks
@@ -349,6 +392,6 @@
     /* The movie's page: its plot, length and TMDB id from the server (no extra request) */
     function info(item) { return { info: { plot: item.plot || "", tmdb_id: item.tmdb || "", duration_secs: item.dur || 0, backdrop_path: item.backdrop ? [item.backdrop] : [] } }; }
 
-    TV.media = { load: load, seriesInfo: seriesInfo, resolve: resolve, info: info, normServer: normServer, report: report,
+    TV.media = { load: load, seriesInfo: seriesInfo, resolve: resolve, info: info, normServer: normServer, report: report, fresh: fresh,
                  plex: { pin: plexPin, check: plexCheck, servers: plexServers } };
 })(window);

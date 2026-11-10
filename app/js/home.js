@@ -283,6 +283,8 @@
             visible = true;
             if (dirty || !strips.length) render(); else { strips.forEach(function (s) { s.cards.forEach(function (c) { if (c._update) c._update(); }); }); paint(); }
             if (featured[heroIndex] && featured[heroIndex].backdrop) { TV.bg(""); heroBg(featured[heroIndex], featured[heroIndex].backdrop); } else TV.bg("");
+            // what you watched on your Jellyfin or Emby server from another device: the rows are drawn again when it comes
+            if (TV.media && TV.media.fresh) TV.media.fresh();
         },
         hide: function () { visible = false; clearInterval(heroTimer); TV.meta.clearQueue(); document.body.classList.remove("in-rows"); },
         enter: function () { paint(true); },
