@@ -794,10 +794,10 @@
             onReconnect: function () { stateBox.classList.add("is-on"); tracksDone = false; },
             onBuffering: function (b) { stateBox.classList.toggle("is-on", !!b); },
             // the picture moves: no spinner and no error left over it (a slow start had shown "timeout" first)
-            onPlaying: function () { stateBox.classList.remove("is-on"); errBox.classList.remove("is-on"); if (!tracksDone) setTimeout(applyTrackPrefs, 600); },
+            onPlaying: function () { stateBox.classList.remove("is-on"); errBox.classList.remove("is-on"); if (!tracksDone) setTimeout(applyTrackPrefs, 600); tell("start"); },
             onTime: function () { stateBox.classList.remove("is-on"); errBox.classList.remove("is-on"); },
             onSubtitle: function (s) { if (subsOn && !ext) showSub(s); },
-            onEnded: function () { save(true); if (o.next && o.onEpisode && TV.pref("autoNext")) { var n = o.next.ep, cb = o.onEpisode; finish(true); cb(n); } else finish(); },
+            onEnded: function () { o.ended = true; save(true); if (o.next && o.onEpisode && TV.pref("autoNext")) { var n = o.next.ep, cb = o.onEpisode; finish(true); cb(n); } else finish(); },
             onError: function (e) {
                 stateBox.classList.remove("is-on");
                 // a format the screen cannot decode (HEVC 10-bit on a small Android box, an old Samsung…)
@@ -818,7 +818,17 @@
         });
         drawVod(); show();
         clearInterval(saveTimer);
-        saveTimer = setInterval(function () { save(false); }, 10000);
+        saveTimer = setInterval(function () { save(false); tell("progress"); }, 10000);
+    }
+    /* Your Jellyfin or Emby server hears where you are: once the picture moves, every 10 s, and once when
+       the video stops (other sources: js/media.js sends nothing). A video that never started tells nothing. */
+    function tell(event) {
+        if (!vod || !TV.media || !TV.media.report || vod.told === "stop") return;
+        if (event === "start" ? vod.told : !vod.told) return;
+        var dur = TV.player.duration();
+        vod.told = event === "stop" ? "stop" : "start";
+        // finished: its whole length, so the server counts it as watched with its own settings
+        TV.media.report(vod.url, event, vod.ended && dur ? dur : TV.player.position());
     }
     /* Where you are, every 10 s. Finished (past 94 %): marked watched; an episode's series then waits on the next one */
     function save(ended) {
@@ -1023,7 +1033,7 @@
                 TV.save("lastWatch", r && !r.done && r.pos > 60 ? { kind: "vod", item: vod.item.id, key: vod.resumeKey, at: Date.now() } : null);
             } else if (mode === "live" && ch) TV.save("lastWatch", { kind: "live", id: ch.id, at: Date.now() });
         } catch (e) {}
-        if (mode === "vod") { save(false); if (!keepPlayer) TV.player.stop(); D.resumeChanged(); }
+        if (mode === "vod") { save(false); tell("stop"); if (!keepPlayer) TV.player.stop(); D.resumeChanged(); }
         stopExt(); clearTimeout(subTimer); putSub("");     // no subtitle line left on screen after the video
         closeOsd();
         if (TV.pushShelf) TV.pushShelf();
