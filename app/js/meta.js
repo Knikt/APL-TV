@@ -134,7 +134,7 @@
             var t = S.title(item.name || item.title);
             var id = tmdbId ? Promise.resolve({ id: tmdbId }) : search(kind, t.title || item.title, t.year || item.year);
             return id.then(function (r) {
-                if (!r) { var none = { none: true, at: Date.now() }; TV.idb.set("meta:" + key, none); return none; }
+                if (!r) { TV.idb.del("meta:" + key); return { none: true, at: Date.now() }; }
                 return details(kind, r.id).then(function (m) { TV.idb.set("meta:" + key, m); return m; });
             });
         }).then(function (m) {
