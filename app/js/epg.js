@@ -88,7 +88,12 @@
     function progress(p) { return p ? TV.clamp((Date.now() - p[0]) / (p[1] - p[0]), 0, 1) : 0; }
 
     /* ---------- XMLTV through the helper ---------- */
+    /* The guide switched off in Settings: nothing is downloaded and nothing is shown. On a slow TV a provider's
+       guide of hundreds of megabytes keeps a processor core busy for minutes. */
+    function off() { return TV.pref("tvGuide") === false; }
+    function clear() { progs = {}; extra = {}; byName = {}; guideNames = {}; queue = []; loadedAt = 0; fire(); }
     function loadAll(force) {
+        if (off()) return Promise.resolve();
         if (loading) return loading;
         var cat = TV.data.catalog();
         if (!cat || !cat.epg.length) return Promise.resolve();
@@ -172,6 +177,7 @@
         return out;
     }
     function apply(srcId, data) {
+        if (off()) return;                                               // switched off while a guide was arriving
         if (data.all) guideNames[srcId] = data.all;
         Object.keys(data.chans || {}).forEach(function (id) { progs[srcId + "|" + id] = slim(data.chans[id]); });
         Object.keys(data.names || {}).forEach(function (n) { byName[srcId + "|" + n] = srcId + "|" + data.names[n]; });
@@ -252,6 +258,7 @@
     }
     var queue = [], running = 0;
     function ensure(chans) {
+        if (off()) return;
         chans.forEach(function (ch) {
             if (!ch || (ch.url && !/^stalker:/.test(ch.url)) || has(ch) || !ch.sid) return;   // M3U channels: XMLTV only
             if (shortDone[ch.id] && Date.now() - shortDone[ch.id] < 20 * 60 * 1000) return;
@@ -295,6 +302,6 @@
         }, Promise.resolve());
     }
 
-    TV.epg = { prune: prune, now: now, at: at, range: range, list: list, has: has, progress: progress, loadAll: loadAll, ensure: ensure, onUpdate: onUpdate, b64: b64,
+    TV.epg = { prune: prune, now: now, at: at, range: range, list: list, has: has, progress: progress, loadAll: loadAll, ensure: ensure, clear: clear, onUpdate: onUpdate, b64: b64,
                chosen: chosen, setChannelGuide: setChannelGuide, guideSearch: guideSearch, hasGuideList: function () { return Object.keys(guideNames).length > 0; } };
 })(window);
