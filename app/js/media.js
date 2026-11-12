@@ -194,7 +194,8 @@
                                 // APL TV already has, so a long server history does not push out the other sources'.
                                 // Watched there: the tick comes from the movie itself (js/data.js watched)
                                 var s = jfSeen(x, base.id, base.id, null, null, asOf);
-                                base.srvDone = !!s.done;
+                                // only when watched: kept with the saved catalog (js/data.js FIELDS), no room taken otherwise
+                                if (s.done) base.srvDone = true;
                                 if (!(s.pos && !s.done)) s.onlyKnown = true;
                                 seen.push(s);
                             }

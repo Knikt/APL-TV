@@ -346,7 +346,8 @@
        a big Xtream account (27,000 channels, 100,000 movies) fits only this way. */
     var FIELDS = {
         live: ["id", "sid", "url", "num", "name", "raw", "q", "key", "logo", "cat", "epg", "arch"],
-        movies: ["id", "sid", "url", "name", "title", "year", "poster", "cat", "rating", "added", "ext"],
+        // srvDone (watched on your Jellyfin or Emby server) last: the other sources' rows end before it, no bigger
+        movies: ["id", "sid", "url", "name", "title", "year", "poster", "cat", "rating", "added", "ext", "srvDone"],
         series: ["id", "seriesId", "name", "title", "year", "poster", "cat", "rating", "added", "backdrop", "eps"]
     };
     var PICS = { logo: 1, poster: 1, backdrop: 1 };

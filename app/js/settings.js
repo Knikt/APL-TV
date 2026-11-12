@@ -293,8 +293,9 @@
             run: function (row) { edit(row, { value: s.epg || "", url: true, onDone: function (v) { D.updateSource(id, { epg: v }); D.rebuild(); TV.epg.loadAll(true); redraw(); } }); } });
         rows.push({ label: fmtCount(s), desc: s.error || "" });
         rows.push({ label: T("Refresh Now"), icon: "refresh", run: function () {
-            // asked for here: a Jellyfin or Emby server that refused the password gets one more try
-            if (s.refused) { s.refused = false; D.updateSource(id, { refused: false }); }
+            // asked for here: a Jellyfin or Emby server that refused the password gets one more try (even when the
+            // refusal came in the background after this page was drawn)
+            if (s.type === "jellyfin") { s.refused = false; D.updateSource(id, { refused: false }); }
             loadWithProgress(s, function () { redraw(); });
         } });
         rows.push({ label: T("Delete This Playlist"), danger: true, run: function () {
