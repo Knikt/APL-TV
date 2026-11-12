@@ -817,15 +817,18 @@
     /* After a video: the rows and covers that show progress are drawn again */
     function resumeChanged() { fire("resume"); }
     /* What your Jellyfin or Emby server knows (js/media.js), title by title: the most recent of the server's
-       and APL TV's wins. "gone": the server has no resume point any more (reset, or started again). */
+       and APL TV's wins. "gone": the server has no resume point any more (reset, or started again).
+       "onlyKnown" (the whole catalog): changes a title APL TV already has, never adds one. */
     function syncResumes(list) {
         var r = resumes(), f = forgotten(), changed = false;
         (list || []).forEach(function (s) {
             if (!s || !s.key) return;
             var mine = r[s.key];
-            // nothing on the server: what it had (srv) was dropped there (marked unwatched) and goes here too;
-            // APL TV's own history, which the server never had, stays
-            if (s.none) { if (mine && mine.srv) { delete r[s.key]; changed = true; } return; }
+            if (s.onlyKnown && !mine) return;
+            // nothing on the server: what it had (srv) was dropped there (marked unwatched) and goes here too,
+            // unless it was played here after the question was sent; APL TV's own history, which the server
+            // never had, stays
+            if (s.none) { if (mine && mine.srv && !(s.asOf && mine.at >= s.asOf)) { delete r[s.key]; changed = true; } return; }
             // the server knows this one now: if it drops it later, so does APL TV
             if (mine && !mine.srv) { mine.srv = true; changed = true; }
             if (mine && mine.at >= s.at) return;
