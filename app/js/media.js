@@ -81,12 +81,12 @@
             src.kind = sv.kind;
             return TV.http(sv.base + "/Users/AuthenticateByName", { method: "POST", headers: (function () { var h = jfAuth(src, null); h["Content-Type"] = "application/json"; return h; })(),
                 body: JSON.stringify({ Username: src.user || "", Pw: src.pass || "" }), timeout: 20000 }).then(function (r) {
-                if (r.status === 401 || r.status === 400 || r.status === 403) throw new Error(T("The server refused this username or password."));
+                if (r.status === 401 || r.status === 400 || r.status === 403) throw refused(src);
                 if (r.status === 0) throw new Error(T("The server does not answer. Check its address and that it is on."));
                 if (r.status < 200 || r.status >= 300) throw new Error("HTTP " + r.status);
                 var j = JSON.parse(r.text);
-                if (!j.AccessToken || !j.User) throw new Error(T("The server refused this username or password."));
-                save(src, { base: sv.base, kind: sv.kind, token: j.AccessToken, userId: j.User.Id, serverName: sv.name });
+                if (!j.AccessToken || !j.User) throw refused(src);
+                save(src, { base: sv.base, kind: sv.kind, token: j.AccessToken, userId: j.User.Id, serverName: sv.name, refused: false });
                 // no name was given: the server's own ("My Jellyfin") rather than its address
                 if (src.autoName && sv.name) { save(src, { name: sv.name, autoName: false }); }
                 TV.log(sv.kind + ": signed in on " + sv.base.replace(/^(https?:\/\/[^\/]+).*$/, "$1"));
@@ -94,10 +94,16 @@
             });
         });
     }
+    /* The server said no to this username and password: kept on the source, so APL TV stops signing in by
+       itself (the server locks the user out, on every device, after a few tries) until the password is
+       changed in Settings or Refresh Now is chosen there (js/settings.js) */
+    function refused(src) { save(src, { refused: true }); return new Error(T("The server refused this username or password.")); }
     /* One sign-in at a time per server: calls sent together (jfFresh) that all get a 401 wait for
-       the same one, then take its key */
+       the same one, then take its key. None at all after a refusal. */
     var logins = {};
     function jfRelogin(src) {
+        var cur = src0(src.id);
+        if (src.refused || (cur && cur.refused)) return Promise.reject(new Error(T("The server refused this username or password.")));
         if (!logins[src.id]) logins[src.id] = jfLogin(src).then(function (s) { delete logins[src.id]; return s; }, function (e) { delete logins[src.id]; throw e; });
         return logins[src.id].then(function (s) {
             if (s !== src) ["base", "kind", "token", "userId", "serverName"].forEach(function (k) { src[k] = s[k]; });
@@ -160,7 +166,7 @@
     function jfLoad(src, progress, out) {
         progress(T("Connecting to {name}…", { name: src.name }));
         var seen = [];
-        return jfLogin(src).then(function () {
+        return jfRelogin(src).then(function () {
             return jfGet(src, "/Users/" + src.userId + "/Views");
         }).then(function (v) {
             var views = ((v && v.Items) || []).filter(function (x) { return x.CollectionType === "movies" || x.CollectionType === "tvshows" || x.CollectionType === "homevideos" || !x.CollectionType; });
@@ -266,13 +272,16 @@
             var seasons = {}, seen = [];
             ((j && j.Items) || []).forEach(function (x) {
                 var s = x.ParentIndexNumber !== undefined && x.ParentIndexNumber !== null ? x.ParentIndexNumber : 1;
-                (seasons[s] = seasons[s] || []).push({ id: x.Id, season: s, episode: x.IndexNumber || 0, title: x.Name || "", url: "media:" + src.id + ":jf:" + x.Id,
-                    image: jfImg(src, x, "Primary", 600), plot: x.Overview || "", dur: Math.round((x.RunTimeTicks || 0) / 1e7) });
                 // the same key and label as an episode played here (js/detail.js playEp)
                 var w = jfSeen(x, item.id + "|" + x.Id, item.id, x.Id, jfLabel(x), asOf);
-                if (w) seen.push(w);
+                // watched there: its tick comes from the episode itself (js/data.js epDone), not from the resume points,
+                // so a long series watched elsewhere does not push the other sources' out; half watched ones come in
+                if (!(w.pos && !w.done)) w.onlyKnown = true;
+                seen.push(w);
+                (seasons[s] = seasons[s] || []).push({ id: x.Id, season: s, episode: x.IndexNumber || 0, title: x.Name || "", url: "media:" + src.id + ":jf:" + x.Id,
+                    image: jfImg(src, x, "Primary", 600), plot: x.Overview || "", dur: Math.round((x.RunTimeTicks || 0) / 1e7), srvDone: !!w.done });
             });
-            // the episodes you started or watched elsewhere, before the page draws its ticks
+            // the episodes you started elsewhere, and the ones APL TV knows, before the page draws its ticks
             if (seen.length && TV.data.syncResumes) TV.data.syncResumes(seen);
             Object.keys(seasons).forEach(function (s) { seasons[s].sort(function (a, b) { return a.episode - b.episode; }); });
             return { seasons: seasons, info: { plot: item.plot || "", tmdb: item.tmdb || "" } };
@@ -280,7 +289,7 @@
     }
     function jfStream(src, id) {
         function link() { return src.base + "/Videos/" + encodeURIComponent(id) + "/stream?" + qs({ static: "true", MediaSourceId: id, api_key: src.token, ApiKey: src.kind === "jellyfin" ? src.token : "", DeviceId: deviceId() }); }
-        return src.token ? Promise.resolve(link()) : jfLogin(src).then(link);
+        return src.token ? Promise.resolve(link()) : jfRelogin(src).then(link);
     }
     /* Where you are, told to the server: started, every 10 s, stopped. Other clients then show the same
        resume point, and the server decides with its own resume settings when a video counts as watched.

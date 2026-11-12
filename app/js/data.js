@@ -779,6 +779,9 @@
     }
     function resumeOf(id) { return resumes()[id] || null; }
     function isDone(id) { var e = resumes()[id]; return !!(e && e.done); }
+    /* An episode's tick: APL TV's own resume point when it has one, else what the media server said when the
+       series page opened (js/media.js jfSeries, srvDone) */
+    function epDone(item, ep) { var e = resumes()[item.id + "|" + ep.id]; return e ? !!e.done : !!ep.srvDone; }
     /* Marked by hand (OK held): watched or not, a movie, an episode, or many episodes at once */
     function markWatched(item, eps, on) {
         var r = resumes(), list = eps && eps.length ? eps : [null], keys = [];
@@ -786,7 +789,7 @@
             var k = ep ? item.id + "|" + ep.id : item.id;
             keys.push(k);
             if (on) r[k] = { pos: 1, dur: 1, item: item.id, ep: ep ? ep.id : null, done: true, manual: true, at: Date.now() };
-            else delete r[k];
+            else { delete r[k]; if (ep) ep.srvDone = false; }
         });
         trimResumes(r);
         TV.save("resume", r);
@@ -805,11 +808,15 @@
         var r = resumes();
         Object.keys(r).forEach(function (k) { if ((k === item.id || k.indexOf(item.id + "|") === 0) && !(r[k] && r[k].done && k !== item.id)) delete r[k]; });
         TV.save("resume", r);
-        var f = forgotten(), keys;
-        f[item.id] = Date.now();
-        keys = Object.keys(f);
-        if (keys.length > 500) keys.sort(function (a, b) { return f[a] - f[b]; }).slice(0, keys.length - 500).forEach(function (k) { delete f[k]; });
-        TV.save("resumeForgot", f);
+        // only a media server's resume points can bring it back (syncResumes): nothing to keep for the others
+        var src = sourceOf(item);
+        if (src && src.type === "jellyfin") {
+            var f = forgotten(), keys;
+            f[item.id] = Date.now();
+            keys = Object.keys(f);
+            if (keys.length > 500) keys.sort(function (a, b) { return f[a] - f[b]; }).slice(0, keys.length - 500).forEach(function (k) { delete f[k]; });
+            TV.save("resumeForgot", f);
+        }
         fire("resume");
     }
     /* When each title was taken out of Continue Watching: a media server's older resume point does not bring it back */
@@ -1176,7 +1183,7 @@
         chanGroups: chanGroups, chanGroupOf: chanGroupOf, addChanGroup: addChanGroup, renameChanGroup: renameChanGroup, deleteChanGroup: deleteChanGroup, toggleChanGroup: toggleChanGroup, moveInChanGroup: moveInChanGroup,
         pushRecent: pushRecent, recentChannels: recentChannels,
         myList: myList, inMyList: inMyList, toggleMyList: toggleMyList,
-        setResume: setResume, resumeOf: resumeOf, continueWatching: continueWatching, isDone: isDone, markWatched: markWatched, recentlyWatched: recentlyWatched,
+        setResume: setResume, resumeOf: resumeOf, continueWatching: continueWatching, isDone: isDone, epDone: epDone, markWatched: markWatched, recentlyWatched: recentlyWatched,
         forget: forget, resumeChanged: resumeChanged, syncResumes: syncResumes, serverHas: serverHas,
         isHidden: isHidden, setHidden: setHidden, preferVersion: preferVersion, setCatOff: setCatOff, setGroupOff: setGroupOff, editData: editData, applyPhoneEdit: applyPhoneEdit, offGroups: offGroups, offCats: offCats, hiddenList: hiddenList, unhide: unhide, versionKey: versionKey,
         buildThemes: buildThemes, checkTheme: checkTheme, themesOn: themesOn, catNameHidden: catNameHidden,

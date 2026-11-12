@@ -275,7 +275,15 @@
         } else if (s.type === "jellyfin") {
             rows.push({ label: T("Server"), value: s.server });
             rows.push({ label: T("Username"), value: s.user });
-            rows.push({ label: T("Password"), value: s.pass ? "••••••••" : T("None"), secret: true });
+            // changed on the server: typed again here, then signed in once with it (js/media.js stops trying by
+            // itself after a refusal)
+            rows.push({ label: T("Password"), value: s.pass ? "••••••••" : T("None"), secret: true, acc: "chevron", run: function (row) {
+                edit(row, { value: "", secret: true, onDone: function (v) {
+                    s.pass = v; s.refused = false;
+                    D.updateSource(id, { pass: v, refused: false });
+                    loadWithProgress(s, function () { redraw(); });
+                } });
+            } });
         } else if (s.type === "plex") {
             rows.push({ label: T("Server"), value: s.name });
             rows.push({ label: T("Link the Screen Again"), icon: "link", acc: "chevron", desc: T("If Plex asks for it, or after you changed your Plex password."), run: function () { push(plexPage(s.id)); } });
@@ -284,7 +292,11 @@
             desc: T("An XMLTV address (.xml or .xml.gz), if your provider gives you one."),
             run: function (row) { edit(row, { value: s.epg || "", url: true, onDone: function (v) { D.updateSource(id, { epg: v }); D.rebuild(); TV.epg.loadAll(true); redraw(); } }); } });
         rows.push({ label: fmtCount(s), desc: s.error || "" });
-        rows.push({ label: T("Refresh Now"), icon: "refresh", run: function () { loadWithProgress(s, function () { redraw(); }); } });
+        rows.push({ label: T("Refresh Now"), icon: "refresh", run: function () {
+            // asked for here: a Jellyfin or Emby server that refused the password gets one more try
+            if (s.refused) { s.refused = false; D.updateSource(id, { refused: false }); }
+            loadWithProgress(s, function () { redraw(); });
+        } });
         rows.push({ label: T("Delete This Playlist"), danger: true, run: function () {
             TV.alert({ title: T("Delete “{name}”?", { name: s.name }), message: T("Its channels, favorites and guide will be removed from APL TV."), buttons: [
                 { label: T("Cancel") }, { label: T("Delete"), danger: true, run: function () { D.removeSource(id); pop(); } }] });
