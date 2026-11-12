@@ -91,26 +91,34 @@
     /* The guide switched off in Settings: nothing is downloaded and nothing is shown. On a slow TV a provider's
        guide of hundreds of megabytes keeps a processor core busy for minutes. */
     function off() { return TV.pref("tvGuide") === false; }
-    function clear() { progs = {}; extra = {}; byName = {}; guideNames = {}; queue = []; loadedAt = 0; fire(); }
+    /* Answers still on their way when the guide is switched off must not come back later: each load keeps
+       the number of the guide it was started for, and clear() moves on to the next number. */
+    var gen = 0, loadingGen = 0;
+    function clear() { gen++; progs = {}; extra = {}; byName = {}; guideNames = {}; shortDone = {}; queue = []; loadedAt = 0; fire(); }
     function loadAll(force) {
         if (off()) return Promise.resolve();
-        if (loading) return loading;
+        // Off then On while a load was running: its answers are dropped, so a new one starts right after it
+        if (loading) return loadingGen === gen ? loading : loading.then(function () { return loadAll(force); });
+        var g = loadingGen = gen;
         var cat = TV.data.catalog();
         if (!cat || !cat.epg.length) return Promise.resolve();
         if (!force && Date.now() - loadedAt < MAX_AGE) return Promise.resolve();
         loading = TV.data.sources().reduce(function (p, src) {
-            return p.then(function () { return loadSource(src, cat, force); });
+            return p.then(function () { if (g === gen) return loadSource(src, cat, force, g); });
         }, Promise.resolve()).then(function () {
-            loadedAt = Date.now(); loading = null; fire();
+            loading = null;
+            if (g !== gen) return;
+            loadedAt = Date.now(); fire();
             TV.heap("provider guide loaded");
             loadExtra().then(function () { TV.heap("public guides loaded"); });
         }, function (e) { loading = null; TV.log("guide: " + e.message); });
         return loading;
     }
-    function loadSource(src, cat, force) {
+    function loadSource(src, cat, force, g) {
         var e = cat.epg.filter(function (x) { return x.src === src.id; })[0];
         if (!e) return Promise.resolve();
         return TV.idb.get("epg:" + src.id).then(function (saved) {
+            if (g !== gen) return;
             if (saved && saved.chans) {
                 var n = 0; Object.keys(saved.chans).forEach(function (id) { n += saved.chans[id].length; });
                 if (n > 20000) { TV.idb.del("epg:" + src.id); saved = null; }
@@ -133,12 +141,13 @@
                     if (id) { nameMap[S.fold(c.cname || c.name)] = id; extra[id] = 1; }
                 });
                 var more = Object.keys(extra).filter(function (id) { return !keep[id]; });
-                if (!more.length) return { keep: keep, nameMap: nameMap, total: j.total, all: j.names };
+                if (!more.length || g !== gen) return { keep: keep, nameMap: nameMap, total: j.total, all: j.names };
                 return TV.helper.epg(e.url, more, from, to, false).then(function (j2) {
                     Object.keys(j2.chans || {}).forEach(function (id) { keep[id] = j2.chans[id]; });
                     return { keep: keep, nameMap: nameMap, total: j.total, all: j.names };
                 });
             }).then(function (r) {
+                if (g !== gen) return;
                 var keep = r.keep, j = { total: r.total };
                 var data = { url: e.url, at: Date.now(), chans: keep, names: r.nameMap, all: r.all || {} };
                 apply(src.id, data);
@@ -177,7 +186,7 @@
         return out;
     }
     function apply(srcId, data) {
-        if (off()) return;                                               // switched off while a guide was arriving
+        if (off()) return;
         if (data.all) guideNames[srcId] = data.all;
         Object.keys(data.chans || {}).forEach(function (id) { progs[srcId + "|" + id] = slim(data.chans[id]); });
         Object.keys(data.names || {}).forEach(function (n) { byName[srcId + "|" + n] = srcId + "|" + data.names[n]; });
@@ -217,8 +226,8 @@
         return [];
     }
     function loadExtra() {
-        var cat = TV.data.catalog();
-        if (!cat) return Promise.resolve();
+        var cat = TV.data.catalog(), g = gen;
+        if (!cat || off()) return Promise.resolve();
         var by = {}, total = 0;
         cat.live.chans.forEach(function (c) {
             if (has(c)) return;
@@ -236,12 +245,14 @@
             if (EPGPW[code]) urls.push("https://epg.pw/xmltv/epg_" + code.toUpperCase() + ".xml.gz");
             return urls.reduce(function (p2, url) {
                 return p2.then(function () {
+                    if (g !== gen) return;
                     var still = by[code].filter(function (c) { return !has(c); });
                     if (!still.length) return;
                     var names = {}, byName = {};
                     still.forEach(function (c) { var k = compact(c.cname || c.name); if (k) { names[k] = 1; (byName[k] = byName[k] || []).push(c); } });
                     return TV.helper.epgMatch(url, Object.keys(names), from, to).then(function (j) {
                         var n = 0;
+                        if (g !== gen) return;
                         Object.keys(j.chans || {}).forEach(function (k) { var l = slim(j.chans[k]); (byName[k] || []).forEach(function (c) { extra[c.id] = l; n++; }); });
                         found += n;
                         TV.log("extra guide " + code.toUpperCase() + " (" + url.split("/")[2] + "): " + n + " of " + still.length + " channels");
@@ -249,7 +260,7 @@
                     }, function (e) { TV.log("extra guide " + code + " " + url.split("/")[2] + ": " + e.message); });
                 });
             }, p);
-        }, Promise.resolve()).then(function () { TV.log("extra guides: " + found + " more channels with programmes"); });
+        }, Promise.resolve()).then(function () { if (g === gen) TV.log("extra guides: " + found + " more channels with programmes"); });
     }
 
     /* ---------- Xtream short guide, for the channels on screen ---------- */
@@ -269,23 +280,23 @@
     }
     function pump() {
         while (running < 3 && queue.length) {
-            var ch = queue.shift(), src = TV.data.sourceOf(ch);
+            var ch = queue.shift(), src = TV.data.sourceOf(ch), g = gen;
             if (!src || (src.type !== "xtream" && src.type !== "stalker")) continue;
             running++;
             if (src.type === "stalker") {
-                (function (ch) {
-                    TV.stalker.shortEpg(src, ch.sid).then(function (l) { if (l.length) { progs["id|" + ch.id] = l; fire(); } }).catch(function () {}).then(function () { running--; pump(); });
-                })(ch);
+                (function (ch, g) {
+                    TV.stalker.shortEpg(src, ch.sid).then(function (l) { if (l.length && g === gen) { progs["id|" + ch.id] = l; fire(); } }).catch(function () {}).then(function () { running--; pump(); });
+                })(ch, g);
                 continue;
             }
-            (function (ch) {
+            (function (ch, g) {
                 TV.data.xApi(src, "get_short_epg", "stream_id=" + ch.sid + "&limit=12").then(function (j) {
                     var l = (j && j.epg_listings || []).map(function (p) {
                         return [(parseInt(p.start_timestamp, 10) || 0) * 1000, (parseInt(p.stop_timestamp, 10) || 0) * 1000, b64(p.title), b64(p.description)];
                     }).filter(function (p) { return p[0] && p[1] > p[0]; }).sort(function (a, b) { return a[0] - b[0]; });
-                    if (l.length) { progs["id|" + ch.id] = l; fire(); }
+                    if (l.length && g === gen) { progs["id|" + ch.id] = l; fire(); }
                 }).catch(function () {}).then(function () { running--; pump(); });
-            })(ch);
+            })(ch, g);
         }
     }
 
