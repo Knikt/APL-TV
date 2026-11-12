@@ -15,7 +15,7 @@
     "use strict";
 
     var TV = global.TV, S = TV.smart, T = TV.t;
-    var MAX_AGE = 6 * 3600 * 1000;
+    var MAX_AGE = 24 * 3600 * 1000;
     var CATALOG_V = 2;          // raise it when smart.js reads names differently: catalogs are then refreshed
 
     /* ---------- sources ---------- */
@@ -126,11 +126,15 @@
                     logo: c.stream_icon || "", cat: src.id + ":" + c.category_id, epg: c.epg_channel_id || "", arch: parseInt(c.tv_archive, 10) ? (parseInt(c.tv_archive_duration, 10) || 1) : 0
                 });
             });
-            progress(T("Loading movies…"));
-            return Promise.all([xApi(src, "get_vod_categories"), xApi(src, "get_vod_streams")]).then(lists("movies")).catch(lost("movies"));
-        }).then(function (r) {
-            out.movies.cats = catList(r[0], src.id, "movie");
-            (r[1] || []).forEach(function (m) {
+            progress(T("Loading movies and series…"));
+            return Promise.all([
+                Promise.all([xApi(src, "get_vod_categories"), xApi(src, "get_vod_streams")]).then(lists("movies")).catch(lost("movies")),
+                Promise.all([xApi(src, "get_series_categories"), xApi(src, "get_series")]).then(lists("series")).catch(lost("series"))
+            ]);
+        }).then(function (both) {
+            var rm = both[0], rs = both[1];
+            out.movies.cats = catList(rm[0], src.id, "movie");
+            (rm[1] || []).forEach(function (m) {
                 if (!m || S.isSeparator(m.name)) return;
                 var t = S.title(m.name);
                 out.movies.items.push({
@@ -138,11 +142,8 @@
                     poster: m.stream_icon || "", cat: src.id + ":" + m.category_id, rating: parseFloat(m.rating) || 0, added: parseInt(m.added, 10) || 0, ext: m.container_extension || "mp4"
                 });
             });
-            progress(T("Loading series…"));
-            return Promise.all([xApi(src, "get_series_categories"), xApi(src, "get_series")]).then(lists("series")).catch(lost("series"));
-        }).then(function (r) {
-            out.series.cats = catList(r[0], src.id, "series");
-            (r[1] || []).forEach(function (s) {
+            out.series.cats = catList(rs[0], src.id, "series");
+            (rs[1] || []).forEach(function (s) {
                 if (!s || S.isSeparator(s.name)) return;
                 var t = S.title(s.name), y = t.year || parseInt(String(s.releaseDate || s.release_date || "").slice(0, 4), 10) || 0;
                 out.series.items.push({
@@ -456,7 +457,7 @@
     }
     function refresh(list, progress) {
         list = list || sources();
-        return sequence(list, function (s) { return loadSource(s, progress || function () {}).catch(function (e) { TV.log("refresh " + s.name + ": " + e.message); }); }).then(rebuild);
+        return Promise.all(list.map(function (s) { return loadSource(s, progress || function () {}).catch(function (e) { TV.log("refresh " + s.name + ": " + e.message); }); })).then(rebuild);
     }
     function sequence(items, fn) {
         return items.reduce(function (p, it) { return p.then(function () { return fn(it); }); }, Promise.resolve());
