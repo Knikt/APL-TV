@@ -825,10 +825,13 @@
     function tell(event) {
         if (!vod || !TV.media || !TV.media.report || vod.told === "stop") return;
         if (event === "start" ? vod.told : !vod.told) return;
-        var dur = TV.player.duration(), key = vod.resumeKey;
+        var dur = TV.player.duration(), key = vod.resumeKey, pos = TV.player.position();
+        // not really under way yet (a resume still jumping to its point, Back pressed at once): as save() does,
+        // the resume point stays, so the server is told where the video started, never 0
+        if (event !== "start" && !vod.ended && pos < 5) { if (event === "progress") return; pos = vod.start || 0; }
         vod.told = event === "stop" ? "stop" : "start";
         // finished: its whole length, so the server counts it as watched with its own settings
-        TV.media.report(vod.url, event, vod.ended && dur ? dur : TV.player.position()).then(function (ok) {
+        TV.media.report(vod.url, event, vod.ended && dur ? dur : pos).then(function (ok) {
             // the server has where you stopped: marked unwatched there later, it goes here too (js/data.js)
             if (ok && event === "stop" && D.serverHas) D.serverHas([key]);
         });

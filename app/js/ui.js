@@ -454,7 +454,7 @@
             var sub = el("div", "card__sub", item.year ? String(item.year) : "");
             c.appendChild(sub);
             var r = TV.data.resumeOf(item.id);
-            if (r && r.done && item.kind === "movie") art.appendChild(el("div", "card__seen", TV.icon("check", 22)));
+            if (item.kind === "movie" && TV.data.watched(item)) art.appendChild(el("div", "card__seen", TV.icon("check", 22)));
             else if (r && r.dur && item.kind === "movie") { var b = el("div", "card__bar"); b.innerHTML = "<i style='width:" + Math.round(100 * r.pos / r.dur) + "%'></i>"; art.appendChild(b); }
             c._art = function () {
                 // The provider's cover first; if it is missing or broken, TMDB's
@@ -557,7 +557,7 @@
             { label: inl ? T("Remove from My List") : T("Add to My List"), icon: inl ? "check" : "plus", run: function () { var on = D.toggleMyList(it.id); TV.toast(on ? T("Added to My List") : T("Removed from My List")); done(); } }
         ];
         if (it.kind === "movie") {
-            var seen = D.isDone(it.id);
+            var seen = D.watched(it);
             items.push({ label: seen ? T("Mark as Unwatched") : T("Mark as Watched"), icon: "eyeCheck", run: function () { D.markWatched(it, null, !seen); done(); } });
         }
         if (opts.continueRow) items.push({ label: T("Remove from Continue Watching"), icon: "trash", run: function () { D.forget(it); TV.toast(T("Removed from Continue Watching")); done(); } });

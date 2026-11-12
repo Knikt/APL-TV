@@ -137,13 +137,19 @@
         return e;
     }
     /* A movie's page opens: its state on the server right now (marked unwatched there, watched on the phone…),
-       before the page shows "Watched". 4 s at most, no new sign-in; no answer: as APL TV knew it. */
+       before the page shows "Watched". 4 s at most, no new sign-in; no answer: as APL TV knew it. Watched
+       there: kept on the movie itself (srvDone, js/data.js watched), so opening a page does not put it in
+       Recently Watched. */
     function jfMovie(src, item) {
         if (!src.token || !src.base || !src.userId || !item.sid) return Promise.resolve(false);
         var asOf = Date.now();
         return getJSON(src.base + "/Users/" + src.userId + "/Items?" + qs({ Ids: item.sid, EnableUserData: "true", api_key: src.token }), jfAuth(src, src.token), 4000).then(function (j) {
             var x = j && j.Items && j.Items[0];
-            return x && x.Id === item.sid && TV.data.syncResumes ? TV.data.syncResumes([jfSeen(x, item.id, item.id, null, null, asOf)]) : false;
+            if (!x || x.Id !== item.sid || !TV.data.syncResumes) return false;
+            var s = jfSeen(x, item.id, item.id, null, null, asOf);
+            item.srvDone = !!s.done;
+            if (!(s.pos && !s.done)) s.onlyKnown = true;
+            return TV.data.syncResumes([s]);
         }).catch(function () { return false; });
     }
     function jfItems(src, viewId, type, onItems, progress) {
@@ -185,8 +191,10 @@
                             else {
                                 base.id = src.id + "|m" + x.Id; base.sid = x.Id; base.kind = "movie"; base.url = "media:" + src.id + ":jf:" + x.Id; base.dur = Math.round((x.RunTimeTicks || 0) / 1e7);
                                 // the whole catalog: only what is half watched comes in; the rest only updates the titles
-                                // APL TV already has, so a long server history does not push out the other sources'
+                                // APL TV already has, so a long server history does not push out the other sources'.
+                                // Watched there: the tick comes from the movie itself (js/data.js watched)
                                 var s = jfSeen(x, base.id, base.id, null, null, asOf);
+                                base.srvDone = !!s.done;
                                 if (!(s.pos && !s.done)) s.onlyKnown = true;
                                 seen.push(s);
                             }
@@ -229,8 +237,9 @@
     }
     /* Continue Watching from the server when Home or its tab opens, without waiting for the catalog (refreshed
        every 6 h): what is half watched (/Items/Resume), the episodes watched lately, and each series' next
-       episode (/Shows/NextUp). At most once a minute per server; quietly nothing when it does not answer. */
-    var FRESH_MS = 60000, freshAt = {};
+       episode (/Shows/NextUp). At most once a minute per server; quietly nothing when it does not answer, and
+       then not again for 10 minutes. */
+    var FRESH_MS = 60000, FRESH_FAIL_MS = 600000, freshAt = {};
     function jfFresh(src) {
         if (!src.token || !src.base || !src.userId || Date.now() - (freshAt[src.id] || 0) < FRESH_MS) return Promise.resolve(false);
         var asOf = freshAt[src.id] = Date.now();
@@ -246,9 +255,14 @@
                 if (x.Type !== "Episode" || !x.SeriesId) return;
                 var sid = src.id + "|s" + x.SeriesId, label = jfLabel(x), e = jfSeen(x, sid + "|" + x.Id, sid, x.Id, label, asOf);
                 if (!e) return;
+                // watched there: only updates the episodes APL TV knows (their tick comes from the series page,
+                // js/data.js watched), so a season marked watched there does not fill Recently Watched
+                if (e.done) e.onlyKnown = true;
                 seen.push(e);
-                // when the series was last watched, for its next episode below
-                if (e.done) { if (e.at > (last[x.SeriesId] || 0)) last[x.SeriesId] = e.at; }
+                // when the series was last watched, for its next episode below; a mark by hand here is not a
+                // viewing and brings no "Up Next"
+                var mine = TV.data.resumeOf && TV.data.resumeOf(e.key);
+                if (e.done) { if (!(mine && mine.manual) && e.at > (last[x.SeriesId] || 0)) last[x.SeriesId] = e.at; }
                 else if (e.pos) seen.push({ key: sid, at: e.at, item: sid, ep: x.Id, pos: e.pos, dur: e.dur, epLabel: label, series: true });
             });
             // the next episode carries no date: the one of the episode finished before it (none known: left out,
@@ -260,7 +274,11 @@
                 seen.push({ key: sid, at: at, item: sid, ep: x.Id, pos: 0, dur: 0, epLabel: jfLabel(x), series: true, upNext: true });
             });
             return seen.length && TV.data.syncResumes ? TV.data.syncResumes(seen) : false;
-        }).catch(function () { return false; });
+        }).catch(function () {
+            // no answer (server off, refused): not asked again for 10 minutes, instead of at every Home
+            freshAt[src.id] = Date.now() + FRESH_FAIL_MS - FRESH_MS;
+            return false;
+        });
     }
     /* Every Jellyfin and Emby source (Home), or only one (its tab) */
     function fresh(srcId) {
@@ -274,7 +292,7 @@
                 var s = x.ParentIndexNumber !== undefined && x.ParentIndexNumber !== null ? x.ParentIndexNumber : 1;
                 // the same key and label as an episode played here (js/detail.js playEp)
                 var w = jfSeen(x, item.id + "|" + x.Id, item.id, x.Id, jfLabel(x), asOf);
-                // watched there: its tick comes from the episode itself (js/data.js epDone), not from the resume points,
+                // watched there: its tick comes from the episode itself (js/data.js watched), not from the resume points,
                 // so a long series watched elsewhere does not push the other sources' out; half watched ones come in
                 if (!(w.pos && !w.done)) w.onlyKnown = true;
                 seen.push(w);
