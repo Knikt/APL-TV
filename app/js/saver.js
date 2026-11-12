@@ -86,7 +86,7 @@
         var d = new Date();
         clock.firstChild.textContent = TV.hhmm(d);
         var date = "";
-        try { date = d.toLocaleDateString(TV.lang === "fr" ? "fr-FR" : "en-US", { weekday: "long", day: "numeric", month: "long" }); } catch (e) {}
+        try { date = d.toLocaleDateString(TV.locale, { weekday: "long", day: "numeric", month: "long" }); } catch (e) {}
         clock.children[1].textContent = date;
         if (!move) return;
         clock.classList.remove("is-on");

@@ -108,11 +108,14 @@
             desc: T("The letters of the search keyboard: like a computer's keyboard, or in alphabetical order. Its last key opens the TV's own keyboard."),
             run: function () { choose(T("Search Keyboard"), "kbLayout", [["auto", T("Automatic")], ["qwerty", "QWERTY"], ["azerty", "AZERTY"], ["abc", T("Alphabetical (ABC)")]]); } });
         rows.push({ label: T("Time Format"), value: TV.pref("timeFormat") === "12" ? "12 h" : "24 h", run: function () { TV.setPref("timeFormat", TV.pref("timeFormat") === "12" ? "24" : "12"); redraw(); } });
-        rows.push({ label: T("Language"), value: { auto: T("Automatic"), fr: "Français", en: "English" }[TV.pref("language")] || T("Automatic"), desc: T("APL TV restarts in the new language."),
+        // A list rather than OK going round the languages: each change restarts APL TV
+        var LANGUAGES = [["auto", T("Automatic")], ["en", "English"], ["fr", "Français"], ["pl", "Polski"]];
+        rows.push({ label: T("Language"), acc: "chevron", value: { auto: T("Automatic"), en: "English", fr: "Français", pl: "Polski" }[TV.pref("language")] || T("Automatic"), desc: T("APL TV restarts in the new language."),
             run: function () {
-                var order = ["auto", "fr", "en"], next = order[(order.indexOf(TV.pref("language")) + 1) % 3];
-                TV.setPref("language", next);
-                setTimeout(function () { global.location.reload(); }, 300);
+                var was = TV.pref("language");
+                choose(T("Language"), "language", LANGUAGES, function () {
+                    if (TV.pref("language") !== was) setTimeout(function () { global.location.reload(); }, 300);
+                });
             } });
         rows.push({ section: T("TV Guide") });
         rows.push({ label: T("Update the TV Guide"), icon: "refresh", desc: T("Downloads the programmes of the next 24 hours again."), run: function () {

@@ -337,7 +337,7 @@
         min = Math.round(min || 0);
         if (!min) return "";
         var h = Math.floor(min / 60), m = min % 60;
-        return h ? (TV.lang === "fr" ? h + " h " + (m ? pad(m) : "") : h + "h " + (m ? m + "m" : "")) : m + " min";
+        return h ? (TV.lang === "fr" ? h + " h " + (m ? pad(m) : "") : TV.lang === "pl" ? h + " godz." + (m ? " " + m + " min" : "") : h + "h " + (m ? m + "m" : "")) : m + " min";
     };
     TV.dayName = function (d) {
         try { return d.toLocaleDateString(TV.locale, { weekday: "long" }); } catch (e) { return ""; }

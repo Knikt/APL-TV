@@ -283,7 +283,7 @@
         TV.player.subtitleDelay(delayMs);                  // the video's own subtitles move too
         refreshPop();
     }
-    function fmtDelay() { var s = delayMs / 1000; return (s > 0 ? "+" : s < 0 ? "−" : "") + Math.abs(s).toFixed(2).replace(".", TV.lang === "fr" ? "," : ".") + " s"; }
+    function fmtDelay() { var s = delayMs / 1000; return (s > 0 ? "+" : s < 0 ? "−" : "") + Math.abs(s).toFixed(2).replace(".", TV.lang === "fr" || TV.lang === "pl" ? "," : ".") + " s"; }
 
     /* ---------- the menus above the buttons (Apple TV style) ---------- */
     function subsItems() {
