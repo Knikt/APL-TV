@@ -723,17 +723,25 @@ final class Helper {
         final Map<String, String> names = new HashMap<>();
     }
     private final ConcurrentHashMap<String, Epg> epgCache = new ConcurrentHashMap<>();
-    private static final Pattern BLOCK = Pattern.compile("<(programme|channel)\\b([^>]*)>(.*?)</\\1>", Pattern.DOTALL);
-    private static final Pattern ID = Pattern.compile("id=\"([^\"]*)\""), CH = Pattern.compile("channel=\"([^\"]*)\""),
-        START = Pattern.compile("start=\"([^\"]*)\""), STOP = Pattern.compile("stop=\"([^\"]*)\""),
-        TITLE = Pattern.compile("<title[^>]*>(.*?)</title>", Pattern.DOTALL), DESC = Pattern.compile("<desc[^>]*>(.*?)</desc>", Pattern.DOTALL),
+    /* A guide is hundreds of megabytes on some providers and a TV has a slow processor: blocks, attributes and
+       times are read by hand (indexOf), and regexes are kept for the few programmes that pass the time window. */
+    private static final String ID = "id=\"", CH = "channel=\"", START = "start=\"", STOP = "stop=\"";
+    private static final Pattern TITLE = Pattern.compile("<title[^>]*>(.*?)</title>", Pattern.DOTALL), DESC = Pattern.compile("<desc[^>]*>(.*?)</desc>", Pattern.DOTALL),
         NAME = Pattern.compile("<display-name[^>]*>(.*?)</display-name>", Pattern.DOTALL),
-        TIME = Pattern.compile("^(\\d{4})(\\d{2})(\\d{2})(\\d{2})(\\d{2})(\\d{2})?\\s*([+-]\\d{4})?"),
         CDATA = Pattern.compile("<!\\[CDATA\\[(.*?)\\]\\]>", Pattern.DOTALL), ENT = Pattern.compile("&(amp|lt|gt|quot|apos|#(\\d+)|#x([0-9a-fA-F]+));");
 
     private static String grab(Pattern p, String s) { Matcher m = p.matcher(s); return m.find() ? m.group(1) : null; }
+    /* The value of an attribute, given as its name with the opening quote (id="); null when it is not there */
+    private static String grab(String key, String s) {
+        int a = s.indexOf(key);
+        if (a < 0) return null;
+        a += key.length();
+        int b = s.indexOf('"', a);
+        return b < 0 ? null : s.substring(a, b);
+    }
     static String decodeXml(String s) {
         if (s == null) return "";
+        if (s.indexOf('&') < 0 && s.indexOf("<![CDATA[") < 0) return s.trim();
         s = CDATA.matcher(s).replaceAll("$1");
         if (s.indexOf('&') < 0) return s.trim();
         Matcher m = ENT.matcher(s);
@@ -748,18 +756,31 @@ final class Helper {
         m.appendTail(b);
         return b.toString().trim();
     }
+    private static boolean digits(String s, int at, int n) {
+        if (at + n > s.length()) return false;
+        for (int i = at; i < at + n; i++) { char c = s.charAt(i); if (c < '0' || c > '9') return false; }
+        return true;
+    }
+    private static int num(String s, int at, int n) { int v = 0; for (int i = at; i < at + n; i++) v = v * 10 + (s.charAt(i) - '0'); return v; }
+    /* "20261112183000 +0100" in milliseconds, 0 when it is not a time. No Calendar and no regex: this runs
+       twice for every programme of the guide. */
     static long xmltvTime(String s) {
         if (s == null) return 0;
-        Matcher m = TIME.matcher(s.trim());
-        if (!m.find()) return 0;
-        java.util.Calendar c = java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("UTC"));
-        c.clear();
-        c.set(Integer.parseInt(m.group(1)), Integer.parseInt(m.group(2)) - 1, Integer.parseInt(m.group(3)), Integer.parseInt(m.group(4)), Integer.parseInt(m.group(5)), m.group(6) != null ? Integer.parseInt(m.group(6)) : 0);
-        long t = c.getTimeInMillis();
-        if (m.group(7) != null) {
-            String z = m.group(7);
-            int sign = z.charAt(0) == '-' ? -1 : 1;
-            t -= sign * (Integer.parseInt(z.substring(1, 3)) * 60L + Integer.parseInt(z.substring(3, 5))) * 60000L;
+        int n = s.length(), i = 0;
+        while (i < n && s.charAt(i) <= ' ') i++;
+        if (!digits(s, i, 12)) return 0;
+        int y = num(s, i, 4), mo = num(s, i + 4, 2), d = num(s, i + 6, 2), h = num(s, i + 8, 2), mi = num(s, i + 10, 2), sec = 0;
+        int p = i + 12;
+        if (digits(s, p, 2)) { sec = num(s, p, 2); p += 2; }
+        y += (mo - 1) / 12; mo = (mo - 1) % 12 + 1;                        // month 13 rolls over, as Calendar did
+        int yy = mo <= 2 ? y - 1 : y;                                      // days since 1970-01-01 (civil calendar)
+        long era = (yy >= 0 ? yy : yy - 399) / 400, yoe = yy - era * 400;
+        long doy = (153 * (mo + (mo > 2 ? -3 : 9)) + 2) / 5 + d - 1, doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+        long t = (era * 146097 + doe - 719468) * 86400000L + ((h * 60L + mi) * 60L + sec) * 1000L;
+        while (p < n && Character.isWhitespace(s.charAt(p))) p++;
+        if (p < n && (s.charAt(p) == '+' || s.charAt(p) == '-') && digits(s, p + 1, 4)) {
+            int sign = s.charAt(p) == '-' ? -1 : 1;
+            t -= sign * (num(s, p + 1, 2) * 60L + num(s, p + 3, 2)) * 60000L;
         }
         return t;
     }
@@ -779,6 +800,9 @@ final class Helper {
             first = get(target, timeoutMs, 0, false, java.util.Collections.singletonMap("User-Agent", VLC_UA));
             if (first.status == 200) epgUa.put(target, VLC_UA);
         }
+        // Below the interface and the video: a guide can take minutes, and the remote must keep answering
+        final int tid = android.os.Process.myTid(), before = android.os.Process.getThreadPriority(tid);
+        android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND);
         try (Got g = first) {
             if (g.status != 200) throw new IOException("HTTP " + g.status);
             Reader rd = new InputStreamReader(g.in, StandardCharsets.UTF_8);
@@ -788,17 +812,39 @@ final class Helper {
             while ((n = rd.read(cb)) > 0) {
                 buf.append(cb, 0, n);
                 if (buf.length() < 262144) continue;
-                int last = scan(buf, each);
+                int last = scan(buf.toString(), each);
                 buf.delete(0, last);
                 if (buf.length() > 4000000) buf.delete(0, buf.length() - 200000);   // a broken file: never grow without end
             }
-            scan(buf, each);
+            scan(buf.toString(), each);
+        } finally {
+            android.os.Process.setThreadPriority(before);
         }
     }
-    private static int scan(CharSequence buf, Blocks each) {
-        Matcher m = BLOCK.matcher(buf);
-        int last = 0;
-        while (m.find()) { last = m.end(); each.each(m.group(1).equals("programme"), m.group(2), m.group(3)); }
+    /* Every whole <channel>...</channel> and <programme>...</programme> of s goes to "each"; returns where the
+       last one ended, so the caller keeps the unfinished rest for the next read */
+    static int scan(String s, Blocks each) {
+        int last = 0, i = 0;
+        final int len = s.length();
+        while (true) {
+            int lt = s.indexOf('<', i);
+            if (lt < 0) break;
+            boolean programme;
+            if (s.startsWith("programme", lt + 1)) programme = true;
+            else if (s.startsWith("channel", lt + 1)) programme = false;
+            else { i = lt + 1; continue; }
+            int after = lt + 1 + (programme ? 9 : 7);
+            if (after >= len) break;                                       // the name is cut: wait for the rest
+            char c = s.charAt(after);
+            if (Character.isLetterOrDigit(c) || c == '_') { i = lt + 1; continue; }   // <channels>, <programmes>
+            int gt = s.indexOf('>', after);
+            if (gt < 0) break;
+            String close = programme ? "</programme>" : "</channel>";
+            int end = s.indexOf(close, gt + 1);
+            if (end < 0) { i = lt + 1; continue; }                        // not closed (yet): the blocks after it still count
+            each.each(programme, s.substring(after, gt), s.substring(gt + 1, end));
+            i = last = end + close.length();
+        }
         return last;
     }
     private Epg loadXmltv(String target) throws Exception {
@@ -818,9 +864,10 @@ final class Helper {
                     if (id != null) mine.names.put(decodeXml(id), decodeXml(grab(NAME, inner)));
                     return;
                 }
-                String ch = decodeXml(grab(CH, attrs));
                 long st = xmltvTime(grab(START, attrs)), sp = xmltvTime(grab(STOP, attrs));
-                if (ch.isEmpty() || st == 0 || sp < from || st > to) return;
+                if (st == 0 || sp < from || st > to) return;
+                String ch = decodeXml(grab(CH, attrs));
+                if (ch.isEmpty()) return;
                 Prog p = new Prog();
                 p.st = st; p.sp = sp; p.title = decodeXml(grab(TITLE, inner));
                 String d = decodeXml(grab(DESC, inner)); p.desc = d.length() > 320 ? d.substring(0, 320) : d;

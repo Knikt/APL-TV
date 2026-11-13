@@ -118,7 +118,9 @@
                 });
             } });
         rows.push({ section: T("TV Guide") });
-        rows.push({ label: T("Update the TV Guide"), icon: "refresh", desc: T("Downloads the programmes of the next 24 hours again."), run: function () {
+        rows.push(toggleRow(T("TV Guide"), "tvGuide", T("Off: no programmes are downloaded or shown. Lighter on a slow TV, where a large guide keeps the processor busy for minutes."),
+            function () { if (TV.pref("tvGuide")) TV.epg.loadAll(true); else TV.epg.clear(); }));
+        if (TV.pref("tvGuide")) rows.push({ label: T("Update the TV Guide"), icon: "refresh", desc: T("Downloads the programmes of the next 24 hours again."), run: function () {
             TV.toast(T("Updating the TV guide…"));
             TV.epg.loadAll(true).then(function () { TV.toast(T("TV guide updated")); });
         } });
