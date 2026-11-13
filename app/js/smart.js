@@ -158,7 +158,12 @@
         fold: function (s) {
             s = String(s || "").toLowerCase();
             try { s = s.normalize("NFD").replace(/[̀-ͯ]/g, ""); } catch (e) {}
-            return s.replace(/[^a-z0-9+]+/g, " ").trim();
+            /* Arabic (asked on Reddit): one form per letter, as people type them (the hamza and madda forms of alef,
+               taa marbuta, alef maqsura), no vowel marks nor stretching; its punctuation a space. Arabic, Greek,
+               Cyrillic and Hebrew letters are kept (only a-z and 0-9 were: an Arabic title folded to nothing). */
+            s = s.replace(/[\u064B-\u065F\u0670\u0640]/g, "").replace(/[\u0622\u0623\u0625\u0671]/g, "\u0627").replace(/\u0629/g, "\u0647").replace(/\u0649/g, "\u064A")
+                 .replace(/[\u060C\u061B\u061F\u066A-\u066D\u06D4]/g, " ");
+            return s.replace(/[^a-z0-9+\u0370-\u03FF\u0400-\u04FF\u0590-\u05FF\u0600-\u06FF\u0750-\u077F]+/g, " ").trim();
         }
     };
 })(window);

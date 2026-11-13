@@ -57,16 +57,17 @@
         return list;
     }
     /* Every category of your channels in a vertical list, by country or region when there are many.
-       Used by Live TV (its first chip) and by the Guide. top: entries first (Favorites…); onPick(category) */
-    function pickCategory(currentId, onPick, top) {
-        var cat = D.catalog(), adult = TV.pref("showAdult"), S = TV.smart;
-        var all = (cat ? cat.live.cats : []).filter(function (c) { return (adult || !c.adult) && !c.off; });
+       Used by Live TV (its first chip), the Guide, and Movies and Series (kindKey "movies" or "series", after their
+       genres). top: entries first (Favorites…); onPick(category) */
+    function pickCategory(currentId, onPick, top, kindKey, title) {
+        var cat = D.catalog(), adult = TV.pref("showAdult"), S = TV.smart, k = kindKey || "live";
+        var all = (cat ? cat[k].cats : []).filter(function (c) { return (adult || !c.adult) && !c.off && (k === "live" || !D.catNameHidden(c.name)); });
         function item(c) {
             return { label: (c.tag ? c.tag + " · " : "") + c.name + (c.count ? "  ·  " + c.count : ""), check: c.id === currentId, focus: c.id === currentId,
                      run: function () { onPick(c); } };
         }
         top = top || [];
-        if (all.length <= 40) { TV.menu(T("Category"), top.concat(all).map(item)); return; }
+        if (all.length <= 40) { TV.menu(title || T("Category"), top.concat(all).map(item)); return; }
         var groups = [], by = {}, curGroup = null;
         all.forEach(function (c) {
             var g = c.grp || "";
@@ -76,7 +77,7 @@
         });
         var other = by[""];
         if (other) { groups.splice(groups.indexOf(other), 1); groups.push(other); }    // the categories of no country last
-        TV.menu(T("Category"), top.map(item).concat(groups.map(function (g) {
+        TV.menu(title || T("Category"), top.map(item).concat(groups.map(function (g) {
             return { label: g.name + "  ·  " + g.cats.length, check: g.id === curGroup, focus: g.id === curGroup && top.every(function (t) { return t.id !== currentId; }),
                      run: function () { TV.menu(g.name, g.cats.map(item)); } };
         })));
@@ -242,6 +243,16 @@
     }
 
     /* ---------- menus ---------- */
+    /* A channel renamed from its menu ("": the provider's name again): the chips, the cards and the header follow */
+    function renamed(ch, v) {
+        var id = ch.id, had = !!ch.orig;
+        if (!v && !had) return;
+        D.renameChannel(ch.variants ? ch.variants.map(function (x) { return x.id; }) : id, v);
+        var now = D.channel(id);
+        TV.toast(now && now.orig ? T("Now “{name}”", { name: now.name }) : T("The provider's name is back"));
+        cats = categories(); buildChips(); paintChips(); loadCategory(id);
+        if (TV.pushShelf) TV.pushShelf();                    // APL Launcher's Last Channel and channel row
+    }
     function channelMenu(ch) {
         var fav = D.isFav(ch.id), inFav = cats[catIndex] && cats[catIndex].id === "fav";
         var items = [
@@ -255,7 +266,14 @@
             { label: T("Full Screen"), icon: "tv", run: function () { fullScreen(ch); } }
         ];
         items.splice(1, 0, { label: T("Add to a Group"), icon: "plus", run: function () { groupMenu(ch); } },
-                              { label: T("TV Guide for This Channel"), icon: "list", run: function () { guideMenu(ch); } });
+                              { label: T("TV Guide for This Channel"), icon: "list", run: function () { guideMenu(ch); } },
+                              // your own name for it, everywhere (issue #6); the provider's typed back: no name of yours
+                              { label: T("Rename"), icon: "pencil", run: function () {
+                                  TV.prompt({ title: T("Rename"), value: ch.name, placeholder: ch.orig || ch.name, onDone: function (v) {
+                                      renamed(ch, v === (ch.orig || ch.name) ? "" : v);
+                                  } });
+                              } });
+        if (ch.orig) items.splice(4, 0, { label: T("Provider's Name: {name}", { name: ch.orig }), icon: "restart", run: function () { renamed(ch, ""); } });
         if (inFav && fav) {
             items.push({ label: T("Move Up"), icon: "chevron", run: function () { if (D.moveFav(ch.id, -1)) loadCategory(ch.id); } });
             items.push({ label: T("Move Down"), icon: "chevron", run: function () { if (D.moveFav(ch.id, 1)) loadCategory(ch.id); } });
@@ -449,5 +467,64 @@
     setInterval(function () { view.refresh(); }, 60000);
     TV.views = TV.views || {};
     TV.views.live = view;
+    /* ---------- the provider's replay (catch-up): a past programme played from the provider's archive ----------
+       Only for the channels the provider marks (Xtream's tv_archive, an M3U's catchup-days or catchup), within their
+       days. Xtream: /timeshift/user/pass/{minutes}/{YYYY-MM-DD:HH-MM}/{id}.ts, in the server's own time. An M3U: its
+       catchup type (default with catchup-source and its {utc} {start} {duration}… marks, append, shift, xc,
+       flussonic), else an Xtream-like address guessed from the channel's (issue #10). */
+    function pad2(n) { return (n < 10 ? "0" : "") + n; }
+    function localOff(ms) { return -new Date(ms || Date.now()).getTimezoneOffset() * 60000; }
+    function stamp(ms, off) { var d = new Date(ms + off); return d.getUTCFullYear() + "-" + pad2(d.getUTCMonth() + 1) + "-" + pad2(d.getUTCDate()) + ":" + pad2(d.getUTCHours()) + "-" + pad2(d.getUTCMinutes()); }
+    function fill(tpl, start, end) {
+        var now = Date.now(), sec = Math.floor(start / 1000), esec = Math.floor(end / 1000), dur = Math.max(60, esec - sec), d = new Date(start), e = new Date(end);
+        function fmt(dt, f) {
+            return f.replace(/Y/g, dt.getFullYear()).replace(/m/g, pad2(dt.getMonth() + 1)).replace(/d/g, pad2(dt.getDate()))
+                    .replace(/H/g, pad2(dt.getHours())).replace(/M/g, pad2(dt.getMinutes())).replace(/S/g, pad2(dt.getSeconds()));
+        }
+        return String(tpl)
+            .replace(/\{(utc|start|utcend|end):([^}]+)\}/g, function (x, k, f) { return fmt(/end/.test(k) ? e : d, f); })
+            .replace(/\$\{start\}|\{utc\}|\{start\}/g, sec).replace(/\$\{end\}|\{utcend\}|\{end\}/g, esec)
+            .replace(/\$\{now\}|\$\{timestamp\}|\{lutc\}|\{now\}/g, Math.floor(now / 1000))
+            .replace(/\{duration:(\d+)\}/g, function (x, k) { return Math.round(dur / (+k || 1)); }).replace(/\$\{duration\}|\{duration\}/g, dur)
+            .replace(/\{offset:(\d+)\}/g, function (x, k) { return Math.round((now / 1000 - sec) / (+k || 1)); }).replace(/\$\{offset\}|\{offset\}/g, Math.round(now / 1000 - sec))
+            .replace(/\{Y\}/g, d.getFullYear()).replace(/\{m\}/g, pad2(d.getMonth() + 1)).replace(/\{d\}/g, pad2(d.getDate()))
+            .replace(/\{H\}/g, pad2(d.getHours())).replace(/\{M\}/g, pad2(d.getMinutes())).replace(/\{S\}/g, pad2(d.getSeconds()));
+    }
+    function catchupUrl(ch, start, end) {
+        var src = D.sourceOf(ch), mins = Math.max(1, Math.round((end - start) / 60000));
+        if (!src || !ch.arch) return "";
+        if (src.type === "xtream" && ch.sid) {
+            var off = src.account && typeof src.account.tzOff === "number" ? src.account.tzOff : localOff(start);
+            return src.server + "/timeshift/" + encodeURIComponent(src.user) + "/" + encodeURIComponent(src.pass) + "/" + mins + "/" + stamp(start, off) + "/" + ch.sid + ".ts";
+        }
+        var u = ch.url || "", t = String(ch.cx || "").toLowerCase(), cs = ch.cs || "", sec = Math.floor(start / 1000);
+        if (!/^https?:\/\//i.test(u) || t === "none") return "";
+        if (t === "shift") return u + (u.indexOf("?") >= 0 ? "&" : "?") + "utc=" + sec + "&lutc=" + Math.floor(Date.now() / 1000);
+        if (t === "append") return cs ? u + fill(cs, start, end) : "";
+        if (/^(flussonic|fs|flussonic-hls|flussonic-ts)$/.test(t)) {
+            var dsec = Math.max(60, Math.floor((end - start) / 1000));
+            if (/\/[^\/]+\.m3u8(\?|$)/i.test(u)) return u.replace(/\/([^\/]+)\.m3u8(\?|$)/i, "/$1-" + sec + "-" + dsec + ".m3u8$2");
+            return u.replace(/\/(mpegts|[^\/]+\.ts)(\?|$)/i, "/timeshift_abs-" + sec + ".ts$2");
+        }
+        if (cs) return /^https?:\/\//i.test(cs) ? fill(cs, start, end) : u + fill(cs, start, end);
+        // an Xtream panel's M3U (catchup="xc", or nothing said): the address it would have
+        var x = /^(https?:\/\/[^\/]+)\/(?:live\/)?([^\/]+)\/([^\/]+)\/(\d+)(?:\.\w+)?(\?.*)?$/i.exec(u);
+        return x ? x[1] + "/timeshift/" + x[2] + "/" + x[3] + "/" + mins + "/" + stamp(start, localOff(start)) + "/" + x[4] + ".ts" : "";
+    }
+    function canCatchup(ch, start) {
+        var days = ch && ch.arch ? Math.min(30, ch.arch) : 0, now = Date.now();
+        return !!days && start < now - 30000 && start > now - days * 86400000 && !!catchupUrl(ch, start, start + 3600000);
+    }
+    // p: [start, end, title]; played like a movie (seeking, pause), from its start
+    function playCatchup(ch, p, onClose) {
+        var url = catchupUrl(ch, p[0], p[1]);
+        if (!url) { TV.toast(T("This channel has no replay.")); return; }
+        TV.log("replay: " + ch.name + " from " + new Date(p[0]).toISOString());
+        var day = new Date(p[0]).toLocaleDateString(TV.locale, { weekday: "long", day: "numeric", month: "long" });
+        TV.osd.vod({ url: url, item: { id: "replay:" + ch.id, name: p[2] || ch.name, kind: "replay" }, title: p[2] || ch.name, sub: ch.name + " · " + day + " · " + TV.hhmm(p[0]),
+                     start: 0, noResume: true, onClose: onClose || function () {} });
+    }
+    TV.catchup = { url: catchupUrl, can: canCatchup, play: playCatchup };
+
     TV.live = { play: function (ch, ctx) { fullScreen(ch, ctx); }, findNumber: findNumber, playChannel: function (ch, rect, url, more) { playChannel(ch, rect, url, more); }, pickCategory: pickCategory, guideMenu: guideMenu };
 })(window);

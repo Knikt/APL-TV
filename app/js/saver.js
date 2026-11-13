@@ -77,7 +77,7 @@
         document.body.appendChild(root);
     }
     function playing() {
-        return !!(TV.player && TV.player.state && TV.player.state() === "PLAYING");
+        return !!(TV.ytPlaying || (TV.player && TV.player.state && TV.player.state() === "PLAYING"));
     }
     /* The block changes corner every few minutes (bottom left, bottom right, top right, top left):
        never the same pixels lit for long, always neatly framed */

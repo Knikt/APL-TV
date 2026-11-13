@@ -248,6 +248,10 @@
         if (!this._cw && this.cards[0]) this._cw = this.cards[0].offsetWidth;
         return this._cw || 230;
     };
+    Strip.prototype.step = function () {
+        if (!this._step && this.cards.length > 1 && this.cards[1].offsetLeft > this.cards[0].offsetLeft) this._step = this.cards[1].offsetLeft - this.cards[0].offsetLeft;
+        return this._step || (this.cardW() + this.gap);
+    };
     Strip.prototype.lazy = function () {
         var w = this.cardW() + this.gap, first = Math.floor(this.scroll / w) - 1, last = first + Math.ceil(this.width / w) + 3;
         for (var i = Math.max(0, first); i < Math.min(this.cards.length, last); i++) {
@@ -260,9 +264,10 @@
         if (i >= this.cards.length - 4) this.grow(i + 9);
         i = TV.clamp(i, 0, this.cards.length - 1);
         var c = this.cards[i];
-        /* Where the card really is, read before anything changes. Computed from the gap before, which TVs
-           without flex gap (Tizen 6.0) do not apply: there, going left, the card ended up off the screen. */
-        var real = c.offsetWidth > 0, w = (real ? c.offsetWidth : this.cardW()) + this.gap, x = real ? c.offsetLeft : i * w, right = this.width - this.left - 140;
+        /* Where the card is: the step from one card to the next measured once per row (on TVs without flex gap,
+           Tizen 6.0, it is not width + gap), then counted. Reading the card's place at every press made the
+           screen lay out the whole page again first: 50 to 140 ms on the M8 at each ▲ ▼ in Sports. */
+        var w = this.step(), x = i * w, right = this.width - this.left - 140;
         if (this.cards[this.index]) this.cards[this.index].classList.remove("is-focused");
         this.index = i;
         TV.lift(c);
@@ -498,7 +503,9 @@
         },
         channel: function (ch) {
             var c = el("div", "card card--channel"), art = el("div", "card__art");
-            var logo = el("div", "card__logo" + (ch.logo ? "" : " card__logo--txt"), ch.logo ? "" : esc(ch.name));
+            // a long name without a logo ("EVENT 01 : ALBANIE VS FINLANDE 20:45") in smaller letters, under the LIVE badge
+            var txt = " card__logo--txt" + (String(ch.name).length > 16 ? " is-long" : "");
+            var logo = el("div", "card__logo" + (ch.logo ? "" : txt), ch.logo ? "" : esc(ch.name));
             art.appendChild(logo);
             var now = el("div", "card__now"), bar = el("div", "card__bar");
             bar.innerHTML = "<i style='width:0'></i>";
@@ -507,7 +514,7 @@
             c.appendChild(art);
             c.appendChild(el("div", "card__cap", esc(ch.name)));
             c._art = function () {
-                if (ch.logo) { var im = new Image(); im.onload = function () { logo.style.backgroundImage = TV.cssUrl(ch.logo); }; im.onerror = function () { logo.className = "card__logo card__logo--txt"; logo.textContent = ch.name; }; im.src = ch.logo; }
+                if (ch.logo) { var im = new Image(); im.onload = function () { logo.style.backgroundImage = TV.cssUrl(ch.logo); }; im.onerror = function () { logo.className = "card__logo" + txt; logo.textContent = ch.name; }; im.src = ch.logo; }
             };
             c._update = function () {
                 var n = TV.epg.now(ch);
@@ -701,7 +708,47 @@
             onCancel: function () { root.classList.remove("is-open"); } });
     };
 
+    /* ---------- the network, next to the clock (asked on Reddit: some screens lose their connection) ----------
+       Wi-Fi, a cable, or a red crossed Wi-Fi when the screen has no network; a message when it goes and when it
+       comes back. Samsung: webapis.network; LG: the connection manager; Android and elsewhere: the browser's own. */
+    var netState = null, netSub = null;
+    function showNet(state) {
+        var s = TV.$("status"), n = TV.$("net");
+        if (!s) return;
+        if (!n) { n = document.createElement("span"); n.id = "net"; s.insertBefore(n, s.firstChild); }
+        if (state === netState) return;
+        var before = netState;
+        netState = state;
+        n.className = "status__net" + (state === "off" ? " is-off" : "");
+        n.innerHTML = TV.icon(state === "lan" ? "lan" : state === "off" ? "wifiOff" : "wifi", 28);
+        TV.log("network: " + state);
+        if (before && state === "off") TV.toast(T("No network connection"), true);
+        else if (before === "off") TV.toast(T("Connected again"));
+    }
+    function readNet() {
+        if (TV.WEBOS) return;                                  // LG tells it below
+        var w = global.webapis && global.webapis.network;
+        if (w && w.getActiveConnectionType) {
+            try {
+                var type = w.getActiveConnectionType(), gw = true;   // 0 none, 1 Wi-Fi, 2 cellular, 3 cable
+                try { gw = w.isConnectedToGateway(); } catch (e) {}
+                showNet(!type || !gw ? "off" : type === 3 ? "lan" : "wifi");
+                return;
+            } catch (e) {}
+        }
+        var c = global.navigator.connection;
+        if (global.navigator.onLine === false || (c && c.type === "none")) showNet("off");
+        else showNet(c && c.type === "ethernet" ? "lan" : "wifi");
+    }
+    if (TV.WEBOS && TV.luna) netSub = TV.luna("luna://com.palm.connectionmanager/getStatus", { subscribe: true }, function (m) {
+        if (!m || m.returnValue === false || (!m.wired && !m.wifi)) { if (!netState) showNet("wifi"); return; }
+        var wired = m.wired && m.wired.state === "connected", wifi = m.wifi && m.wifi.state === "connected";
+        showNet(wired ? "lan" : wifi || m.isInternetConnectionAvailable === true ? "wifi" : "off");
+    });
+    global.addEventListener("online", readNet);
+    global.addEventListener("offline", readNet);
+
     /* ---------- clock ---------- */
-    function tick() { var c = TV.$("clock"); if (c) c.textContent = TV.hhmm(new Date()); }
+    function tick() { var c = TV.$("clock"); if (c) c.textContent = TV.hhmm(new Date()); readNet(); }
     tick(); setInterval(tick, 10000);
 })(window);

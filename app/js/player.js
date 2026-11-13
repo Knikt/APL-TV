@@ -179,6 +179,7 @@
     function rememberHls(url) { var m = TV.load("hlsOnly", {}) || {}, k = Object.keys(m); if (k.length > 400) delete m[k[0]]; m[fp(url)] = 1; TV.save("hlsOnly", m); }
     function play(url, opts) {
         opts = opts || {};
+        loggedTracks = false;
         // A Stalker portal's channel or movie, or a media server's (Jellyfin, Emby, Plex): its real link is asked
         // first (a portal's lasts a short time only; a server's carries its key)
         var via = /^stalker:/.test(url) ? TV.stalker : /^media:/.test(url) ? TV.media : null;
@@ -393,10 +394,10 @@
     function htmlTracks() {
         if (lgPending) return [];
         var out = [], a = video && video.audioTracks, t = video && video.textTracks, i, n = 0;
-        for (i = 0; a && i < a.length; i++) out.push({ index: i, type: "AUDIO", lang: a[i].language || a[i].label || "", codec: "", channels: "" });
-        for (i = 0; t && i < t.length; i++) if (t[i].kind === "subtitles" || t[i].kind === "captions") { out.push({ index: i, type: "TEXT", lang: t[i].language || t[i].label || "", codec: "", channels: "" }); n++; }
+        for (i = 0; a && i < a.length; i++) out.push({ index: i, type: "AUDIO", lang: a[i].language || "", name: a[i].label || "", codec: "", channels: "" });
+        for (i = 0; t && i < t.length; i++) if (t[i].kind === "subtitles" || t[i].kind === "captions") { out.push({ index: i, type: "TEXT", lang: t[i].language || "", name: t[i].label || "", codec: "", channels: "" }); n++; }
         // LG's own: numbered after the page's (100, 101…), drawn by the TV
-        if (!n) lgSubs.forEach(function (s, j) { out.push({ index: 100 + j, type: "TEXT", lang: s.lang || s.label, codec: "", channels: "", tv: true }); });
+        if (!n) lgSubs.forEach(function (s, j) { out.push({ index: 100 + j, type: "TEXT", lang: s.lang || "", name: s.label || "", codec: "", channels: "", tv: true }); });
         return out;
     }
     function htmlCurrent(type) {
@@ -429,14 +430,27 @@
         return true;
     }
 
-    /* Audio tracks and subtitles: [{ index, type: "AUDIO"|"TEXT", lang }] */
+    /* A track's details: JSON as Samsung's player documents it, or its pairs read one by one when a TV gives
+       something that is not quite JSON (issue #9: subtitles named "Track 1, 2" on a QE65S90C) */
+    var loggedTracks = false;
+    function trackInfo(raw) {
+        if (raw && typeof raw === "object") return raw;
+        try { return JSON.parse(raw || "{}") || {}; } catch (e) {}
+        var x = {}, re = /"?([A-Za-z_]+)"?\s*[:=]\s*"?([^",}]*)"?/g, m;
+        while ((m = re.exec(String(raw || "")))) x[m[1]] = m[2].trim();
+        return x;
+    }
+    /* Audio tracks and subtitles: [{ index, type: "AUDIO"|"TEXT", lang, name }] */
     function tracks() {
         if (!cur) return [];
         if (!useAv) { try { return htmlTracks(); } catch (e) { return []; } }
         try {
-            return (av.getTotalTrackInfo() || []).filter(function (t) { return t.type === "AUDIO" || t.type === "TEXT"; }).map(function (t) {
-                var x = {}; try { x = JSON.parse(t.extra_info || "{}"); } catch (e) {}
-                return { index: t.index, type: t.type, lang: x.language || x.track_lang || "", codec: x.fourCC || "", channels: x.channels || "" };
+            var list = (av.getTotalTrackInfo() || []).filter(function (t) { return t.type === "AUDIO" || t.type === "TEXT"; });
+            if (!loggedTracks && list.length) { loggedTracks = true; TV.log("tracks as the TV gives them: " + list.map(function (t) { return t.type + " " + String(t.extra_info || "").slice(0, 160); }).join(" | ")); }
+            return list.map(function (t) {
+                var x = trackInfo(t.extra_info);
+                return { index: t.index, type: t.type, lang: x.language || x.track_lang || x.lang || x.Language || "", name: x.label || x.track_name || x.name || x.title || "",
+                         codec: x.fourCC || "", channels: x.channels || "" };
             });
         } catch (e) { return []; }
     }

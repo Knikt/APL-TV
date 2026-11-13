@@ -272,6 +272,13 @@ final class Helper {
             return;
         }
 
+        // the video summaries' player (Sports): YouTube's embedded player on a page with an address (service.js ytPage)
+        if (p.equals("/yt")) {
+            byte[] page;
+            try (InputStream in = ctx.getAssets().open("helper/yt.html")) { page = readAll(in); } catch (IOException e) { page = new byte[0]; }
+            send(out, r, page.length > 0 ? 200 : 404, "text/html; charset=utf-8", page);
+            return;
+        }
         // the phone editor: its page, the playlist it edits, what it sends back
         if (p.equals("/edit")) {
             String k = r.q.get("k");

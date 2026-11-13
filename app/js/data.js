@@ -112,6 +112,9 @@
         progress(T("Connecting to {name}…", { name: src.name }));
         return xAuth(src).then(function (auth) {
             out.account = { exp: auth.user_info.exp_date ? auth.user_info.exp_date * 1000 : 0, max: auth.user_info.max_connections, formats: auth.user_info.allowed_output_formats || [] };
+            // the server's clock against UTC (its replay addresses are in its own time): "2026-11-13 18:00:00" and the moment
+            var si = auth.server_info || {}, m = /^(\d{4})-(\d\d)-(\d\d)[ T](\d\d):(\d\d)/.exec(si.time_now || "");
+            if (m && si.timestamp_now) out.account.tzOff = Math.round((Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]) - si.timestamp_now * 1000) / 900000) * 900000;
             progress(T("Loading channels…"));
             return Promise.all([xApi(src, "get_live_categories"), xApi(src, "get_live_streams")]);
         }).then(function (r) {
@@ -204,6 +207,7 @@
                 }
                 return idx[key].id;
             }
+            var head = {};
             function step() {
                 var stop = Math.min(n, i + 6000);
                 for (; i < stop; i++) {
@@ -213,9 +217,12 @@
                         if (/^#EXTINF/i.test(l)) {
                             var title = afterComma(l);
                             cur = { title: title.trim() || attr(l, "tvg-name"), id: attr(l, "tvg-id"), logo: attr(l, "tvg-logo"), group: attr(l, "group-title"),
-                                    chno: attr(l, "tvg-chno"), type: attr(l, "tvg-type"), catchup: attr(l, "catchup-days") || attr(l, "tvg-rec") };
+                                    chno: attr(l, "tvg-chno"), type: attr(l, "tvg-type"), catchup: attr(l, "catchup-days") || attr(l, "tvg-rec") || attr(l, "timeshift") || head.days,
+                                    cx: attr(l, "catchup") || attr(l, "catchup-type") || head.cx, cs: attr(l, "catchup-source") || head.cs };
                             grp = "";
                         } else if (/^#EXTGRP:/i.test(l)) grp = l.slice(8).trim();
+                        // the playlist's own line: a replay for every channel ("catchup", "catchup-source", "catchup-days")
+                        else if (/^#EXTM3U/i.test(l)) head = { cx: attr(l, "catchup") || attr(l, "catchup-type"), cs: attr(l, "catchup-source"), days: attr(l, "catchup-days") || attr(l, "tvg-rec") || attr(l, "timeshift") };
                         continue;
                     }
                     if (!cur) continue;
@@ -230,7 +237,8 @@
                         var info = S.channel(cur.title);
                         num++;
                         out.live.chans.push({ id: src.id + "|" + hash(url), src: src.id, url: url, num: parseInt(cur.chno, 10) || num, name: info.name, raw: cur.title, q: info.quality,
-                                              key: info.key, logo: cur.logo, cat: cat("live", group), epg: cur.id || "", arch: parseInt(cur.catchup, 10) || 0 });
+                                              key: info.key, logo: cur.logo, cat: cat("live", group), epg: cur.id || "", arch: parseInt(cur.catchup, 10) || (cur.cx && cur.cx !== "none" ? 7 : 0),
+                                              cx: cur.cx || undefined, cs: cur.cs || undefined });
                     } else if (kind === "movie") {
                         var t = S.title(cur.title);
                         out.movies.items.push({ id: src.id + "|" + hash(url), src: src.id, kind: "movie", url: url, name: cur.title, title: t.title, year: t.year,
@@ -272,6 +280,7 @@
         // Settings > Sort the Categories / Tidy the Names (asked at the first start): off = your playlist as it is
         var tidyNames = TV.pref("tidyNames") !== false, tidyCats = TV.pref("tidyCats") !== false;
         var m = { live: { cats: [], chans: [], byId: {}, byCat: {} }, movies: { cats: [], items: [], byId: {}, byCat: {} }, series: { cats: [], items: [], byId: {}, byCat: {} }, epg: [] };
+        var myNames = TV.pref("chanNames") || {};
         list.forEach(function (src) {
             var c = cats[src.id];
             if (!c) return;
@@ -287,7 +296,12 @@
                     if (ct.count) m[k].cats.push(ct);
                 });
                 (k === "live" ? part.chans : part.items).forEach(function (x) {
-                    if (k === "live") { if (x.cname === undefined) x.cname = x.name; x.name = tidyNames ? x.cname : (x.raw || x.cname); }   // cname: the clean name, for the guide
+                    if (k === "live") {
+                        if (x.cname === undefined) x.cname = x.name;               // cname: the clean name, for the guide (never yours)
+                        x.name = tidyNames ? x.cname : (x.raw || x.cname);
+                        // your name for it (Edit on Your Phone, or its menu): shown everywhere, the provider's kept in orig
+                        if (myNames[x.id]) { x.orig = x.name; x.name = myNames[x.id]; } else if (x.orig) delete x.orig;
+                    }
                     (k === "live" ? m.live.chans : m[k].items).push(x);
                     m[k].byId[x.id] = x;
                     (m[k].byCat[x.cat] = m[k].byCat[x.cat] || []).push(x);
@@ -345,7 +359,7 @@
        every field name, the source and the category written once. The screen gives the app 80 MB in all:
        a big Xtream account (27,000 channels, 100,000 movies) fits only this way. */
     var FIELDS = {
-        live: ["id", "sid", "url", "num", "name", "raw", "q", "key", "logo", "cat", "epg", "arch"],
+        live: ["id", "sid", "url", "num", "name", "raw", "q", "key", "logo", "cat", "epg", "arch", "cx", "cs"],
         // srvDone (watched on your Jellyfin or Emby server) last: the other sources' rows end before it, no bigger
         movies: ["id", "sid", "url", "name", "title", "year", "poster", "cat", "rating", "added", "ext", "srvDone"],
         series: ["id", "seriesId", "name", "title", "year", "poster", "cat", "rating", "added", "backdrop", "eps"]
@@ -650,7 +664,7 @@
        What the phone gets: the categories of each kind in their order (hidden or not), your groups, your favorites
        and the channels' names to find them. What comes back: the same, changed. */
     function editData() {
-        var out = { v: 1, kinds: {}, groups: chanGroups(), favs: favIds(), chans: [] };
+        var out = { v: 1, kinds: {}, groups: chanGroups(), favs: favIds(), chans: [], names: TV.pref("chanNames") || {} };
         if (!merged) return out;
         var adult = TV.pref("showAdult");
         ["live", "movies", "series"].forEach(function (k) {
@@ -662,7 +676,7 @@
         for (var i = 0; i < chans.length && out.chans.length < 40000; i++) {
             var c = chans[i], ct = catOf(c);
             if (!adult && ct.adult) continue;
-            out.chans.push([c.id, c.name + (c.q ? " " + c.q : ""), ct.name || ""]);
+            out.chans.push([c.id, c.name + (c.q ? " " + c.q : ""), ct.name || "", c.orig || c.name]);
         }
         return out;
     }
@@ -695,8 +709,26 @@
             }));
         }
         if (Array.isArray(d.favs)) { TV.save("favs", d.favs.map(String).slice(0, 2000)); fire("favs"); }
+        if (d.names && typeof d.names === "object") TV.setPref("chanNames", cleanNames(d.names));
         rebuild();
         return true;
+    }
+    /* Your channel names: an id to a name, 60 characters at most; an empty one gives the provider's back */
+    function cleanNames(o) {
+        var out = {}, n = 0;
+        Object.keys(o || {}).forEach(function (id) {
+            var v = String(o[id] === null || o[id] === undefined ? "" : o[id]).replace(/\s+/g, " ").trim().slice(0, 60);
+            if (v && n < 5000) { out[String(id)] = v; n++; }
+        });
+        return out;
+    }
+    /* ids: one channel, or its qualities together (HD, FHD...: one card in Live TV) */
+    function renameChannel(ids, name) {
+        var names = TV.pref("chanNames") || {}, copy = {};
+        Object.keys(names).forEach(function (k) { copy[k] = names[k]; });
+        [].concat(ids).forEach(function (id) { copy[id] = name; });
+        TV.setPref("chanNames", cleanNames(copy));
+        rebuild();
     }
     /* A provider category whose name carries a hidden theme ("FR| LGBT", "Horreur"): everything in it is hidden */
     var catThemeCache = {};
@@ -1150,12 +1182,16 @@
         q = S.fold(q);
         if (!q || !merged) return { live: [], movies: [], series: [] };
         var words = q.split(" "), adult = TV.pref("showAdult"), hid = anyHidden();
-        function match(name) { var f = S.fold(name); for (var i = 0; i < words.length; i++) if (f.indexOf(words[i]) === -1) return false; return true; }
+        function match(name, also) {
+            var f = S.fold(name) + (also ? " " + S.fold(also) : "");             // a channel you renamed: found by both names
+            for (var i = 0; i < words.length; i++) if (f.indexOf(words[i]) === -1) return false;
+            return true;
+        }
         function scan(arr) {
             var out = [];
             for (var i = 0; i < arr.length && out.length < (limit || 40); i++) {
                 var x = arr[i];
-                if ((adult || !catOf(x).adult) && match(x.title || x.name) && (!hid || !isHidden(x))) out.push(x);
+                if ((adult || !catOf(x).adult) && match(x.title || x.name, x.orig) && (!hid || !isHidden(x))) out.push(x);
             }
             return out;
         }
@@ -1190,7 +1226,7 @@
         myList: myList, inMyList: inMyList, toggleMyList: toggleMyList,
         setResume: setResume, resumeOf: resumeOf, continueWatching: continueWatching, isDone: isDone, watched: watched, markWatched: markWatched, recentlyWatched: recentlyWatched,
         forget: forget, resumeChanged: resumeChanged, syncResumes: syncResumes, serverHas: serverHas,
-        isHidden: isHidden, setHidden: setHidden, preferVersion: preferVersion, setCatOff: setCatOff, setGroupOff: setGroupOff, editData: editData, applyPhoneEdit: applyPhoneEdit, offGroups: offGroups, offCats: offCats, hiddenList: hiddenList, unhide: unhide, versionKey: versionKey,
+        isHidden: isHidden, setHidden: setHidden, preferVersion: preferVersion, setCatOff: setCatOff, setGroupOff: setGroupOff, editData: editData, renameChannel: renameChannel, applyPhoneEdit: applyPhoneEdit, offGroups: offGroups, offCats: offCats, hiddenList: hiddenList, unhide: unhide, versionKey: versionKey,
         buildThemes: buildThemes, checkTheme: checkTheme, themesOn: themesOn, catNameHidden: catNameHidden,
         itemsIn: itemsIn, vodUrl: vodUrl, vodInfo: vodInfo, seriesInfo: seriesInfo, search: search,
         xApi: xApi, parseM3U: parseM3U, pack: pack, unpack: unpack, findTitles: findTitles, titleIndex: titleIndex, genreItems: genreItems,

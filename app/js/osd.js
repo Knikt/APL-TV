@@ -126,7 +126,30 @@
     var aliasOf = {};
     Object.keys(LANG_ALIASES).forEach(function (k) { LANG_ALIASES[k].split(" ").forEach(function (a) { aliasOf[a] = k; }); });
     function norm(code) { var c = String(code || "").toLowerCase().trim(); return aliasOf[c] || aliasOf[c.slice(0, 3)] || aliasOf[c.slice(0, 2)] || c; }
-    function langName(code) { var n = norm(code); return n === "und" || !n ? "" : (LANG_NAMES[n] || String(code).toUpperCase()); }
+    /* A language's name in the app's language (Intl, "Anglais" in French), else in its own (the table); nothing for
+       "und" (undetermined), "mul", "zxx" or a code that names nothing */
+    var langNames = null;
+    function langName(code) {
+        var n = norm(code);
+        if (!n || n === "und" || n === "mul" || n === "zxx" || n === "mis") return "";
+        try {
+            if (langNames === null) langNames = global.Intl && Intl.DisplayNames ? new Intl.DisplayNames([TV.locale || TV.lang], { type: "language" }) : false;
+            if (langNames && /^[a-z]{2,3}$/.test(n === "pb" ? "pt" : n)) {
+                var s = langNames.of(n === "pb" ? "pt-BR" : n);
+                if (s && s.toLowerCase() !== n) return s.charAt(0).toUpperCase() + s.slice(1);
+            }
+        } catch (e) {}
+        return LANG_NAMES[n] || (/^[a-z]{2,3}$/.test(n) ? String(code).toUpperCase() : String(code));
+    }
+    /* A track's line: its language, its own name beside when it says more ("English" + "SDH", "Forced"), its name
+       alone when it has no language, "Track 2" only when it has neither */
+    function trackLabel(t, i) {
+        var l = langName(t.lang), n = String(t.name || "").trim();
+        if (!l) return { label: n || T("Track {n}", { n: i + 1 }), sub: "" };
+        var f = function (x) { return TV.smart && TV.smart.fold ? TV.smart.fold(x) : String(x || "").toLowerCase(); };
+        var same = !n || f(n) === f(l) || f(n) === f(t.lang) || f(langName(n)) === f(l);
+        return { label: l, sub: same ? "" : n };
+    }
     function wantLang(p) { return p === "auto" ? TV.lang : p; }
 
     /* Audio and subtitles of a new video: your language first, then the second choice (never OpenSubtitles) */
@@ -290,7 +313,8 @@
         var tr = TV.player.tracks(), subs = tr.filter(function (t) { return t.type === "TEXT"; }), curS = TV.player.currentTrack("TEXT"), items = [];
         items.push({ label: T("Off"), check: !subsOn && !ext, run: function () { TV.player.subtitlesOff(true); subsOn = false; stopExt(); putSub(""); closePop(); } });
         subs.forEach(function (s, i) {
-            items.push({ label: langName(s.lang) || T("Track {n}", { n: i + 1 }), check: subsOn && !ext && s.index === curS, run: function () {
+            var tl = trackLabel(s, i);
+            items.push({ label: tl.label, sub: tl.sub, check: subsOn && !ext && s.index === curS, run: function () {
                 stopExt(); putSub(""); TV.player.subtitlesOff(false); TV.player.selectTrack("TEXT", s.index); subsOn = true; closePop();
             } });
         });
@@ -325,7 +349,8 @@
         } else items = audio.map(function (a, i) {
             var cn = codecs[String(a.codec).toLowerCase()] || String(a.codec || "").replace(/^audio\/(x-)?/i, "").toUpperCase();
             var extra = [a.channels ? (a.channels >= 8 ? "7.1" : a.channels >= 6 ? "5.1" : a.channels == 2 ? T("Stereo") : "") : "", cn].filter(Boolean).join(" · ");
-            return { label: langName(a.lang) || T("Track {n}", { n: i + 1 }), sub: extra, check: a.index === curA, run: function () {
+            var tl = trackLabel(a, i);
+            return { label: tl.label, sub: [tl.sub, extra].filter(Boolean).join(" · "), check: a.index === curA, run: function () {
                 TV.player.selectTrack("AUDIO", a.index); TV.log("audio track " + a.index + " (" + a.lang + ")"); closePop();
             } };
         });
@@ -638,6 +663,11 @@
         items.push({ label: T("Audio"), icon: "speaker", run: function () { openPop("audio"); } });
         if (hasQuality()) items.push({ label: T("Quality"), icon: "quality", run: function () { openPop("quality"); } });
         items.push({ label: T("Stream Info"), icon: "info", run: function () { openPop("info"); } });
+        // the provider's replay: the programme on now, from its start (issue #10)
+        var pnow = TV.epg.now(ch), pcur = pnow && pnow.cur;
+        if (!tsh && pcur && TV.catchup && TV.catchup.can(ch, pcur[0])) items.unshift({ label: T("Start Over"), icon: "restart", run: function () {
+            var c = ch, ctx0 = ctx; finish(); TV.catchup.play(c, pcur, function () { TV.live.play(c, ctx0); });
+        } });
         if (tsh) items.unshift({ label: T("Back to Live"), icon: "fwd10", run: function () { tsLive(); } });
         else if (tsOn()) items.unshift({ label: T("Pause Live TV"), icon: "pause", run: function () { tsPause(); } });
         sleepItem(items);
@@ -693,7 +723,14 @@
             return true;
         }
         var url = tsSource(ch);
-        if (!url) { TV.toast(T("Pause is not available for this channel.")); return true; }
+        if (!url) {
+            /* the TV can't keep this channel (an M3U's HLS stream): the provider's replay, when it has one, is the way
+               back in it; say so instead of a bare "not available" (issue #10) */
+            var pn = TV.epg.now(ch), arch = pn && pn.cur && TV.catchup && TV.catchup.can(ch, pn.cur[0]);
+            TV.log("timeshift: not for " + ch.name + " (" + (D.sourceOf(ch) || {}).type + ", " + (/\.m3u8/i.test(String((TV.player.current() || {}).url || D.streamUrl(ch))) ? "HLS" : "no address") + ")" + (arch ? ", replay offered" : ""));
+            TV.toast(arch ? T("Pause isn't possible on this channel. Its replay is: Start Over in the menu, or a past programme in the TV guide.") : T("Pause is not available for this channel."), !!arch);
+            return true;
+        }
         var c = ch, t0 = Date.now(), my;
         TV.player.pause();
         my = tsh = { id: null, ch: c, at: t0, from: t0, segs: [], start: null, pos0: null, paused: true, pausedAt: t0, busy: true };
@@ -808,7 +845,7 @@
         });
         // the series' (or movie's) picture for the "next episode" card: never a picture of the episode
         o.art = o.item && TV.sized(o.item.backdrop || "", "w780");
-        TV.meta.lookup(o.item).then(function (m) {
+        TV.meta.lookup(o.noResume ? null : o.item).then(function (m) {
             if (!m || vod !== o) return;
             if (m.backdrop) o.art = TV.sized(m.backdrop, "w780");
             TV.meta.certs(o.item.kind === "series" ? "tv" : "movie", m.tmdbId).then(function (c) {
@@ -838,7 +875,7 @@
     }
     /* Where you are, every 10 s. Finished (past 94 %): marked watched; an episode's series then waits on the next one */
     function save(ended) {
-        if (!vod) return;
+        if (!vod || vod.noResume) return;
         var pos = TV.player.position(), dur = TV.player.duration();
         if (!dur || pos < 5) return;
         var done = ended || pos > dur * 0.94, base = { item: vod.item.id, ep: vod.ep ? vod.ep.id : null };
@@ -1036,7 +1073,7 @@
         try {
             if (mode === "vod" && vod) {
                 var r = D.resumeOf(vod.resumeKey);
-                TV.save("lastWatch", r && !r.done && r.pos > 60 ? { kind: "vod", item: vod.item.id, key: vod.resumeKey, at: Date.now() } : null);
+                if (!vod.noResume) TV.save("lastWatch", r && !r.done && r.pos > 60 ? { kind: "vod", item: vod.item.id, key: vod.resumeKey, at: Date.now() } : null);
             } else if (mode === "live" && ch) TV.save("lastWatch", { kind: "live", id: ch.id, at: Date.now() });
         } catch (e) {}
         if (mode === "vod") { save(false); tell("stop"); if (!keepPlayer) TV.player.stop(); D.resumeChanged(); }

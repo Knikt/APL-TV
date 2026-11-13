@@ -22,7 +22,7 @@ var zlib = require("zlib");
 var os = require("os");
 var crypto = require("crypto");
 
-var PORT = 8765, VERSION = "1.0.14";
+var PORT = 8765, VERSION = "1.1.0";
 var IDLE_MS = 15 * 60 * 1000, SESSION_MS = 20 * 60 * 1000;
 var UA = "APL TV/" + VERSION + " (" + (global.APLTV_PLATFORM || "Tizen") + ")";
 
@@ -626,23 +626,29 @@ function editOk(k) { return !!(edit && k && k === edit.token && Date.now() - edi
 function editWrong() { if (edit && ++edit.wrong >= 20) { log("too many wrong editor codes: closed"); edit = null; } }
 var EDIT_TEXT = {
     en: { sub: "Hide or move your categories, make your groups of channels, order your favorites. Then send it all to the TV.", cats: "Categories", groups: "Groups", favs: "Favorites",
-          live: "TV", movies: "Movies", series: "Series", catsHint: "The switch hides or shows a category everywhere on the TV. Hold \u2261 and drag to move one, or tap categories to select them and move them all at once.", none: "Nothing here.",
+          live: "TV", movies: "Movies", series: "Series", catsHint: "The switch hides or shows a category everywhere on the TV; Hide all / Show all do the whole list, or just what your search finds (\u201Car\u201D, \u201Cadult\u201D\u2026). Hold \u2261 and drag to move one, or tap categories to select them, then move, hide or show them all at once.", none: "Nothing here.",
           groupsHint: "Your own lists of channels, shown in Live TV and the Guide after Favorites. Hold \u2261 and drag to move a channel.", rename: "Rename", del: "Delete", addChans: "Add channels", newGroup: "New group",
           favsHint: "Your favorite channels, in the order the TV shows them. Hold \u2261 and drag to move one.", noChans: "No channels yet.", search: "Search a channel", done: "Done", noMatch: "No channel with this name.",
           groupName: "Name of the group", delGroup: "Delete the group \u201C{name}\u201D?", send: "Send to the TV", sent: "Sent!", sentHow: "Look at your TV: your changes are there.",
           again: "Keep editing", expired: "This code has expired", expiredHow: "On the TV, open APL TV \u203A Settings \u203A Edit on Your Phone, then scan the new code.",
           noAnswer: "The TV did not answer. Is the phone on the same Wi-Fi?", error: "Something went wrong. Scan the code again.", loading: "Loading your playlist\u2026",
           findCat: "Search a category", noCat: "No category with this name.", sel1: "1 selected", seln: "{n} selected", toTop: "To the top", toBottom: "To the bottom",
-          moveAfter: "Put after\u2026", placeHint: "Now tap the category they should come after.", cancel: "Cancel" },
+          moveAfter: "Put after\u2026", placeHint: "Now tap the category they should come after.", cancel: "Cancel",
+          hideAll: "Hide all", showAll: "Show all", hideN: "Hide these {n}", showN: "Show these {n}", hideSel: "Hide", showSel: "Show", shownOf: "{n} of {t} shown on the TV",
+          names: "Names", namesHint: "Give a channel the name you want: the TV shows it everywhere (Live TV, the guide, search, Continue) and keeps it when your playlist updates. Leave it empty to get the provider's name back.",
+          renamed: "Renamed", findChan: "Search a channel to rename", newName: "Name of the channel", was: "was {name}", reset: "Provider's name", typeMore: "Type a few letters of the channel." },
     fr: { sub: "Masque ou d\u00E9place tes cat\u00E9gories, fais tes groupes de cha\u00EEnes, range tes favoris. Puis envoie tout \u00E0 la TV.", cats: "Cat\u00E9gories", groups: "Groupes", favs: "Favoris",
-          live: "TV", movies: "Films", series: "S\u00E9ries", catsHint: "L'interrupteur masque ou affiche une cat\u00E9gorie partout sur la TV. Maintiens \u2261 et fais glisser pour en d\u00E9placer une, ou touche des cat\u00E9gories pour les s\u00E9lectionner et les d\u00E9placer d'un coup.", none: "Rien ici.",
+          live: "TV", movies: "Films", series: "S\u00E9ries", catsHint: "L'interrupteur masque ou affiche une cat\u00E9gorie partout sur la TV ; Tout masquer / Tout afficher font toute la liste, ou seulement ce que trouve ta recherche (\u00AB ar \u00BB, \u00AB adult \u00BB\u2026). Maintiens \u2261 et fais glisser pour en d\u00E9placer une, ou touche des cat\u00E9gories pour les s\u00E9lectionner, puis les d\u00E9placer, masquer ou afficher d'un coup.", none: "Rien ici.",
           groupsHint: "Tes propres listes de cha\u00EEnes, dans la TV en direct et le Guide apr\u00E8s les Favoris. Maintiens \u2261 et fais glisser pour d\u00E9placer une cha\u00EEne.", rename: "Renommer", del: "Supprimer", addChans: "Ajouter des cha\u00EEnes", newGroup: "Nouveau groupe",
           favsHint: "Tes cha\u00EEnes favorites, dans l'ordre o\u00F9 la TV les montre. Maintiens \u2261 et fais glisser pour en d\u00E9placer une.", noChans: "Pas encore de cha\u00EEne.", search: "Chercher une cha\u00EEne", done: "OK", noMatch: "Aucune cha\u00EEne avec ce nom.",
           groupName: "Nom du groupe", delGroup: "Supprimer le groupe \u00AB {name} \u00BB ?", send: "Envoyer \u00E0 la TV", sent: "C'est envoy\u00E9 !", sentHow: "Regarde ta TV : tes changements y sont.",
           again: "Continuer \u00E0 modifier", expired: "Ce code a expir\u00E9", expiredHow: "Sur la TV, ouvre APL TV \u203A R\u00E9glages \u203A Modifier sur ton t\u00E9l\u00E9phone, puis scanne le nouveau code.",
           noAnswer: "La TV n'a pas r\u00E9pondu. Le t\u00E9l\u00E9phone est-il sur le m\u00EAme Wi-Fi ?", error: "Un probl\u00E8me est survenu. Scanne \u00E0 nouveau le code.", loading: "Chargement de ta playlist\u2026",
           findCat: "Chercher une cat\u00E9gorie", noCat: "Aucune cat\u00E9gorie avec ce nom.", sel1: "1 s\u00E9lectionn\u00E9e", seln: "{n} s\u00E9lectionn\u00E9es", toTop: "Tout en haut", toBottom: "Tout en bas",
-          moveAfter: "Placer apr\u00E8s\u2026", placeHint: "Touche maintenant la cat\u00E9gorie apr\u00E8s laquelle les mettre.", cancel: "Annuler" },
+          moveAfter: "Placer apr\u00E8s\u2026", placeHint: "Touche maintenant la cat\u00E9gorie apr\u00E8s laquelle les mettre.", cancel: "Annuler",
+          hideAll: "Tout masquer", showAll: "Tout afficher", hideN: "Masquer ces {n}", showN: "Afficher ces {n}", hideSel: "Masquer", showSel: "Afficher", shownOf: "{n} sur {t} affich\u00E9es sur la TV",
+          names: "Noms", namesHint: "Donne \u00E0 une cha\u00EEne le nom que tu veux : la TV l'affiche partout (TV en direct, guide, recherche, Reprendre) et le garde quand ta playlist se met \u00E0 jour. Laisse vide pour retrouver le nom du fournisseur.",
+          renamed: "Renomm\u00E9es", findChan: "Chercher une cha\u00EEne \u00E0 renommer", newName: "Nom de la cha\u00EEne", was: "avant : {name}", reset: "Nom du fournisseur", typeMore: "Tape quelques lettres de la cha\u00EEne." },
     pl: { sub: "Ukrywaj lub przeno\u015B kategorie, tw\u00F3rz grupy kana\u0142\u00F3w i uk\u0142adaj ulubione. Potem wy\u015Blij wszystko do telewizora.", cats: "Kategorie", groups: "Grupy", favs: "Ulubione",
           live: "TV", movies: "Filmy", series: "Seriale", catsHint: "Prze\u0142\u0105cznik ukrywa lub pokazuje kategori\u0119 wsz\u0119dzie na telewizorze. Przytrzymaj \u2261 i przeci\u0105gnij, aby przenie\u015B\u0107 kategori\u0119, albo stuknij kategorie, aby je zaznaczy\u0107 i przenie\u015B\u0107 wszystkie naraz.", none: "Nic tu nie ma.",
           groupsHint: "Twoje w\u0142asne listy kana\u0142\u00F3w, widoczne w TV na \u017Cywo i w Przewodniku po Ulubionych. Przytrzymaj \u2261 i przeci\u0105gnij, aby przenie\u015B\u0107 kana\u0142.", rename: "Zmie\u0144 nazw\u0119", del: "Usu\u0144", addChans: "Dodaj kana\u0142y", newGroup: "Nowa grupa",
@@ -674,9 +680,11 @@ var EDIT_CSS = ".r{display:flex;align-items:center;gap:8px;padding:10px 12px;bor
     ".selbar{display:flex;align-items:center;gap:8px}.selbar span{flex:1;font-size:15px;line-height:1.3;color:rgba(255,255,255,.9);padding-left:6px}" +
     ".selacts{display:flex;gap:8px;margin-top:10px}.selacts button{flex:1;padding:12px 4px;background:rgba(255,255,255,.14)}" +
     "@keyframes fl{from{background:rgba(52,199,89,.4)}to{background:rgba(52,199,89,0)}}.r.flash{animation:fl 1.8s ease-out}" +
-    ".placing .r{box-shadow:inset 3px 0 0 #0a84ff}.placing .r.sel{opacity:.45;box-shadow:none}.placing .sw,.placing .hd{pointer-events:none;opacity:.35}";
+    ".bulk{display:flex;gap:8px;margin:0 0 8px}.bulk button{flex:1;padding:11px 4px}.cnt{font-size:13px;color:rgba(255,255,255,.5);margin:0 0 10px 4px}" +
+    ".placing .r{box-shadow:inset 3px 0 0 #0a84ff}.placing .r.sel{opacity:.45;box-shadow:none}.placing .sw,.placing .hd{pointer-events:none;opacity:.35}" +
+    ".r .n2{overflow:hidden;text-overflow:ellipsis}.r .n2 small{display:block;margin:2px 0 0;overflow:hidden;text-overflow:ellipsis}";
 function editScript() {
-    var D = null, tab = "cats", kind = "live", picker = null, byId = {}, filter = "", placing = false, drag = null;
+    var D = null, tab = "cats", kind = "live", picker = null, byId = {}, filter = "", placing = false, drag = null, nameQ = "";
     var app = document.getElementById("app");
     function $(id) { return document.getElementById(id); }
     function h(v) { return String(v === null || v === undefined ? "" : v).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;" }[c]; }); }
@@ -694,11 +702,11 @@ function editScript() {
         }).join("");
     }
     function draw() {
-        var html = "<h1>APL <span>TV</span></h1><p class=sub>" + h(L.sub) + "</p>" + seg("tabs", [["cats", L.cats], ["groups", L.groups], ["favs", L.favs]], tab);
+        var html = "<h1>APL <span>TV</span></h1><p class=sub>" + h(L.sub) + "</p>" + seg("tabs", [["cats", L.cats], ["groups", L.groups], ["favs", L.favs], ["names", L.names]], tab);
         if (tab === "cats") {
             html += seg("kinds", [["live", L.live], ["movies", L.movies], ["series", L.series]], kind) + "<p class=hint>" + h(L.catsHint) + "</p>";
             if (cats().length > 8) html += "<input class=find id=find type=search placeholder='" + h(L.findCat) + "' value='" + h(filter) + "' autocomplete=off autocorrect=off autocapitalize=off>";
-            html += "<div class=card id=cats data-list=cats></div>";
+            html += "<div class=bulk id=bulk></div><div class=cnt id=cnt></div><div class=card id=cats data-list=cats></div>";
         } else if (tab === "groups") {
             html += "<p class=hint>" + h(L.groupsHint) + "</p>";
             D.groups.forEach(function (g, gi) {
@@ -707,13 +715,35 @@ function editScript() {
                     chanRows(g.ids, "g" + gi) + "<button class=add data-a=gadd data-g=" + gi + ">+ " + h(L.addChans) + "</button></div>";
             });
             html += "<button class=go2 data-a=gnew>+ " + h(L.newGroup) + "</button>";
+        } else if (tab === "names") {
+            // your names: the ones renamed first, then a search for the one to rename (issue #6)
+            html += "<p class=hint>" + h(L.namesHint) + "</p>";
+            var ren = Object.keys(D.names).filter(function (id) { return byId[id]; });
+            if (ren.length) html += "<p class=cnt>" + h(L.renamed) + "</p><div class=card>" + ren.map(function (id) {
+                return "<div class=r><span class='n n2'>" + h(D.names[id]) + " <small>" + h(L.was.replace("{name}", byId[id][3] || byId[id][1])) + "</small></span>" +
+                    "<button class=sm data-a=nren data-id='" + h(id) + "'>" + h(L.rename) + "</button><button class='mv red' data-a=nreset data-id='" + h(id) + "'>\u2715</button></div>";
+            }).join("") + "</div>";
+            html += "<input class=find id=nfind type=search placeholder='" + h(L.findChan) + "' value='" + h(nameQ) + "' autocomplete=off autocorrect=off autocapitalize=off><div id=nres></div>";
         } else {
             html += "<p class=hint>" + h(L.favsHint) + "</p><div class=card data-list=f>" + chanRows(D.favs, "f") + "<button class=add data-a=fadd>+ " + h(L.addChans) + "</button></div>";
         }
         html += "<div class=bar id=bar></div>";
         app.innerHTML = html;
         if (tab === "cats") { drawCats(); var f = $("find"); if (f) f.oninput = function () { filter = this.value; drawCats(); }; }
+        if (tab === "names") { drawNames(); var nf = $("nfind"); if (nf) nf.oninput = function () { nameQ = this.value; drawNames(); }; }
         drawBar();
+    }
+    /* The channels found for a name (two letters at least): each with Rename */
+    function drawNames() {
+        var box = $("nres"), q = fold(nameQ).trim(), all = D.chans || [], out = [];
+        if (!box) return;
+        if (q.length < 2) { box.innerHTML = "<div class=empty>" + h(L.typeMore) + "</div>"; return; }
+        for (var i = 0; i < all.length && out.length < 80; i++) if (fold(all[i][1] + " " + (all[i][3] || "")).indexOf(q) >= 0) out.push(all[i]);
+        box.innerHTML = out.length ? "<div class=card>" + out.map(function (c) {
+            var mine = D.names[c[0]];
+            return "<div class=r><span class='n n2'>" + h(mine || c[1]) + " <small>" + h(mine ? L.was.replace("{name}", c[3] || c[1]) : c[2]) + "</small></span>" +
+                "<button class=sm data-a=nren data-id='" + h(c[0]) + "'>" + h(L.rename) + "</button></div>";
+        }).join("") + "</div>" : "<div class=empty>" + h(L.noMatch) + "</div>";
     }
     /* The categories of one kind: tap to select (several at once), the switch hides, the handle drags (not while searching) */
     function drawCats() {
@@ -727,6 +757,11 @@ function editScript() {
                 "<button class='sw" + (c.off ? "" : " on") + "' data-a=sw data-i=" + i + "><i></i></button>" + (q ? "" : "<span class=hd>\u2261</span>") + "</div>";
         });
         box.innerHTML = shown ? out : "<div class=empty>" + h(list.length ? L.noCat : L.none) + "</div>";
+        // hide or show the whole list, or what the search finds
+        var bulk = $("bulk"), cnt = $("cnt"), on = 0;
+        list.forEach(function (c) { if (!c.off) on++; });
+        if (bulk) bulk.innerHTML = list.length ? "<button class=sm data-a=hideall>" + h(q ? L.hideN.replace("{n}", shown) : L.hideAll) + "</button><button class=sm data-a=showall>" + h(q ? L.showN.replace("{n}", shown) : L.showAll) + "</button>" : "";
+        if (cnt) cnt.textContent = list.length ? L.shownOf.replace("{n}", on).replace("{t}", list.length) : "";
         box.className = "card" + (placing ? " placing" : "");
     }
     function drawBar() {
@@ -735,7 +770,8 @@ function editScript() {
         if (!n) placing = false;
         if (placing) top = "<div class=selbox><div class=selbar><span>" + h(L.placeHint) + "</span><button class=sm data-a=pcancel>" + h(L.cancel) + "</button></div></div>";
         else if (n) top = "<div class=selbox><div class=selbar><span>" + h((n === 1 ? L.sel1 : L.seln).replace("{n}", n)) + "</span><button class=sm data-a=sclear>" + h(L.cancel) + "</button></div>" +
-            "<div class=selacts><button class=sm data-a=stop>\u2191 " + h(L.toTop) + "</button><button class=sm data-a=sbottom>\u2193 " + h(L.toBottom) + "</button><button class=sm data-a=splace>" + h(L.moveAfter) + "</button></div></div>";
+            "<div class=selacts><button class=sm data-a=stop>\u2191 " + h(L.toTop) + "</button><button class=sm data-a=sbottom>\u2193 " + h(L.toBottom) + "</button><button class=sm data-a=splace>" + h(L.moveAfter) + "</button></div>" +
+            "<div class=selacts><button class=sm data-a=shide>" + h(L.hideSel) + "</button><button class=sm data-a=sshow>" + h(L.showSel) + "</button></div></div>";
         b.innerHTML = top + "<button class=go id=send data-a=send>" + h(L.send) + "</button><div class=msg id=msg></div>";
     }
     /* The selected categories, in their order: to the top, to the bottom, or right after another one */
@@ -840,7 +876,7 @@ function editScript() {
     }
     function closePicker() { var ov = $("ov"); if (ov) ov.parentNode.removeChild(ov); picker = null; draw(); }
     function send() {
-        var b = { k: K, data: { kinds: {}, groups: D.groups, favs: D.favs } };
+        var b = { k: K, data: { kinds: {}, groups: D.groups, favs: D.favs, names: D.names } };
         Object.keys(D.kinds).forEach(function (k) { b.data.kinds[k] = D.kinds[k].map(function (c) { return { key: c.key, off: !!c.off }; }); });
         $("send").disabled = true; $("msg").textContent = "";
         var x = new XMLHttpRequest();
@@ -883,6 +919,12 @@ function editScript() {
         var cs = cats();
         if (a === "sel") { if (cs[i]) cs[i].sel = !cs[i].sel; drawCats(); drawBar(); return; }
         if (a === "sw") { if (cs[i]) cs[i].off = !cs[i].off; drawCats(); return; }
+        if (a === "hideall" || a === "showall") {
+            var fq = fold(filter).trim();
+            cs.forEach(function (x) { if (!fq || fold(x.name).indexOf(fq) >= 0) x.off = a === "hideall"; });
+            drawCats(); return;
+        }
+        if (a === "shide" || a === "sshow") { cs.forEach(function (x) { if (x.sel) { x.off = a === "shide"; x.sel = false; } }); drawCats(); drawBar(); return; }
         if (a === "stop" || a === "sbottom") { moveSel(a === "stop" ? "top" : "bottom"); filter = ""; draw(); showMoved(); return; }
         if (a === "splace") { placing = true; drawCats(); drawBar(); return; }
         if (a === "sclear") { cs.forEach(function (x) { x.sel = false; }); drawCats(); drawBar(); return; }
@@ -891,6 +933,14 @@ function editScript() {
         else if (a === "gren") { var nn = prompt(L.groupName, D.groups[g].name); if (nn && nn.trim()) D.groups[g].name = nn.trim().slice(0, 40); }
         else if (a === "gdel") { if (confirm(L.delGroup.replace("{name}", D.groups[g].name))) D.groups.splice(g, 1); }
         else if (a === "gadd") { openPicker("g" + g); return; }
+        else if (a === "nren" && id !== null) {
+            var c0 = byId[id], nv = prompt(L.newName, D.names[id] || (c0 ? c0[3] || c0[1] : ""));
+            if (nv === null) return;
+            nv = nv.replace(/\s+/g, " ").trim().slice(0, 60);
+            // the provider's own name typed back, or nothing: no name of yours
+            if (!nv || (c0 && nv === (c0[3] || c0[1]))) delete D.names[id]; else D.names[id] = nv;
+        }
+        else if (a === "nreset" && id !== null) delete D.names[id];
         else if (a === "fadd") { openPicker("f"); return; }
         else if (a === "send") { send(); return; }
         else if (a !== "again") return;
@@ -903,15 +953,83 @@ function editScript() {
         if (x.status !== 200) { app.innerHTML = "<div class=done><div class=big>\u231B</div><h2>" + h(L.expired) + "</h2><p>" + h(L.expiredHow) + "</p></div>"; return; }
         try { D = JSON.parse(x.responseText); } catch (er) { D = null; }
         if (!D || !D.kinds) { app.textContent = L.error; return; }
-        D.groups = D.groups || []; D.favs = D.favs || [];
+        D.groups = D.groups || []; D.favs = D.favs || []; D.names = D.names && typeof D.names === "object" ? D.names : {};
         (D.chans || []).forEach(function (c) { byId[c[0]] = c; });
         draw();
     };
     x.onerror = function () { app.textContent = L.noAnswer; };
     x.send();
 }
+/* ---------- the video summaries' player (Sports): YouTube's own embedded player, on a page of this service ----------
+   YouTube's player refuses a page without an address (the app's own, file://: "error 153"), so the app shows this
+   page in a frame: http://127.0.0.1:8765/yt?v=ID. The app drives it with messages (play/pause, ±10 s, stop) and
+   hears back the time, the length and what goes wrong. The same page for Android (written into the .apk). */
+function ytPage() {
+    return "<!doctype html><html><head><meta charset=utf-8><meta name=referrer content=strict-origin-when-cross-origin>" +
+        "<style>html,body{margin:0;height:100%;background:#000;overflow:hidden}#p{position:fixed;left:0;top:0;width:100%;height:100%;border:0}</style></head>" +
+        "<body><div id=p></div><script>(" + ytScript.toString() + ")();</" + "script><script src='https://www.youtube.com/iframe_api'></" + "script></body></html>";
+}
+function ytScript() {
+    var m = /[?&]v=([A-Za-z0-9_-]{6,20})/.exec(location.search), v = m && m[1], pl = null, muted = false, started = false;
+    /* cue=1: made ready ahead, while you are still on the match's page (YouTube's player takes 3 s of the TV's
+       time to start, and the video stuttered through them); it plays at the first "play" */
+    var cue = /[?&]cue=1/.test(location.search), going = !cue, ticking = null;
+    // a screen that refuses sound without a press leaves the video unstarted (-1) or cued (5): muted then, the first
+    // OK gives the sound back. Still loading (3) is not that: waited for, up to 10 s
+    function watch() {
+        var waited = 0;
+        setTimeout(function check() {
+            if (started) return;
+            waited += 1000;
+            var s = pl.getPlayerState ? pl.getPlayerState() : -1;
+            if (waited < 3000 || (s === 3 && waited < 10000)) { setTimeout(check, 1000); return; }
+            pl.mute(); muted = true; pl.playVideo(); send({ muted: 1, note: "muted to start (state " + s + ")" });
+        }, 1000);
+        if (!ticking) ticking = setInterval(function () { if (pl && pl.getCurrentTime) send({ t: pl.getCurrentTime(), d: pl.getDuration(), state: pl.getPlayerState() }); }, 500);
+    }
+    function send(o) { o.apltvYt = 1; try { parent.postMessage(JSON.stringify(o), "*"); } catch (e) {} }
+    // YouTube's automatic subtitles off (they come back with the captions module, loaded once the video plays)
+    function noCaptions() {
+        try { pl.setOption("captions", "track", {}); } catch (x) {}
+        try { pl.unloadModule("captions"); pl.unloadModule("cc"); } catch (x) {}
+    }
+    window.onerror = function (msg) { send({ note: "script error " + msg }); };
+    send({ note: "page up" });
+    window.onYouTubeIframeAPIReady = function () {
+        send({ note: "YouTube's player loaded" });
+        if (!v) { send({ error: "no video" }); return; }
+        pl = new YT.Player("p", { width: "100%", height: "100%", videoId: v, host: "https://www.youtube-nocookie.com",
+            playerVars: { autoplay: cue ? 0 : 1, controls: 0, rel: 0, playsinline: 1, iv_load_policy: 3, cc_load_policy: 0, fs: 0, disablekb: 1, modestbranding: 1, origin: location.origin },
+            events: {
+                onReady: function (e) {
+                    noCaptions();
+                    send({ ready: 1, d: e.target.getDuration() });
+                    if (going) { e.target.playVideo(); watch(); }
+                },
+                onApiChange: function () { noCaptions(); },
+                onStateChange: function (e) {
+                    if (e.data === 1 && !started) { started = true; noCaptions(); setTimeout(noCaptions, 1500); }
+                    send({ state: e.data });
+                },
+                onError: function (e) { send({ error: e.data }); }
+            } });
+    };
+    window.addEventListener("message", function (ev) {
+        var c; try { c = JSON.parse(ev.data); } catch (x) { return; }
+        if (!c || !c.apltvCmd) return;
+        if (!pl || !pl.getPlayerState) { if (c.apltvCmd === "play") going = true; return; }   // pressed before it was ready: it plays when ready
+        if (c.apltvCmd === "toggle") {
+            if (muted) { pl.unMute(); muted = false; send({ muted: 0 }); if (pl.getPlayerState() !== 1) pl.playVideo(); return; }
+            if (pl.getPlayerState() === 1) pl.pauseVideo(); else pl.playVideo();
+        } else if (c.apltvCmd === "play") { pl.playVideo(); if (!going) { going = true; watch(); } }
+        else if (c.apltvCmd === "pause") pl.pauseVideo();
+        else if (c.apltvCmd === "seek") pl.seekTo(Math.max(0, pl.getCurrentTime() + (+c.by || 0)), true);
+        else if (c.apltvCmd === "stop") pl.stopVideo();
+    });
+}
 function editPage(lang, token, ok) {
-    var L = EDIT_TEXT[/^fr/i.test(lang || "") ? "fr" : /^pl/i.test(lang || "") ? "pl" : "en"];
+    var L = {}, mine = EDIT_TEXT[/^fr/i.test(lang || "") ? "fr" : /^pl/i.test(lang || "") ? "pl" : "en"], k;
+    for (k in EDIT_TEXT.en) L[k] = mine[k] || EDIT_TEXT.en[k];          // a text not translated yet: in English
     var head = "<!doctype html><html><head><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'><title>APL TV</title><style>" + phoneCss() + EDIT_CSS + "</style></head><body>";
     if (!ok) return head + "<div class=done><div class=big>\u231B</div><h2>" + L.expired + "</h2><p>" + L.expiredHow + "</p></div></body></html>";
     return head + "<div id=app></div><script>var K=" + JSON.stringify(token).replace(/</g, "\\u003c") + ",L=" + JSON.stringify(L).replace(/</g, "\\u003c") + ";(" + editScript.toString() + ")();</" + "script></body></html>";
@@ -960,6 +1078,7 @@ function handler(req, res) {
     }
 
     // the phone editor (its page, the playlist it edits, what it sends back)
+    if (path === "/yt") { send(res, 200, ytPage(), "text/html; charset=utf-8"); return; }
     if (path === "/edit") {
         var eok = editOk(q.k);
         if (q.k && !eok) editWrong();
@@ -1177,7 +1296,8 @@ function start() {
 
 module.exports.start = function () { start(); stopLater(); };
 module.exports.phonePage = phonePage;      // tools/make-android.py: the same phone page for the Android helper
-module.exports.editPage = editPage;        // and the phone editor
+module.exports.editPage = editPage;
+module.exports.ytPage = ytPage;          // and the summaries' player        // and the phone editor
 module.exports.onStart = function () { start(); };
 module.exports.onRequest = function () { start(); };
 module.exports.onExit = function () { clearTimeout(idle); try { server.close(); } catch (e) {} server = null; };

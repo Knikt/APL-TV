@@ -184,9 +184,24 @@ public class MainActivity extends Activity {
         @JavascriptInterface public String platform() { return "android"; }
         /* "Sony BRAVIA XR A80L": for js/saver.js, which recognises OLED TV sets by their name */
         @JavascriptInterface public String model() { return android.os.Build.MANUFACTURER + " " + android.os.Build.MODEL; }
+        /* The version of the package itself (.apk): the app's pages update themselves, the package doesn't */
+        @JavascriptInterface public String version() { try { return getPackageManager().getPackageInfo(getPackageName(), 0).versionName; } catch (Exception e) { return ""; } }
         @JavascriptInterface public void exit() { runOnUiThread(() -> { player.close(); finishAndRemoveTask(); }); }
         @JavascriptInterface public void background() { runOnUiThread(() -> moveTaskToBack(true)); }
         @JavascriptInterface public void startHelper() { helper.start(); }
+        /* Sports (js/sports.js): a match's video summary, opened in the YouTube app (or SmartTube, whichever the
+           screen chooses). YouTube's own addresses only. */
+        @JavascriptInterface public boolean openLink(String url) {
+            if (url == null || !url.startsWith("https://www.youtube.com/watch?v=")) return false;
+            try {
+                Intent i = new Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url));
+                i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                startActivity(i);
+                return true;
+            } catch (Exception e) {
+                return false;
+            }
+        }
         // What APL TV was opened for, once ("" when nothing)
         @JavascriptInterface public String request() { String r = request; request = ""; return r; }
         // APL Launcher's Top Shelf (ShelfProvider.java)
@@ -221,6 +236,8 @@ public class MainActivity extends Activity {
         @JavascriptInterface public String stats() { return player.stats(); }
         @JavascriptInterface public String videoTracks() { return player.videoJson(); }
         @JavascriptInterface public void selectVideo(int index) { player.selectVideo(index); }
+        /* AV Sync, in milliseconds: + the sound later, - earlier (Settings > Playback) */
+        @JavascriptInterface public void audioDelay(int ms) { Player.audioOffsetUs = Math.max(-2000, Math.min(2000, ms)) * 1000L; }
         @JavascriptInterface public void suspend() { player.suspend(); }
         @JavascriptInterface public void restore() { player.restore(); }
     }

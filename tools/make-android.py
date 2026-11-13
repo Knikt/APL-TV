@@ -82,6 +82,7 @@ js = (
     " fs.writeFileSync(path.join(out, 'expired-' + l[0] + '.html'), s.phonePage(l[1], '', false));"
     " fs.writeFileSync(path.join(out, 'edit-' + l[0] + '.html'), s.editPage(l[1], '__APLTV_TOKEN__', true));"
     " fs.writeFileSync(path.join(out, 'edit-expired-' + l[0] + '.html'), s.editPage(l[1], '', false)); });"
+    " fs.writeFileSync(path.join(out, 'yt.html'), s.ytPage());"
     "process.exit(0);"          # service.js keeps a timer running: leave right away
 )
 subprocess.check_call(["node", "-e", js, os.path.join(A, "service", "service.js"), helper_dir])

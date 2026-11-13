@@ -14,7 +14,14 @@
     var TV = global.TV, el = TV.el, esc = TV.esc, T = TV.t, D = TV.data;
     var root, field, kbEl, results, resIn, kbNav, strips = [], zone = "kb", query = "", visible = false, first = "";
     var ROWS = { qwerty: ["1234567890", "qwertyuiop", "asdfghjkl'", "zxcvbnm-"], azerty: ["1234567890", "azertyuiop", "qsdfghjklm", "wxcvbn'-"],
-                 abc: ["1234567890", "abcdefghij", "klmnopqrst", "uvwxyz'-"] };
+                 abc: ["1234567890", "abcdefghij", "klmnopqrst", "uvwxyz'-"],
+                 /* Arabic, in the alphabet's order read from the right (alif next to Delete): the 28 letters; their
+                    other forms (hamza and madda alef, taa marbuta, alef maqsura) are found by the plain ones (S.fold) */
+                 arabic: ["1234567890", "\u0631\u0630\u062F\u062E\u062D\u062C\u062B\u062A\u0628\u0627", "\u0641\u063A\u0639\u0638\u0637\u0636\u0635\u0634\u0633\u0632", "\u064A\u0648\u0647\u0646\u0645\u0644\u0643\u0642"] };
+    // the layout key's turn: your computer's layout, then ABC, then Arabic
+    function computer() { return TV.lang === "fr" ? "azerty" : "qwerty"; }
+    function nextLayout(l) { return l === "abc" ? "arabic" : l === "arabic" ? computer() : "abc"; }
+    function layoutName(l) { return l === "abc" ? "ABC" : l === "arabic" ? "\u0639\u0631\u0628\u064A" : l.toUpperCase(); }
     function layout() { var l = TV.pref("kbLayout"); return ROWS[l] ? l : (TV.lang === "fr" ? "azerty" : "qwerty"); }
 
     function build() {
@@ -43,8 +50,8 @@
         ROWS[lay].forEach(function (r, i) {
             var row = el("div", "kb__row");
             kbEl.appendChild(row);
-            if (i === 3) sw = key("layout", esc(lay === "abc" ? (TV.lang === "fr" ? "AZERTY" : "QWERTY") : "ABC"), "kb__key--alt", row);
-            r.split("").forEach(function (k) { key(k, k.toUpperCase(), "", row); });
+            if (i === 3) sw = key("layout", esc(layoutName(nextLayout(lay))), "kb__key--alt", row);
+            r.split("").forEach(function (k) { key(k, k.toUpperCase(), lay === "arabic" && i > 0 ? "kb__key--ar" : "", row); });
             key(acts[i][0], acts[i][1], "kb__key--act" + (acts[i][0] === "tvkb" ? " kb__key--tv" : ""), row);
         });
         if (keepOn === "layout") focusAt = tiles.indexOf(sw);
@@ -60,13 +67,13 @@
             onCancel: function () { query = before; drawField(); run(); paint(); } });
     }
     function drawField() {
-        field.innerHTML = TV.icon("search", 36) + "<span>" + (query ? esc(query) : "<span class='search__ph'>" + esc(T("Channels, movies, series")) + "</span>") + "<i class='caret'></i></span>";
+        field.innerHTML = TV.icon("search", 36) + "<span>" + (query ? "<bdi>" + esc(query) + "</bdi>" : "<span class='search__ph'>" + esc(T("Channels, movies, series")) + "</span>") + "<i class='caret'></i></span>";
     }
     function type(k) {
         if (k === "tvkb") { tvKeyboard(); return; }
         if (k === "layout") {
-            // ABC, or the computer layout of your language; remembered (also in Settings > Display)
-            TV.setPref("kbLayout", layout() === "abc" ? (TV.lang === "fr" ? "azerty" : "qwerty") : "abc");
+            // your computer's layout, ABC, Arabic, in turn; remembered (also in Settings > Display)
+            TV.setPref("kbLayout", nextLayout(layout()));
             drawKeys("layout"); paint();
             return;
         }

@@ -11,12 +11,13 @@
     "use strict";
 
     var TV = global.TV, el = TV.el, esc = TV.esc, T = TV.t, D = TV.data;
-    TV.VERSION = "1.0.14";
+    TV.VERSION = "1.1.0";
     TV.DONATE = "https://ko-fi.com/knikt";     // the Ko-fi page for donations (Settings > About, README, .github/FUNDING.yml)
     var BASE = [
         { id: "home", label: T("Home") },
         { id: "live", label: T("Live TV") },
         { id: "guide", label: T("Guide") },
+        { id: "sports", label: T("Sports") },
         { id: "movies", label: T("Movies") },
         { id: "series", label: T("Series") },
         { id: "search", icon: "search", label: T("Search") },
@@ -29,7 +30,7 @@
     function buildTabs() {
         var media = TV.library ? TV.library.tabs() : [];
         mediaIds = media.map(function (t) { return t.id + "=" + t.label; }).join(",");
-        TABS = BASE.slice(0, 5).concat(media, BASE.slice(5));
+        TABS = BASE.slice(0, 6).concat(media, BASE.slice(6));
         var nav = TV.$("tabs");
         nav.innerHTML = "";
         tabEls = TABS.map(function (t) {
@@ -285,11 +286,12 @@
     /* Dev builds: smoothness meter. Every 10 s while keys are pressed: frames drawn, frames over 34 ms (a
        visible hitch at 60 Hz), the worst one, how long presses took to show, and the JavaScript memory. */
     if (TV.DEV) (function () {
-        var last = 0, frames = 0, slow = 0, worst = 0, keys = [], active = 0, marks = [], causes = {}, slowList = [];
+        var last = 0, frames = 0, slow = 0, worst = 0, keys = [], active = 0, marks = [], causes = {}, slowList = [], win = null;
         TV.mark = function (name) { marks.push([Date.now(), name]); if (marks.length > 40) marks.shift(); };
         function frame(t) {
             if (last) {
                 var d = t - last; frames++; if (d > worst) worst = d;
+                if (win) { win.frames++; if (d > win.worst) win.worst = d; if (d > 34) { win.slow++; if (win.list.length < 16) win.list.push(Math.round(d) + "@" + (Date.now() - (TV.keyAt || 0)) + (TV.perfTag || "")); } }
                 if (d > 34) {
                     slow++;
                     var now = Date.now(), why = "idle";
@@ -302,6 +304,14 @@
         }
         requestAnimationFrame(frame);
         TV.perf = { key: function (ms) { keys.push(ms); active = Date.now(); } };
+        // a test's own measure: frames drawn between begin and end, the slow ones (over 34 ms) and the worst
+        TV.perf.begin = function (label) { win = { label: label, t: performance.now(), frames: 0, slow: 0, worst: 0, list: [] }; };
+        TV.perf.end = function () {
+            if (!win) return "";
+            var dur = performance.now() - win.t, s = "perfwin " + win.label + ": " + Math.round(win.frames * 1000 / Math.max(1, dur)) + " fps (" + win.frames + " frames, " + Math.round(dur) + " ms), " +
+                win.slow + " slow, worst " + Math.round(win.worst) + " ms" + (win.list.length ? " [" + win.list.join(" ") + "]" : "");
+            win = null; TV.log(s); return s;
+        };
         var longN = 0, longMs = 0, longList = [], clockGap = Date.now() - performance.now();
         try {
             new PerformanceObserver(function (l) { l.getEntries().forEach(function (e) { longN++; longMs += e.duration; if (longList.length < 20) { var at = Math.round(e.startTime + clockGap - TV.keyAt), lastMark = ""; for (var q = marks.length - 1; q >= 0; q--) if (marks[q][0] <= e.startTime + clockGap + 5) { lastMark = marks[q][1] + (Math.round(e.startTime + clockGap - marks[q][0])); break; } longList.push(Math.round(e.duration) + "@" + at + "(" + lastMark + ")"); } }); }).observe({ entryTypes: ["longtask"] });

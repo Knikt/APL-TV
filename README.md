@@ -2,8 +2,8 @@
 
 # APL TV
 
-**An Apple TV style IPTV player for Samsung, LG and Android TV.**
-Live TV, movies and series from your own M3U playlists and Xtream accounts, in the style of [APL Launcher](https://github.com/Knikt/APL-Launcher-for-TizenOS): tvOS look, Liquid Glass, focus animations and sounds, everything with the remote.
+**An Apple TV style IPTV player for Samsung, LG and Android TV, now with a Sports tab.**
+Live TV, movies, series and live scores, with your own M3U playlists and Xtream accounts, in the style of [APL Launcher](https://github.com/Knikt/APL-Launcher-for-TizenOS): tvOS look, Liquid Glass, focus animations and sounds, everything with the remote.
 
 **Samsung** (Tizen TVs and Smart Monitors) · **LG** (webOS TVs) · **Android TV**, Google TV and Fire TV
 
@@ -11,7 +11,7 @@ Created by **Knikt** (Gero Corp.), the maker of [APL Launcher](https://github.co
 
 ![APL TV: Home, a title's page, Live TV and the player](docs/images/home.jpg)
 
-[Features](#features) · [Screenshots](#screenshots) · [Your TV](#samsung-lg-or-android) · [Install](#install) · [Add your playlist](#add-your-playlist) · [APL Launcher](#from-the-maker-of-apl-launcher) · [Privacy](#privacy-and-security) · [Français](README.fr.md)
+[Sports](#new-in-11-sports) · [Features](#features) · [Screenshots](#screenshots) · [Your TV](#samsung-lg-or-android) · [Install](#install) · [Add your playlist](#add-your-playlist) · [APL Launcher](#from-the-maker-of-apl-launcher) · [Privacy](#privacy-and-security) · [Français](README.fr.md)
 
 </div>
 
@@ -19,33 +19,56 @@ Created by **Knikt** (Gero Corp.), the maker of [APL Launcher](https://github.co
 
 > **APL TV is only a player.** It comes with no channels, no playlists and no provider: you add your own. Only use it with content you have the right to watch.
 
+## New in 1.1: Sports
+
+![Sports: your team's next match, with a photo of its stadium](docs/images/sports.jpg)
+
+A whole tab for sports, in the style of Apple TV and Apple Sports: live scores, your teams, and the channels of your own playlist that show each match.
+
+- **Every match, live.** Soccer, rugby, basketball, handball, volleyball, American football and ice hockey, more than a hundred competitions: the Premier League, LaLiga, Ligue 1, Serie A, the Bundesliga and the Champions League, the Six Nations and the Top 14, the NBA and the EuroLeague, the NFL, the NHL and many more. Matches in play come first, with the score and the minute, and update by themselves.
+- **Your teams.** The first time, choose your sports, competitions, clubs and national teams (men's, women's, friendlies). The banner at the top shows your team's match in play or its next one, with a photo of the stadium, and My Teams keeps their results and next matches together.
+- **Where to watch it.** A match's page finds the channels of your own playlist that show it, in your provider's TV guide (both teams in a programme at the match's time) or in the name of event channels, your language first. OK and it plays. The official broadcasters in your country are shown too, weeks ahead.
+- **A match's page.** The score and the scorers, then Summary (goals, cards, changes), Stats, Lineups and the Table.
+- **Video summaries.** For a finished match, APL TV finds the official highlights on YouTube (the league's, the club's or the broadcaster's channel, in your language first) and plays them right inside the app, with the remote: OK to pause, ◀ ▶ 10 s, Back to the match.
+- **Results, Today, Tomorrow, Upcoming and a calendar.** Any day of the month, with the logos of your competitions under each day and a star when one of your teams plays. All Sports or a single one, from a list.
+- **Smooth.** Measured screen by screen at 55 to 60 frames a second on a Samsung Smart Monitor M8 and on Android TV.
+
+| | |
+|---|---|
+| ![Results](docs/images/sports-results.jpg) **Results:** your teams first, then each day, competition by competition. | ![A match's page](docs/images/sports-match.jpg) **A match's page:** the score, the video summary, stats, lineups and the table. |
+| ![Calendar](docs/images/sports-calendar.jpg) **Calendar:** your competitions day by day, a star when your team plays. | ![Favorites](docs/images/sports-favorites.jpg) **Favorites:** sports, competitions, clubs and national teams. |
+
+Also new in 1.1: give channels your own names, the provider's replay in the TV guide, genres in one list in Movies and Series, an Arabic search keyboard, Polish, and your watch progress synced with Jellyfin and Emby.
+
 ## Features
 
 The same app on every TV: same look, same features, same updates.
 
+- **Sports.** Live scores, your teams, the channels of your playlist that show each match, official video summaries played in the app, results, a calendar (see [above](#new-in-11-sports)).
 - **Home, Apple TV style.** A large featured title from what everyone watches this week (backdrop, title logo, age rating, IMDb rating, plot), then Continue Watching, Up Next for your series, Favorite Channels with what's on now, My List, Trending Movies and Series, new releases, Top Rated and genre rows (anime, K-drama, studios like Ghibli or Pixar, series from Netflix, HBO…).
-- **Live TV.** The channel you are on plays full screen behind the interface, with its programme, time left and what comes next. Categories (Favorites, Recent, your own groups, then your provider's, your language first, and all of them in a list by country), number keys, previous channel, and the 4K / FHD / HD versions of one channel on one card. Hold OK on a channel to add it to a group of your own or to choose its TV guide. **Pause a live channel and go back in it** (timeshift): APL TV keeps the channel from the moment you pause, up to an hour, then ◀ ▶ move 10 s back or forward, and ▲ then OK on **Back to Live** (or Stop) catches up.
-- **Your own media server.** Jellyfin and Emby (the server's address, your user name and password) and Plex (a code you type on plex.tv/link): your movies and series, one category per library, with the server's pictures and plots, played straight from the server. Each server gets **its own tab** after Series (Plex, Jellyfin, Emby), like Home with only that server: its newest titles, Continue Watching, Recently Added and a row per library. Its libraries are also categories in Movies and Series.
-- **TV guide** as a grid, from your provider's XMLTV guide (or Xtream's short guide), with epg.pw and iptv-epg.org for channels without one.
-- **Movies and series.** Your provider's categories, covers with their IMDb rating, and a page for each title: the real plot in your language (TMDB), seasons and episodes with the ones you watched ticked, the movie's saga, More Like This from your own catalog, the director and the cast, and a page for each actor. Versions of one title (languages, 4K) are grouped together: the one in your language in the best quality your screen shows is picked, and the one you choose is remembered. A Sort button (recently added, A to Z, year, rating).
-- **The player.** Subtitles and Audio menus during playback (movies, series and live channels), OpenSubtitles download with a delay adjustment (never chosen by default), subtitle style, precise seeking (10 s steps, faster when you hold), previous and next episode, a next episode card with a picture that spoils nothing, a sleep timer, Picture Size (fit, fill the screen, original shape), Stream Info (resolution, codec, bitrate, frame rate, sound, connection speed, buffer, dropped frames) and Quality (the 4K / FHD / HD versions of a channel, or the qualities of a stream that has several). Streams with several qualities start at the best one. The Audio menu can make the language you are hearing the one movies and series start in. When a movie or an episode has no sound in your language but another version of it does (VF, MULTI…), APL TV offers to switch to it, at the same moment. Nothing plays by itself unless you turn Autoplay on.
+- **Live TV.** The channel you are on plays full screen behind the interface, with its programme, time left and what comes next. Categories (Favorites, Recent, your own groups, then your provider's, your language first, and all of them in a list by country), number keys, previous channel, and the 4K / FHD / HD versions of one channel on one card. Hold OK on a channel to add it to a group of your own, to choose its TV guide or to **rename it** (your name shows everywhere and stays when your playlist updates). **Pause a live channel and go back in it** (timeshift): APL TV keeps the channel from the moment you pause, up to an hour, then ◀ ▶ move 10 s back or forward, and ▲ then OK on **Back to Live** (or Stop) catches up.
+- **Your own media server.** Jellyfin and Emby (the server's address, your user name and password) and Plex (a code you type on plex.tv/link): your movies and series, one category per library, with the server's pictures and plots, played straight from the server. Each server gets **its own tab** after Series (Plex, Jellyfin, Emby), like Home with only that server: its newest titles, Continue Watching, Recently Added and a row per library. Its libraries are also categories in Movies and Series. With Jellyfin and Emby, where you stopped and what you watched sync both ways with the server.
+- **TV guide** as a grid, from your provider's XMLTV guide (or Xtream's short guide), with epg.pw and iptv-epg.org for channels without one. A switch turns it off on a slow TV.
+- **The provider's replay (catch-up).** When your provider keeps a channel's past programmes (Xtream's archive, or the catch-up tags of an M3U playlist), they carry a small replay mark in the TV guide: OK plays one, from its start, with pause and seeking. While you watch such a channel, its menu has Start Over.
+- **Movies and series.** New, Top Rated, My List, then the genres (horror, comedy, anime, studios…) and your provider's categories in one list, covers with their IMDb rating, and a page for each title: the real plot in your language (TMDB), seasons and episodes with the ones you watched ticked, the movie's saga, More Like This from your own catalog, the director and the cast, and a page for each actor. Versions of one title (languages, 4K) are grouped together: the one in your language in the best quality your screen shows is picked, and the one you choose is remembered. A Sort button (recently added, A to Z, year, rating).
+- **The player.** Subtitles and Audio menus during playback (movies, series and live channels), OpenSubtitles download with a delay adjustment (never chosen by default), subtitle style, precise seeking (10 s steps, faster when you hold), previous and next episode, a next episode card with a picture that spoils nothing, a sleep timer, Picture Size (fit, fill the screen, original shape), Stream Info (resolution, codec, bitrate, frame rate, sound, connection speed, buffer, dropped frames) and Quality (the 4K / FHD / HD versions of a channel, or the qualities of a stream that has several). Streams with several qualities start at the best one. The Audio menu can make the language you are hearing the one movies and series start in. When a movie or an episode has no sound in your language but another version of it does (VF, MULTI…), APL TV offers to switch to it, at the same moment. Nothing plays by itself unless you turn Autoplay on. On Android, a sound delay (AV sync) from -1000 to +1000 ms. Subtitles and audio tracks are named in your language.
 - **Pick up where you left off.** When APL TV opens, it offers the movie or episode you were watching at the minute you stopped, or the last channel.
 - **Screen protection for OLED screens.** APL TV knows when it runs on an OLED TV (LG says so itself; Samsung, Sony and Philips OLED sets by their model) and protects it from burn-in: the interface moves a few pixels every 2 minutes, and after 5 minutes without the remote while nothing plays, a screen saver shows pictures from your catalog, slowly moving, with the time in a corner that changes every few minutes. Settings › Screen Protection (Automatic, On, Off).
 - **Age ratings in your country's own scale** (France -12 / -16, United States PG-13 / R, Germany FSK 16…), converted from nearby countries when yours has none.
 - **Hide what you don't want to see.** Adult categories are hidden by default. In Settings you can hide whole themes (violence, horror, drugs, gore… 20 of them, matched with TMDB's tags and your provider's category names) and single titles: they disappear everywhere, search and Trending included. Countries and categories too: Settings > Countries and Categories lists the countries and regions of your playlists, hide a whole one or only some of its categories (or hold OK on a category). Your favorite channels stay.
 - **Your playlist as it is, or tidied.** At the first start APL TV asks: sort the categories (your language first, `EU| FR| Sport` is read as French), tidy the names (country and quality tags like `FR|` or `FHD` taken out) and group the HD / FHD / 4K versions of a channel, or keep your playlist exactly as your provider made it. Settings › Playback changes it any time. Separators are always skipped.
-- **Search** across channels, movies and series with an on-screen keyboard laid out like a computer's (AZERTY in French, QWERTY otherwise, or in alphabetical order), or the TV's own keyboard (Gboard on Android TV). Accents and case don't matter.
+- **Search** across channels, movies and series with an on-screen keyboard laid out like a computer's (AZERTY in French, QWERTY otherwise, in alphabetical order, or Arabic), or the TV's own keyboard (Gboard on Android TV). Accents and case don't matter.
 - **Voice with Alexa.** The small [APL TV skill](alexa-skill/) brings your searches and channels to APL TV on any TV: "Alexa, ask APL TV to search Dragon Ball movies" and the results are on screen; "Alexa, ask APL TV to put on M6" and the channel starts. On Samsung, the screen's own Alexa also reaches APL TV directly for "Alexa, pause", play, skip and next episode.
-- **Set up from your phone.** The TV shows a QR code; your phone opens a page served by the TV itself on your Wi-Fi (no outside website), protected by a one-time code. The remote works too. Your phone can also **edit your playlist**: hide and order your categories, make your groups of channels and order your favorites, then send it all to the TV (Settings › Edit on Your Phone).
+- **Set up from your phone.** The TV shows a QR code; your phone opens a page served by the TV itself on your Wi-Fi (no outside website), protected by a one-time code. The remote works too. Your phone can also **edit your playlist**: hide and order your categories, make your groups of channels, order your favorites and rename channels, then send it all to the TV (Settings › Edit on Your Phone).
 - **Automatic updates.** APL TV checks this repository every 6 hours and updates itself (code, look, texts), then restarts when nothing is playing. Your playlists and settings stay. Each TV only takes the updates that are ready for it; when its installed part changes, it asks once for a new install. Settings › Updates.
-- English and French (it follows the TV's language).
+- English, French and Polish (it follows the TV's language).
 
 ## Screenshots
 
 | | |
 |---|---|
 | ![Home](docs/images/home-rows.jpg) **Home:** Continue Watching, Favorite Channels and more rows under the featured title. | ![A title's page](docs/images/title.jpg) **A title's page:** logo, age rating, IMDb, plot, director and cast, More Like This. |
-| ![Series](docs/images/series.jpg) **Series:** seasons, episodes with their own pictures and plots, the cast. | ![Movies](docs/images/movies.jpg) **Movies:** your categories and smart genres, IMDb ratings on every cover. |
+| ![Series](docs/images/series.jpg) **Series:** seasons, episodes with their own pictures and plots, the cast. | ![Movies](docs/images/movies.jpg) **Movies:** the genres and your categories in one list, IMDb ratings on every cover. |
 | ![Live TV](docs/images/live.jpg) **Live TV:** the channel plays behind, what's on now and next. | ![TV guide](docs/images/guide.jpg) **TV guide:** a grid of the next hours, the channel behind. |
 | ![Player](docs/images/player.jpg) **The player:** Apple TV style bar, precise seeking, ends at. | ![Subtitles](docs/images/subtitles.jpg) **Subtitles:** the video's tracks, OpenSubtitles, delay and style. |
 | ![Search](docs/images/search.jpg) **Search:** channels, movies and series at once, by keyboard or by voice. | ![Overview](docs/images/overview.jpg) **Everything with the remote**, in the look of APL Launcher. |
@@ -65,6 +88,9 @@ The screenshots use demo content only: open movies from the Blender Foundation (
 | Remote | Every key | Every key; the Magic Remote's pointer is not used yet | Every key |
 | Subtitles inside the video | Yes | Yes, drawn by the TV | Yes |
 | Pause live TV (timeshift) | Yes | Yes | Yes |
+| The provider's replay (catch-up) | Yes | Yes | Yes |
+| Sports, video summaries in the app | Yes | Yes | Yes |
+| Sound delay (AV sync) | The TV's own sound settings | The TV's own sound settings | Yes, in APL TV |
 | Plex, Jellyfin, Emby | Yes | Yes | Yes |
 | Tested on | Smart Monitor M8 (Tizen 9) | OLED G5 (webOS 25) | Android TV 14 (emulator) |
 
@@ -159,20 +185,28 @@ If you like APL TV, have a look at APL Launcher, and a star on either repository
 
 **Plex, Jellyfin or Emby?** Settings › Add a Playlist › Your Media Server (or the button on the welcome screen). Jellyfin and Emby: your server's address (port 8096 is tried when you give none), your user name and password; from your phone too. Plex: a code appears on the TV, type it on plex.tv/link; if your account has several servers, you choose one. Files play as they are (no transcoding), so the TV must be able to decode them.
 
+**Where do the Sports scores come from?** ESPN's public scoreboards (no account, no key), 365Scores for what ESPN doesn't have, the LFP for the channels of Ligue 1 and Ligue 2, stadium photos from Wikipedia (free licences), and the video summaries from the official YouTube channels. APL TV shows them; it streams nothing itself.
+
+**A match doesn't show my channels?** APL TV looks for both teams in your provider's TV guide at the match's time, and in the names of event channels. When the guide doesn't name them, the match's page shows the official broadcasters and a button to search for them in your channels.
+
+**Can I rename a channel?** Yes: hold OK on it › Rename, or Settings › Edit on Your Phone › Names. Your name shows everywhere (Live TV, the guide, search, Continue, APL Launcher's Last Channel) and stays when your playlist updates; search still finds the channel by its old name. Rename it to its old name, or choose Provider's Name in its menu, to go back.
+
+**Replay of past programmes?** If your provider keeps them, yes: past programmes with a small replay mark in the TV guide play with OK (hold OK for the menu), and a channel's menu has Start Over. Which channels have it, and how many days back, is up to your provider: Xtream accounts say it for each channel, M3U playlists with catch-up tags (catchup, catchup-days, catchup-source, tvg-rec or timeshift).
+
 **Can I pause live TV?** Yes: Play/Pause on a channel, or the first button of the bar. APL TV keeps the channel from that moment, up to an hour (400 MB on Samsung and LG, 800 MB on Android), and only one connection is used, so it works with one-screen subscriptions. ◀ ▶ move 10 s, ▲ then OK on Back to Live catches up. Settings › Playback › Pause Live TV turns it off. MPEG-TS channels only (Xtream channels in HLS are read as MPEG-TS for it).
 
 **Edit my playlist on my phone?** Settings › Playlists › Edit on Your Phone, scan the QR code: hide or show categories and drag them by their handle (the page scrolls by itself), or tap several and send them to the top, to the bottom or after another one in one go, with a search to find them in a long list; make and fill your groups of channels, order your favorites, then Send to the TV. Send as many times as you like.
 
 **Can I keep my playlist exactly as my provider made it?** Yes: answer "Keep My Playlist As It Is" at the first start, or turn off the three choices in Settings › Playback.
 
-**Something asks for the new install?** Stalker portals, pausing live TV, editing on the phone and the newest phone page use APL TV's helper on the TV, which only changes with a new install: run APL Launcher Setup again (Samsung) or install the latest `.ipk` (LG) once. On Android, install the latest `.apk` once. Everything else updates by itself.
+**Something asks for the new install?** Stalker portals, pausing live TV, editing on the phone, the newest phone page (with the Names tab) and the video summaries played inside APL TV use APL TV's helper on the TV, which only changes with a new install (until then, video summaries open in the YouTube app): run APL Launcher Setup again (Samsung) or install the latest `.ipk` (LG) once. On Android, install the latest `.apk` once. Everything else updates by itself.
 
 **Install on Fire TV or Android TV quickly?** In the Downloader app, type the code **9141513**.
 
 ## Privacy and security
 
 - Your playlists and accounts stay on the TV, in APL TV's own storage. They are only sent to your provider, and never written in logs.
-- APL TV only talks to your provider, to TMDB and Stremio's Cinemeta (to look titles up), to IMDb's public datasets (the ratings file, once a day), to the guide sources, to OpenSubtitles through Stremio's public add-on (only when you look for subtitles), to your own Jellyfin, Emby or Plex server (and plex.tv to link Plex) if you add one, to GitHub every 6 hours to look for an update (Settings › Updates turns it off), and, only if you turn on the Alexa skill, to your private ntfy.sh topic (the searched words only).
+- APL TV only talks to your provider, to TMDB and Stremio's Cinemeta (to look titles up), to IMDb's public datasets (the ratings file, once a day), to the guide sources, to OpenSubtitles through Stremio's public add-on (only when you look for subtitles), to your own Jellyfin, Emby or Plex server (and plex.tv to link Plex) if you add one, for Sports to ESPN's public scoreboards, 365Scores, the LFP and Wikipedia, and to YouTube (to find the official video summaries, and its embedded player from youtube-nocookie.com when you watch one), to GitHub every 6 hours to look for an update (Settings › Updates turns it off), and, only if you turn on the Alexa skill, to your private ntfy.sh topic (the searched words only).
 - The helper on the TV (port 8765) only answers APL TV itself, and the phone pages while their code is shown. A channel you pause is kept in the TV's temporary memory and deleted when you go back to live. Websites opened in the TV's browser are refused. The code is random, changes each time, and too many wrong codes close it.
 - No account, no analytics, no ads.
 
@@ -191,10 +225,11 @@ APL TV is made by **Knikt** (Gero Corp.)
 - Film and series data and pictures: [TMDB](https://www.themoviedb.org). This product uses the TMDB API but is not endorsed or certified by TMDB.
 - IMDb ratings through Stremio's Cinemeta and [IMDb's datasets](https://developer.imdb.com/non-commercial-datasets/) (personal and non-commercial use); subtitles from [OpenSubtitles](https://www.opensubtitles.org) through Stremio's OpenSubtitles add-on.
 - TV guides: your provider's XMLTV, [epg.pw](https://epg.pw) and [iptv-epg.org](https://iptv-epg.org).
+- Sports: scores, match photos and broadcasters by ESPN, other sports by 365Scores, Ligue 1 and Ligue 2 channels by the LFP, stadium photos from Wikipedia (Wikimedia Commons, free licences), video summaries on YouTube from the official channels.
 - On Android, video is played by [AndroidX Media3 / ExoPlayer](https://github.com/androidx/media) (Apache License 2.0).
 - The look, the sounds and the fonts come from APL Launcher.
 
-APL TV is not affiliated with Apple, Samsung, LG, Google, Amazon, TMDB, IMDb, OpenSubtitles, Stremio or any IPTV provider. Names and logos belong to their owners.
+APL TV is not affiliated with Apple, Samsung, LG, Google, Amazon, TMDB, IMDb, OpenSubtitles, Stremio, ESPN, 365Scores, the LFP, YouTube, any league or club, or any IPTV provider. Names and logos belong to their owners.
 
 ## License
 

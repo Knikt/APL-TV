@@ -1,8 +1,8 @@
 {
- "version": "1.0.14",
+ "version": "1.1.0",
  "loader": 1,
  "reinstall": "1.0.1",
- "notes": "Playlists from providers that hide a refusal behind a 404 load again, and the screen saver shows titles for all audiences only.",
+ "notes": "A new Sports tab: live scores, your teams, the channels showing each match and official video summaries. Also your own names for channels, the provider's replay in the TV guide and an Arabic search keyboard.",
  "platforms": {
   "tizen": {
    "reinstall": "1.0.1"
@@ -36,6 +36,7 @@
   "js/home.js",
   "js/live.js",
   "js/guide.js",
+  "js/sports.js",
   "js/vod.js",
   "js/library.js",
   "js/detail.js",
@@ -53,5 +54,5 @@
   "css/tv.css",
   "css/tv2.css"
  ],
- "body": "<!-- The video plane sits under the page: wherever the page is transparent, the picture shows -->\n    <object id=\"av\" type=\"application/avplayer\"></object>\n    <div id=\"mv\" class=\"mv\"></div>\n\n    <!-- Backdrop: dark gradient, or the artwork of what is selected -->\n    <div id=\"bg\" class=\"bg\"><div id=\"bgImgA\" class=\"bg__img\"></div><div id=\"bgImgB\" class=\"bg__img\"></div><div class=\"bg__scrim\"></div></div>\n\n    <header id=\"top\" class=\"top\">\n        <nav id=\"tabs\" class=\"tabs\"></nav>\n        <div id=\"status\" class=\"status\"><span id=\"clock\" class=\"status__clock\">09:41</span></div>\n    </header>\n\n    <main id=\"views\" class=\"views\">\n        <section id=\"v-home\" class=\"view view--home\"></section>\n        <section id=\"v-live\" class=\"view view--live\"></section>\n        <section id=\"v-guide\" class=\"view view--guide\"></section>\n        <section id=\"v-movies\" class=\"view view--vod\"></section>\n        <section id=\"v-series\" class=\"view view--vod\"></section>\n        <section id=\"v-search\" class=\"view view--search\"></section>\n        <section id=\"v-settings\" class=\"view view--settings\"></section>\n    </main>\n\n    <section id=\"detail\" class=\"detail\"></section>\n    <section id=\"person\" class=\"person\"></section>\n    <section id=\"osd\" class=\"osd\"></section>\n    <section id=\"mvui\" class=\"mvui\"></section>\n    <section id=\"sheet\" class=\"sheet\"></section>\n\n    <div id=\"menu\" class=\"menu\"><div class=\"menu__panel\"></div></div>\n    <div id=\"alert\" class=\"alert\"></div>\n    <div id=\"toast\" class=\"toast\" aria-live=\"polite\"></div>\n    <div id=\"boot\" class=\"boot\"><div class=\"boot__logo\"><span class=\"boot__mark\">APL</span><span class=\"boot__tv\">TV</span></div><div id=\"bootMsg\" class=\"boot__msg\"></div></div>\n    <input id=\"ime\" class=\"ime\" type=\"text\" autocomplete=\"off\" autocorrect=\"off\" autocapitalize=\"off\" spellcheck=\"false\">"
+ "body": "<!-- The video plane sits under the page: wherever the page is transparent, the picture shows -->\n    <object id=\"av\" type=\"application/avplayer\"></object>\n    <div id=\"mv\" class=\"mv\"></div>\n\n    <!-- Backdrop: dark gradient, or the artwork of what is selected -->\n    <div id=\"bg\" class=\"bg\"><div id=\"bgImgA\" class=\"bg__img\"></div><div id=\"bgImgB\" class=\"bg__img\"></div><div class=\"bg__scrim\"></div></div>\n\n    <header id=\"top\" class=\"top\">\n        <nav id=\"tabs\" class=\"tabs\"></nav>\n        <div id=\"status\" class=\"status\"><span id=\"clock\" class=\"status__clock\">09:41</span></div>\n    </header>\n\n    <main id=\"views\" class=\"views\">\n        <section id=\"v-home\" class=\"view view--home\"></section>\n        <section id=\"v-live\" class=\"view view--live\"></section>\n        <section id=\"v-guide\" class=\"view view--guide\"></section>\n        <section id=\"v-sports\" class=\"view view--sports\"></section>\n        <section id=\"v-movies\" class=\"view view--vod\"></section>\n        <section id=\"v-series\" class=\"view view--vod\"></section>\n        <section id=\"v-search\" class=\"view view--search\"></section>\n        <section id=\"v-settings\" class=\"view view--settings\"></section>\n    </main>\n\n    <section id=\"detail\" class=\"detail\"></section>\n    <section id=\"match\" class=\"match\"></section>\n    <section id=\"sfav\" class=\"sfav\"></section>\n    <section id=\"person\" class=\"person\"></section>\n    <section id=\"osd\" class=\"osd\"></section>\n    <section id=\"mvui\" class=\"mvui\"></section>\n    <section id=\"sheet\" class=\"sheet\"></section>\n\n    <div id=\"menu\" class=\"menu\"><div class=\"menu__panel\"></div></div>\n    <div id=\"alert\" class=\"alert\"></div>\n    <div id=\"toast\" class=\"toast\" aria-live=\"polite\"></div>\n    <div id=\"boot\" class=\"boot\"><div class=\"boot__logo\"><span class=\"boot__mark\">APL</span><span class=\"boot__tv\">TV</span></div><div id=\"bootMsg\" class=\"boot__msg\"></div></div>\n    <input id=\"ime\" class=\"ime\" type=\"text\" autocomplete=\"off\" autocorrect=\"off\" autocapitalize=\"off\" spellcheck=\"false\">"
 }

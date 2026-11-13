@@ -76,6 +76,10 @@
         rows.push({ label: T("Picture Size"), value: { fit: T("Fit to Screen"), fill: T("Fill the Screen"), auto: T("Original Shape") }[TV.pref("pictureMode")] || T("Fit to Screen"), acc: "chevron", icon: "aspect",
             desc: T("How movies, series and channels fill the screen. Also in the player, third button at the top right."),
             run: function () { choose(T("Picture Size"), "pictureMode", [["fit", T("Fit to Screen")], ["fill", T("Fill the Screen")], ["auto", T("Original Shape")]]); } });
+        // Android's player can shift the sound against the picture (Samsung's and LG's can't: their own sound settings do it)
+        if (TV.ANDROID && global.APLAndroid && global.APLAndroid.audioDelay) rows.push({ label: T("Sound Delay (AV Sync)"), value: delayLabel(+TV.pref("audioDelay") || 0), acc: "chevron",
+            desc: T("When the sound and the picture don't match: later if you hear the words before the lips move, earlier if after. Applies at once, even while watching."),
+            run: function () { choose(T("Sound Delay (AV Sync)"), "audioDelay", delaySteps().map(function (n) { return [n, delayLabel(n)]; })); } });
         rows.push({ section: T("Display") });
         rows.push({ label: T("Adult Content"), value: TV.pref("showAdult") ? T("Shown") : T("Hidden"), desc: T("Categories and channels for adults are hidden everywhere."),
             run: function () {
@@ -106,7 +110,7 @@
         rows.push({ label: T("Search Keyboard"), acc: "chevron", icon: "keyboard",
             value: kl === "qwerty" ? "QWERTY" : kl === "azerty" ? "AZERTY" : kl === "abc" ? T("Alphabetical (ABC)") : T("Automatic") + " (" + (TV.lang === "fr" ? "AZERTY" : "QWERTY") + ")",
             desc: T("The letters of the search keyboard: like a computer's keyboard, or in alphabetical order. Its last key opens the TV's own keyboard."),
-            run: function () { choose(T("Search Keyboard"), "kbLayout", [["auto", T("Automatic")], ["qwerty", "QWERTY"], ["azerty", "AZERTY"], ["abc", T("Alphabetical (ABC)")]]); } });
+            run: function () { choose(T("Search Keyboard"), "kbLayout", [["auto", T("Automatic")], ["qwerty", "QWERTY"], ["azerty", "AZERTY"], ["abc", T("Alphabetical (ABC)")], ["arabic", T("Arabic") + " (\u0639\u0631\u0628\u064A)"]]); } });
         rows.push({ label: T("Time Format"), value: TV.pref("timeFormat") === "12" ? "12 h" : "24 h", run: function () { TV.setPref("timeFormat", TV.pref("timeFormat") === "12" ? "24" : "12"); redraw(); } });
         // A list rather than OK going round the languages: each change restarts APL TV
         var LANGUAGES = [["auto", T("Automatic")], ["en", "English"], ["fr", "Français"], ["pl", "Polski"]];
@@ -166,8 +170,10 @@
                 qr.appendChild(el("div", "alert__qrurl", esc(TV.DONATE.replace(/^https?:\/\//, ""))));
                 TV.alert({ title: T("Support APL TV"), message: T("Scan the code with your phone's camera. Thank you!"), node: qr });
             } });
-        rows.push({ label: "APL TV", value: T("Version {v}", { v: TV.VERSION }), desc: T("Created by Knikt (Gero Corp.)") + "\n" + T("A player for your own playlists. APL TV comes with no channels.") });
-        rows.push({ label: T("Credits"), desc: T("Film and series data and pictures: TMDB. This product uses the TMDB API but is not endorsed or certified by TMDB.") + "\n" + T("IMDb ratings: Stremio's Cinemeta. Subtitles: OpenSubtitles. TV guides: your provider, epg.pw and iptv-epg.org.") });
+        rows.push({ label: "APL TV", value: T("Version {v}", { v: TV.VERSION }) + (TV.ANDROID ? " · " + T("Package {v}", { v: apkVersion() || T("older than 1.0.15") }) : ""),
+                    desc: T("Created by Knikt (Gero Corp.)") + "\n" + T("A player for your own playlists. APL TV comes with no channels.") });
+        rows.push({ label: T("Credits"), desc: T("Film and series data and pictures: TMDB. This product uses the TMDB API but is not endorsed or certified by TMDB.") + "\n" + T("IMDb ratings: Stremio's Cinemeta. Subtitles: OpenSubtitles. TV guides: your provider, epg.pw and iptv-epg.org.") + "\n" +
+            T("Sports: scores, match photos and broadcasters by ESPN, other sports by 365Scores, Ligue 1 and Ligue 2 channels by the LFP, stadium photos from Wikipedia (Wikimedia Commons, free licences), video summaries on YouTube from the official channels.") });
         return { title: T("Settings"), icon: "gear", desc: T("Your playlists and how APL TV works."), rows: rows };
     }
 
@@ -185,7 +191,8 @@
     }
     function choose(title, key, list, after) {
         TV.menu(title, list.map(function (o) {
-            return { label: o[1], check: TV.pref(key) === o[0], run: function () { TV.setPref(key, o[0]); if (after) after(); redraw(); } };
+            // opened on the value in use (the sound delay's list has 41 steps: "None" is in its middle)
+            return { label: o[1], check: TV.pref(key) === o[0], focus: TV.pref(key) === o[0], run: function () { TV.setPref(key, o[0]); if (after) after(); redraw(); } };
         }));
     }
     function subStylePage() {
@@ -373,10 +380,23 @@
             }, 1500);
         }).catch(function (e) {
             box.innerHTML = "<div style='width:400px;height:400px;display:flex;align-items:center;justify-content:center;text-align:center;color:#555;font-size:24px;padding:20px'>" +
-                esc(e.old ? (TV.ANDROID ? T("Editing on the phone needs the new version of the app (.apk) once.") : T("Editing on the phone needs the new install once (APL Launcher Setup or the new package).")) :
+                esc(e.old ? (TV.ANDROID ? T("Editing on the phone needs the new app package (.apk), installed once: the app updates itself, but not its package ({v}). With Downloader, code {code}.", { v: apkVersion() || T("older than 1.0.11"), code: "9141513" }) : T("Editing on the phone needs the new install once (APL Launcher Setup or the new package).")) :
                     T("The phone page could not start ({e}). Use the remote instead.", { e: e.message })) + "</div>";
         });
     }
+
+    // AV Sync: a second each way, every 50 ms (issue #5: "up to 1000 each way, in 50 increments")
+    function delaySteps() { var out = []; for (var n = -1000; n <= 1000; n += 50) out.push(n); return out; }
+    function delayLabel(n) { return !n ? T("None") : (n > 0 ? "+" : "\u2212") + Math.abs(n) + " ms \u00B7 " + (n > 0 ? T("sound later") : T("sound earlier")); }
+    // Android: the sound's delay given to the player at the start and at each change
+    (function () {
+        var A = global.APLAndroid;
+        if (!TV.ANDROID || !A || !A.audioDelay) return;
+        try { A.audioDelay(+TV.pref("audioDelay") || 0); } catch (e) {}
+        TV.onPref(function (k, v) { if (k === "audioDelay") { try { A.audioDelay(+v || 0); } catch (e) {} } });
+    })();
+    // Android: the version of the package (.apk), which the automatic updates don't change; "" for a package before 1.0.15
+    function apkVersion() { try { var A = global.APLAndroid; return A && A.version ? String(A.version() || "") : ""; } catch (e) { return ""; } }
 
     /* ---------- Plex: a code on the screen, typed on plex.tv/link ---------- */
     var plexTimer = null;

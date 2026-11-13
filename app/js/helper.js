@@ -122,7 +122,8 @@
         /* The phone editor (1.0.11): the playlist goes to the helper, the phone's changes come back */
         editStart: function (data) {
             return call("/edit/start", { method: "POST", timeout: 30000, body: JSON.stringify(data) }).then(function (r) {
-                if (r.status === 404 || r.status === 403) { var n = new Error("helper too old"); n.old = true; throw n; }
+                if (r.status === 404) { var n = new Error("helper too old"); n.old = true; throw n; }
+                if (r.status !== 200) { var e2 = new Error("HTTP " + r.status); e2.status = r.status; throw e2; }
                 return json(r);
             });
         },
@@ -180,7 +181,17 @@
         if (!TV.DEV || TV.PREVIEW) return;
         call("/dev/keys", { timeout: 3000 }).then(function (r) {
             var j = json(r);
-            if (j.keys && j.keys.length) { j.keys.forEach(function (k) { keyQueue.push(typeof k === "number" ? [k, 0] : k); }); pumpKeys(); }
+            if (!j.keys || !j.keys.length) return;
+            // development builds: "js:…" runs a test in the app, its answer goes to the log
+            j.keys = j.keys.filter(function (k) {
+                if (typeof k !== "string" || k.indexOf("js:") !== 0) return true;
+                // a script element (the page's rules allow inline scripts, not eval)
+                var sc = document.createElement("script");
+                sc.text = "(function(){try{var __o=(function(){" + k.slice(3) + ";})();TV.log('dev js: '+(typeof __o==='object'?JSON.stringify(__o):String(__o)).slice(0,6000));}catch(e){TV.log('dev js error: '+e.message);}})();";
+                document.head.appendChild(sc); document.head.removeChild(sc);
+                return false;
+            });
+            if (j.keys.length) { j.keys.forEach(function (k) { keyQueue.push(typeof k === "number" ? [k, 0] : k); }); pumpKeys(); }
         }).catch(function () {});
     }, 400);
 
@@ -188,8 +199,9 @@
     var sent = 0;
     setInterval(function () {
         if (!TV.DEV) return;
-        var lines = TV.logs.slice(sent > TV.logs.length ? 0 : sent);
-        sent = TV.logs.length;
+        // counted over the app's life: the list keeps its last 300 lines, its length stops moving
+        var fresh = (TV.logTotal || 0) - sent, lines = fresh > 0 ? TV.logs.slice(-Math.min(fresh, TV.logs.length)) : [];
+        sent = TV.logTotal || 0;
         if (lines.length) TV.helper.sendLog(lines, true);
     }, 3000);
 })(window);

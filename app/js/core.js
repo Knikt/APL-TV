@@ -81,6 +81,9 @@
     /* TMDB pictures at the size they are shown. Providers give "original", "w500" or "w600_and_h900_bestv2"
        (600 x 900 for a cover shown 220 px wide: three times the pixels to decode and draw) */
     TV.sized = function (u, w) { return u ? String(u).replace(/(image\.tmdb\.org\/t\/p\/)[^\/]+\//, "$1" + w + "/") : u; };
+    /* Apple's activity indicator: eight rounded bars around a centre, the brightest one going round (the whole turns
+       in eight steps on a layer of its own: nothing is painted again while it turns) */
+    TV.spinner = function (size) { return "<span class='aspin' style='width:" + (size || 64) + "px;height:" + (size || 64) + "px'><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>"; };
     TV.cssUrl = function (u) { return u ? 'url("' + String(u).replace(/["\\\n]/g, "") + '")' : "none"; };
     TV.clamp = function (v, a, b) { return v < a ? a : (v > b ? b : v); };
 
@@ -99,7 +102,7 @@
     };
     TV.drop = function (key) { delete memo[key]; try { global.localStorage.removeItem(PFX + key); } catch (e) {} };
 
-    var DEFAULTS = { tvGuide: true, pictureMode: "fit", language: "auto", sounds: true, showAdult: false, mergeQuality: true, autoPreview: false, motion: true, startTab: "home", lastChannel: null, timeFormat: "24",
+    var DEFAULTS = { tvGuide: true, audioDelay: 0, pictureMode: "fit", language: "auto", sounds: true, showAdult: false, mergeQuality: true, autoPreview: false, motion: true, startTab: "home", lastChannel: null, timeFormat: "24",
                      audioLang: "auto", audioLang2: "orig", subLang: "auto", subLang2: "off", subSize: "m", subColor: "white", subBg: "outline", subPos: "low", autoNext: false, resumePrompt: true, autoUpdate: true, screenSaver: "auto", tidyCats: true, tidyNames: true, kbLayout: "auto", timeshift: true };
     var prefs = TV.load("prefs", {}) || {};
     var prefListeners = [];
@@ -184,6 +187,7 @@
         // Never keep an address with its credentials: users/passwords are cut out
         var line = new Date().toTimeString().slice(0, 8) + " " + TV.redact(String(msg));
         logs.push(line);
+        TV.logTotal = (TV.logTotal || 0) + 1;
         if (logs.length > 300) logs.shift();
         try { global.console.log("[APL TV] " + line); } catch (e) {}
     };
@@ -420,6 +424,9 @@
     }
     var P = {
         search: '<circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5 21 21"/>',
+        wifi: '<path d="M2.5 9a14 14 0 0 1 19 0"/><path d="M5.5 12.4a9.6 9.6 0 0 1 13 0"/><path d="M8.6 15.8a5 5 0 0 1 6.8 0"/><circle cx="12" cy="19.3" r="1.3" fill="currentColor" stroke="none"/>',
+        wifiOff: '<path d="M2.5 9a14 14 0 0 1 19 0"/><path d="M5.5 12.4a9.6 9.6 0 0 1 13 0"/><path d="M8.6 15.8a5 5 0 0 1 6.8 0"/><path d="M3.5 3.5l17 17"/>',
+        lan: '<rect x="9" y="3" width="6" height="5" rx="1"/><rect x="3" y="16" width="6" height="5" rx="1"/><rect x="15" y="16" width="6" height="5" rx="1"/><path d="M12 8v4M6 16v-4h12v4"/>',
         gear: '<circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>',
         play: '<path d="M7 4.5v15l12.5-7.5z" fill="currentColor" stroke="none"/>',
         pause: '<path d="M7 4h3.5v16H7zM13.5 4H17v16h-3.5z" fill="currentColor" stroke="none"/>',
@@ -434,6 +441,7 @@
         cc: '<rect x="2.5" y="5" width="19" height="14" rx="3"/><path d="M10.5 10.2a2.3 2.3 0 1 0 0 3.6M17.5 10.2a2.3 2.3 0 1 0 0 3.6"/>',
         eyeCheck: '<path d="M2 12c1-2.5 5-7 10-7s9 4.5 10 7c-1 2.5-5 7-10 7S3 14.5 2 12z"/><path d="M9 12l2 2 4-4"/>',
         chevron: '<path d="M9 5l7 7-7 7"/>',
+        calendar: '<rect x="3.5" y="5" width="17" height="15.5" rx="2.6"/><path d="M3.5 10h17M8 3v4M16 3v4"/>',
         tv: '<rect x="2.5" y="5" width="19" height="13" rx="2.5"/><path d="M8 21h8"/>',
         grid: '<rect x="3" y="3" width="8" height="8" rx="2"/><rect x="13" y="3" width="8" height="8" rx="2"/><rect x="3" y="13" width="8" height="8" rx="2"/><rect x="13" y="13" width="8" height="8" rx="2"/>',
         phone: '<rect x="6.5" y="2.5" width="11" height="19" rx="2.5"/><path d="M11 18.5h2"/>',
@@ -447,6 +455,7 @@
         speaker: '<path d="M4 9.5v5h3.5L12 18.5v-13L7.5 9.5z" fill="currentColor"/><path d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11"/>',
         link: '<path d="M10 14a4.5 4.5 0 0 0 6.4 0l3-3a4.5 4.5 0 0 0-6.4-6.4l-1 1M14 10a4.5 4.5 0 0 0-6.4 0l-3 3a4.5 4.5 0 0 0 6.4 6.4l1-1"/>',
         film: '<rect x="3" y="3" width="18" height="18" rx="2.5"/><path d="M7.5 3v18M16.5 3v18M3 7.5h4.5M3 12h18M3 16.5h4.5M16.5 7.5H21M16.5 16.5H21"/>',
+        pencil: '<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/>',
         restart: '<path d="M4 12a8 8 0 1 0 2.3-5.7M4 4v5h5"/>',
         eye: '<path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="3"/>',
         quality: '<rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M7 15V9M7 12h3M10 9v6M14 9h2.5a1.5 1.5 0 0 1 1.5 1.5v3a1.5 1.5 0 0 1-1.5 1.5H14z"/>'

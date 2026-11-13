@@ -60,6 +60,22 @@ final class Player {
     private final List<int[]> audio = new ArrayList<>(), text = new ArrayList<>(), video = new ArrayList<>();
     private double[] lastRect = {0, 0, 1920, 1080};
     private static final String UA = "APL TV (Android)";
+    /* AV Sync (Settings > Playback): the picture follows the sound's clock; that clock is shifted by this much.
+       + = the sound later than the picture, - = earlier. Changed while playing, the picture catches up at once. */
+    static volatile long audioOffsetUs = 0;
+    private static final class SyncedRenderers extends DefaultRenderersFactory {
+        SyncedRenderers(android.content.Context c) { super(c); }
+        @Override protected androidx.media3.exoplayer.audio.AudioSink buildAudioSink(android.content.Context c, boolean floatOut, boolean params) {
+            androidx.media3.exoplayer.audio.AudioSink sink = super.buildAudioSink(c, floatOut, params);
+            if (sink == null) return null;
+            return new androidx.media3.exoplayer.audio.ForwardingAudioSink(sink) {
+                @Override public long getCurrentPositionUs(boolean sourceEnded) {
+                    long p = super.getCurrentPositionUs(sourceEnded);
+                    return p == androidx.media3.exoplayer.audio.AudioSink.CURRENT_POSITION_NOT_SET ? p : Math.max(0, p + audioOffsetUs);
+                }
+            };
+        }
+    }
 
     Player(Activity act, FrameLayout root) { this.act = act; this.root = root; }
 
@@ -86,7 +102,7 @@ final class Player {
             .setUserAgent(UA).setAllowCrossProtocolRedirects(true).setConnectTimeoutMs(15000).setReadTimeoutMs(20000);
         DefaultLoadControl load = new DefaultLoadControl.Builder().setBufferDurationsMs(15000, 50000, 2500, 5000).build();
         meter = new DefaultBandwidthMeter.Builder(act).build();
-        exo = new ExoPlayer.Builder(act, new DefaultRenderersFactory(act).setEnableDecoderFallback(true))
+        exo = new ExoPlayer.Builder(act, new SyncedRenderers(act).setEnableDecoderFallback(true))
             .setTrackSelector(selector)
             .setBandwidthMeter(meter)
             .setMediaSourceFactory(new DefaultMediaSourceFactory(http, ex))

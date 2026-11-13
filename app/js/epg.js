@@ -313,6 +313,59 @@
         }, Promise.resolve());
     }
 
-    TV.epg = { prune: prune, now: now, at: at, range: range, list: list, has: has, progress: progress, loadAll: loadAll, ensure: ensure, clear: clear, onUpdate: onUpdate, b64: b64,
+    /* Sports (sports.js): the programmes that pass test(start, stop), read once per guide (channels sharing a
+       guide come together) straight from the compact lists, nothing unpacked. [{ chans, progs }] */
+    var scanTok = 0;
+    function scan(chans, test) {
+        var tok = ++scanTok, groups = [], out = [], i, n, g, c, found, s, e;
+        for (i = 0; i < chans.length; i++) {
+            var ch = chans[i], v = viaOther(ch), k = keyOf(v);
+            c = (k && progs[k]) || progs["id|" + v.id] || extra[v.id];
+            if (!c) continue;
+            if (c._scan !== tok) { c._scan = tok; c._g = groups.length; groups.push({ c: c, chans: [ch] }); }
+            else groups[c._g].chans.push(ch);
+        }
+        for (g = 0; g < groups.length; g++) {
+            c = groups[g].c; found = null;
+            if (c.n !== undefined) {
+                for (n = 0; n < c.n; n++) {
+                    s = (c.s[n] + BASE) * 1000; e = (c.e[n] + BASE) * 1000;
+                    if (test(s, e)) (found = found || []).push([s, e, c.t[n], c.d && c.d[n] || ""]);
+                }
+            } else for (n = 0; n < c.length; n++) if (test(c[n][0], c[n][1])) (found = found || []).push(c[n]);
+            if (found) out.push({ chans: groups[g].chans, progs: found });
+        }
+        return out;
+    }
+
+    /* The same, in slices of 10 ms (a big playlist and its guides: up to 2 s at once on a TV); done(groups) */
+    function scanSlices(chans, test, done) {
+        var tok = ++scanTok, groups = [], out = [], i = 0, g = 0;
+        (function part1() {
+            var t0 = Date.now();
+            for (; i < chans.length && Date.now() - t0 < 10; i++) {
+                var ch = chans[i], v = viaOther(ch), k = keyOf(v), c = (k && progs[k]) || progs["id|" + v.id] || extra[v.id];
+                if (!c) continue;
+                if (c._scan !== tok) { c._scan = tok; c._g = groups.length; groups.push({ c: c, chans: [ch] }); }
+                else groups[c._g].chans.push(ch);
+            }
+            if (i < chans.length) { setTimeout(part1, 0); return; }
+            part2();
+        })();
+        function part2() {
+            var t0 = Date.now(), n, s, e, c, found;
+            for (; g < groups.length && Date.now() - t0 < 10; g++) {
+                c = groups[g].c; found = null;
+                if (c.n !== undefined) {
+                    for (n = 0; n < c.n; n++) { s = (c.s[n] + BASE) * 1000; e = (c.e[n] + BASE) * 1000; if (test(s, e)) (found = found || []).push([s, e, c.t[n], c.d && c.d[n] || ""]); }
+                } else for (n = 0; n < c.length; n++) if (test(c[n][0], c[n][1])) (found = found || []).push(c[n]);
+                if (found) out.push({ chans: groups[g].chans, progs: found });
+            }
+            if (g < groups.length) { setTimeout(part2, 0); return; }
+            done(out);
+        }
+    }
+
+    TV.epg = { prune: prune, now: now, at: at, range: range, list: list, has: has, progress: progress, loadAll: loadAll, ensure: ensure, clear: clear, onUpdate: onUpdate, b64: b64, scan: scan, scanSlices: scanSlices,
                chosen: chosen, setChannelGuide: setChannelGuide, guideSearch: guideSearch, hasGuideList: function () { return Object.keys(guideNames).length > 0; } };
 })(window);
