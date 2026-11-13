@@ -657,7 +657,10 @@ var EDIT_TEXT = {
           again: "Edytuj dalej", expired: "Ten kod wygas\u0142", expiredHow: "Na telewizorze otw\u00F3rz APL TV \u203A Ustawienia \u203A Edytuj na telefonie, a potem zeskanuj nowy kod.",
           noAnswer: "Telewizor nie odpowiedzia\u0142. Czy telefon jest w tej samej sieci Wi-Fi?", error: "Co\u015B posz\u0142o nie tak. Zeskanuj kod ponownie.", loading: "Wczytywanie playlisty\u2026",
           findCat: "Szukaj kategorii", noCat: "Brak kategorii o tej nazwie.", sel1: "Zaznaczone: 1", seln: "Zaznaczone: {n}", toTop: "Na g\u00F3r\u0119", toBottom: "Na d\u00F3\u0142",
-          moveAfter: "Umie\u015B\u0107 za\u2026", placeHint: "Teraz stuknij kategori\u0119, za kt\u00F3r\u0105 maj\u0105 si\u0119 znale\u017A\u0107.", cancel: "Anuluj" }
+          moveAfter: "Umie\u015B\u0107 za\u2026", placeHint: "Teraz stuknij kategori\u0119, za kt\u00F3r\u0105 maj\u0105 si\u0119 znale\u017A\u0107.", cancel: "Anuluj",
+          hideAll: "Ukryj wszystkie", showAll: "Poka\u017C wszystkie", hideN: "Ukryj znalezione ({n})", showN: "Poka\u017C znalezione ({n})", hideSel: "Ukryj", showSel: "Poka\u017C", shownOf: "Widoczne na telewizorze: {n} z {t}",
+          names: "Nazwy", namesHint: "Nadaj kana\u0142owi dowoln\u0105 nazw\u0119: telewizor poka\u017Ce j\u0105 wsz\u0119dzie (TV na \u017Cywo, przewodnik, wyszukiwanie, Kontynuuj ogl\u0105danie) i zachowa j\u0105 po aktualizacji playlisty. Zostaw pole puste, aby przywr\u00F3ci\u0107 nazw\u0119 od dostawcy.",
+          renamed: "Ze zmienion\u0105 nazw\u0105", findChan: "Wyszukaj kana\u0142, aby zmieni\u0107 nazw\u0119", newName: "Nazwa kana\u0142u", was: "wcze\u015Bniej: {name}", reset: "Nazwa od dostawcy", typeMore: "Wpisz kilka liter nazwy kana\u0142u." }
 };
 var EDIT_CSS = ".r{display:flex;align-items:center;gap:8px;padding:10px 12px;border-top:1px solid rgba(255,255,255,.08)}.card>.r:first-child{border-top:0}" +
     ".r .n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.r small{color:rgba(255,255,255,.5);font-size:13px;margin-left:4px}.r.off .n{opacity:.45}" +
