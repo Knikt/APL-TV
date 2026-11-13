@@ -436,7 +436,7 @@
         england: { fr: "Angleterre", es: "Inglaterra", it: "Inghilterra", pt: "Inglaterra", sq: "Anglia", nl: "Engeland", tr: "İngiltere", de: "England", ro: "Anglia", pl: "Anglia" },
         scotland: { fr: "Écosse", es: "Escocia", it: "Scozia", pt: "Escócia", sq: "Skocia", nl: "Schotland", tr: "İskoçya", de: "Schottland", ro: "Scoția", pl: "Szkocja" },
         wales: { fr: "Pays de Galles", es: "Gales", it: "Galles", pt: "País de Gales", sq: "Uellsi", nl: "Wales", tr: "Galler", de: "Wales", ro: "Țara Galilor", pl: "Walia" },
-        "northern ireland": { fr: "Irlande du Nord", es: "Irlanda del Norte", it: "Irlanda del Nord", pt: "Irlanda do Norte", sq: "Irlanda e Veriut", nl: "Noord-Ierland", tr: "Kuzey İrlanda", de: "Nordirland" },
+        "northern ireland": { fr: "Irlande du Nord", es: "Irlanda del Norte", it: "Irlanda del Nord", pt: "Irlanda do Norte", sq: "Irlanda e Veriut", nl: "Noord-Ierland", tr: "Kuzey İrlanda", de: "Nordirland", pl: "Irlandia Północna" },
         // the screen's list says "Palestinian Territories": the team is Palestine
         palestine: { en: "Palestine", fr: "Palestine", es: "Palestina", it: "Palestina", pt: "Palestina", sq: "Palestina", nl: "Palestina", tr: "Filistin", de: "Palästina", ar: "فلسطين", ro: "Palestina", pl: "Palestyna" }
     };
@@ -1619,7 +1619,7 @@
         if (p && p !== "auto") return p;
         var nl = String(global.navigator && (global.navigator.language || global.navigator.userLanguage) || ""), m = nl.match(/[-_]([A-Za-z]{2})$/);
         if (m && nl.slice(0, 2).toLowerCase() === TV.lang) return m[1].toUpperCase();
-        return { fr: "FR", de: "DE", es: "ES", it: "IT", nl: "NL", pt: "PT", tr: "TR", en: "GB", sq: "AL" }[TV.lang] || "US";
+        return { fr: "FR", de: "DE", es: "ES", it: "IT", nl: "NL", pt: "PT", tr: "TR", en: "GB", sq: "AL", pl: "PL" }[TV.lang] || "US";
     }
     var rightsMemo = null;
     function rights() {
