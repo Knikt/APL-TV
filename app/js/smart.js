@@ -20,7 +20,7 @@
         FR: "fr", FRA: "fr", FRANCE: "fr", BE: "fr", BEL: "fr", CH: "fr", SUI: "fr", CA: "", QC: "fr", QUEBEC: "fr", AF: "af", AFR: "af", AFRICA: "af", MAG: "ar", MAGHREB: "ar",
         UK: "en", GB: "en", EN: "en", ENG: "en", US: "en", USA: "en", IE: "en", AU: "en", NZ: "en",
         DE: "de", GER: "de", GE: "de", AT: "de", ES: "es", SP: "es", ESP: "es", LAT: "es", MX: "es", IT: "it", ITA: "it", PT: "pt", POR: "pt", BR: "pt",
-        NL: "nl", PL: "pl", TR: "tr", AR: "ar", ARAB: "ar", ARABIC: "ar", IN: "hi", IND: "hi", PK: "ur", RU: "ru", RO: "ro", GR: "el", AL: "sq", ALB: "sq", EXYU: "sr", YU: "sr",
+        NL: "nl", PL: "pl", POL: "pl", TR: "tr", AR: "ar", ARAB: "ar", ARABIC: "ar", IN: "hi", IND: "hi", PK: "ur", RU: "ru", RO: "ro", GR: "el", AL: "sq", ALB: "sq", EXYU: "sr", YU: "sr",
         SE: "sv", SW: "sv", NO: "no", DK: "da", FI: "fi", SC: "sv", CN: "zh", JP: "ja", KR: "ko", KO: "ko", IR: "fa", AFG: "fa", KU: "ku", VOSTFR: "fr", MULTI: "multi",
         HU: "hu", BG: "bg", CZ: "cs", SK: "sk", UA: "uk", MT: "mt", IL: "he", MY: "ms", ID: "id", PH: "tl", TH: "th"
     };
@@ -84,7 +84,7 @@
 
     /* The country or region a category belongs to (Settings > Countries and Categories): spellings of one country together */
     var GROUP_OF = { FRA: "FR", FRANCE: "FR", BEL: "BE", SUI: "CH", QUEBEC: "QC", AFR: "AF", AFRICA: "AF", MAGHREB: "MAG", GB: "UK", ENG: "EN", USA: "US",
-        GER: "DE", GE: "DE", SP: "ES", ESP: "ES", ITA: "IT", POR: "PT", ARAB: "AR", ARABIC: "AR", IND: "IN", YU: "EXYU", SW: "SE", ALB: "AL", KO: "KR",
+        GER: "DE", GE: "DE", SP: "ES", ESP: "ES", ITA: "IT", POR: "PT", POL: "PL", ARAB: "AR", ARABIC: "AR", IND: "IN", YU: "EXYU", SW: "SE", ALB: "AL", KO: "KR",
         EUR: "EU", EUROPE: "EU", ASIA: "AS", AMERICA: "AM", LATAM: "LAT", LATINO: "LAT", WORLD: "INT" };
     var GROUP_NAMES = { FR: "France", BE: "Belgium", CH: "Switzerland", CA: "Canada", QC: "Quebec", AF: "Africa", MAG: "Maghreb", UK: "United Kingdom",
         EN: "English", US: "United States", IE: "Ireland", AU: "Australia", NZ: "New Zealand", DE: "Germany", AT: "Austria", ES: "Spain", LAT: "Latin America",
@@ -121,7 +121,8 @@
         "argentina": "LAT", "bolivia": "LAT", "chile": "LAT", "colombia": "LAT", "ecuador": "LAT", "el salvador": "LAT", "costa rica": "LAT", "honduras": "LAT",
         "paraguay": "LAT", "peru": "LAT", "uruguay": "LAT", "venezuela": "LAT", "panama": "LAT", "dominican rep": "LAT", "dominican republic": "LAT",
         "portugal": "PT", "portuguese": "PT", "brazil": "BR", "brasil": "BR", "germany": "DE", "german": "DE", "deutschland": "DE", "austria": "AT",
-        "italy": "IT", "italia": "IT", "italian": "IT", "netherlands": "NL", "dutch": "NL", "holland": "NL", "poland": "PL", "polish": "PL",
+        "italy": "IT", "italia": "IT", "italian": "IT", "netherlands": "NL", "dutch": "NL", "holland": "NL",
+        "poland": "PL", "polish": "PL", "polska": "PL", "polski": "PL", "polskie": "PL", "po polsku": "PL",
         "turkey": "TR", "turkish": "TR", "turk": "TR", "turkiye": "TR", "arabic": "AR", "arabe": "AR", "arab": "AR",
         "india": "IN", "indian": "IN", "pakistan": "PK", "russia": "RU", "russian": "RU", "romania": "RO", "romanian": "RO",
         "greece": "GR", "greek": "GR", "albania": "AL", "albanian": "AL", "exyu": "EXYU", "ex yu": "EXYU",
