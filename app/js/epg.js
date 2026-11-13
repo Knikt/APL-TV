@@ -94,7 +94,7 @@
     /* Answers still on their way when the guide is switched off must not come back later: each load keeps
        the number of the guide it was started for, and clear() moves on to the next number. */
     var gen = 0, loadingGen = 0;
-    function clear() { gen++; progs = {}; extra = {}; byName = {}; guideNames = {}; shortDone = {}; queue = []; loadedAt = 0; fire(); }
+    function clear() { gen++; progs = {}; extra = {}; byName = {}; guideNames = {}; shortDone = {}; queue = []; hist = {}; histOrder = []; loadedAt = 0; fire(); }
     function loadAll(force) {
         if (off()) return Promise.resolve();
         // Off then On while a load was running: its answers are dropped, so a new one starts right after it
@@ -300,6 +300,70 @@
         }
     }
 
+    /* ---------- a channel's programmes with the days before: the list over the picture (osd.js) ----------
+       The guide kept in memory starts two hours back. The programme list of a channel also shows what came before,
+       to replay it: an Xtream account gives a channel's whole table (get_simple_data_table, the one its replay is
+       made from), asked when the list opens on that channel and kept 10 minutes for the last 6 channels. Other
+       playlists: what the guide in memory has. Always answers, with the guide in memory when nothing else comes. */
+    var hist = {}, histOrder = [], HIST_KEEP = 10 * 60 * 1000;
+    function histWindow(ch) {
+        var days = ch && ch.arch ? Math.min(14, Math.max(1, ch.arch)) : 1;
+        return { from: Date.now() - days * 86400000, to: Date.now() + 2 * 86400000 };
+    }
+    function tidy(l, w) {
+        var seen = {}, out = [];
+        (l || []).forEach(function (p) {
+            if (!p || !p[0] || !(p[1] > p[0]) || p[1] <= w.from || p[0] >= w.to || seen[p[0]]) return;
+            seen[p[0]] = 1; out.push(p);
+        });
+        out.sort(function (a, b) { return a[0] - b[0]; });
+        return out.length > 1500 ? out.slice(out.length - 1500) : out;
+    }
+    /* main wins (whole plots); what it does not cover comes from the guide in memory (what is on now and next) */
+    function mergeProgs(main, more) {
+        if (!main.length) return more;
+        var out = main.slice();
+        more.forEach(function (p) {
+            for (var i = 0; i < main.length; i++) if (p[0] < main[i][1] - 60000 && p[1] > main[i][0] + 60000) return;
+            out.push(p);
+        });
+        return out.sort(function (a, b) { return a[0] - b[0]; });
+    }
+    function history(ch) {
+        if (!ch) return Promise.resolve([]);
+        var w = histWindow(ch), base = tidy(list(ch) || [], w);
+        if (off()) return Promise.resolve(base);
+        var hit = hist[ch.id];
+        if (hit && hit.gen === gen && Date.now() - hit.at < HIST_KEEP) return hit.p.then(function (l) { return mergeProgs(l, base); });
+        var v = viaOther(ch), c = chosen(ch), src = TV.data.sourceOf(v), ask;
+        if (src && src.type === "xtream" && v.sid && !(c && c.id)) {
+            ask = TV.data.xApi(src, "get_simple_data_table", "stream_id=" + v.sid).then(function (j) {
+                /* A provider may send its whole table (thousands of lines): only the days shown are read, and a
+                   plot is only decoded when its programme is described (desc): nothing holds the remote up */
+                var raw = j && j.epg_listings || [], out = [];
+                for (var i = 0; i < raw.length; i++) {
+                    var p = raw[i], s = (parseInt(p.start_timestamp, 10) || 0) * 1000, e = (parseInt(p.stop_timestamp, 10) || 0) * 1000;
+                    if (!s || !(e > s) || e <= w.from || s >= w.to) continue;
+                    out.push([s, e, b64(p.title), "", 0, p.description || ""]);
+                }
+                return tidy(out, w);
+            });
+        } else ask = Promise.resolve([]);
+        var entry = { at: Date.now(), gen: gen, p: ask.catch(function (e) { TV.log("programme list of " + ch.name + ": " + e.message); if (hist[ch.id] === entry) delete hist[ch.id]; return []; }) };
+        hist[ch.id] = entry;
+        histOrder = histOrder.filter(function (id) { return id !== ch.id; });
+        histOrder.push(ch.id);
+        while (histOrder.length > 6) delete hist[histOrder.shift()];
+        return entry.p.then(function (l) { return mergeProgs(l, base); });
+    }
+
+    /* A programme's plot: the one it has, or the one a provider's table sent encoded, read now and kept */
+    function desc(p) {
+        if (!p) return "";
+        if (!p[3] && p[5]) { var d = b64(p[5]); p[3] = d.length > 1200 ? d.slice(0, 1200) + "…" : d; p[5] = ""; }
+        return p[3] || "";
+    }
+
     /* Guides stored by an earlier version and too big for the screen's storage: removed before anything is saved */
     function prune() {
         return TV.data.sources().reduce(function (p, src) {
@@ -366,6 +430,6 @@
         }
     }
 
-    TV.epg = { prune: prune, now: now, at: at, range: range, list: list, has: has, progress: progress, loadAll: loadAll, ensure: ensure, clear: clear, onUpdate: onUpdate, b64: b64, scan: scan, scanSlices: scanSlices,
+    TV.epg = { prune: prune, now: now, at: at, range: range, list: list, history: history, desc: desc, has: has, progress: progress, loadAll: loadAll, ensure: ensure, clear: clear, onUpdate: onUpdate, b64: b64, scan: scan, scanSlices: scanSlices,
                chosen: chosen, setChannelGuide: setChannelGuide, guideSearch: guideSearch, hasGuideList: function () { return Object.keys(guideNames).length > 0; } };
 })(window);

@@ -1,9 +1,18 @@
 /* ============================================================
    osd.js: full screen, Apple TV style.
    Live: a glass bar with the channel, its programme, the time left and
-   the next one. ▲▼ (or CH+ CH-) zap, OK shows the channel list over the
-   picture, Back goes back. ⏮ / PRE-CH: the previous channel. With the
+   the next one. ▲▼ (or CH+ CH-) zap, OK or ◀ shows the channel list over
+   the picture, Back goes back. ⏮ / PRE-CH: the previous channel. With the
    bar shown, ▶ goes to the Subtitles and Audio buttons.
+   Beside the channel list: the programmes of the channel you are on in it
+   (▶ goes into them), the past ones too, and the programme you are on
+   with its plot, rating and cast. OK on a past programme the provider
+   keeps plays its replay. ⏪ on such a channel goes back in it.
+   The list has a second view, a grid of every channel's programmes with
+   time across: a rail on its left shows both (a list, a grid of squares)
+   and changes from one to the other; the last one chosen opens next time.
+   The list also opens during a replay (◀ while the bar is hidden, or the
+   bar's Channels and Programmes): another programme, or a channel live.
    Movies and episodes: the title at the bottom left, the timeline, the
    Subtitles and Audio buttons above it on the right (▲), Previous and
    Next episode under it (▼). ◀ ▶ on the timeline: the picture pauses and
@@ -29,6 +38,13 @@
     var seen = { ms: 0, at: 0 }, nextShown = false, nextTimer = null, nextLeft = 0;
     var streamQ = null, qFor = null, qAsked = false;   // the stream's own qualities (Quality button), read once it plays
     var tsh = null, tsTarget = null, tsJumpTimer = null, tsPoll = 0;   // timeshift (below)
+    // the channel list's two other panels: the programmes of the channel you are on in the list, and the one you are on
+    var progBox, progHead, progEmpty, infoBox, plist = null, listZone = "chans", progFor = null, progTok = 0, progJob = null, infoJob = null, infoFor = null, listTicks = 0;
+    // its two views (the rail on its left): the list above, or a grid of every channel's programmes (below)
+    var railBox, railBtns = [], view = "list", gridBox, gridDay, gridRuler, gridRows, gridNow;
+    var G_PX = 8, G_ROWS = 8, G_X = 368, G_W = 1358, G_SPAN = Math.floor(1358 / 8) * 60000;       // 8 px a minute: nearly three hours across, after the channels
+    var gRow = 0, gTop = 0, gT0 = 0, gTime = 0, gLive = true, gFocus = null, gHist = {}, gHistOrder = [], gridJob = null;
+    var gMap = {}, gBuilt = null, gMarked = null, swTimer = null, updJob = null;      // the grid's rows as built, the cell marked
 
     function build() {
         root = TV.$("osd");
@@ -37,17 +53,39 @@
         subsBox = el("div", "osd__subs");
         bar = el("div", "osd__bar");
         list = el("div", "osd__list");
+        progBox = el("div", "osd__progs glass");
+        infoBox = el("div", "osd__pinfo glass");
         clock = el("div", "osd__clock");
         numBox = el("div", "osd__num glass");
         stateBox = el("div", "osd__state glass", "<div class='osd__spin'></div>");
         errBox = el("div", "osd__err glass");
         popEl = el("div", "osd__pop");
         nextEl = el("div", "osd__nextcard");
-        [shade, subsBox, bar, list, clock, numBox, stateBox, errBox, popEl, nextEl].forEach(function (n) { root.appendChild(n); });
+        railBox = el("div", "osd__rail glass");
+        railBtns = [["list", "list", T("List")], ["grid", "grid", T("Grid")]].map(function (b) {
+            var e = el("div", "osd__railbtn", TV.icon(b[1], 30) + "<span>" + esc(b[2]) + "</span>");
+            e._view = b[0];
+            railBox.appendChild(e);
+            return e;
+        });
+        gridBox = el("div", "osd__grid glass");
+        gridDay = el("div", "ogrid__day");
+        gridRuler = el("div", "ogrid__ruler");
+        gridRows = el("div", "ogrid__rows");
+        gridNow = el("div", "guide__now ogrid__now");
+        [gridDay, gridRuler, gridRows, gridNow].forEach(function (n) { gridBox.appendChild(n); });
+        [shade, subsBox, bar, railBox, list, progBox, infoBox, gridBox, clock, numBox, stateBox, errBox, popEl, nextEl].forEach(function (n) { root.appendChild(n); });
         list.appendChild(el("div", "osd__listhead"));
         listClip = el("div", "osd__listclip");
         list.appendChild(listClip);
         vlist = new TV.VList({ clip: listClip, rowH: 100, viewH: 880, render: renderRow, onFocus: function () {} });
+        progHead = el("div", "osd__listhead");
+        progBox.appendChild(progHead);
+        var progClip = el("div", "osd__listclip");
+        progBox.appendChild(progClip);
+        progEmpty = el("div", "osd__progempty");
+        progBox.appendChild(progEmpty);
+        plist = new TV.VList({ clip: progClip, rowH: 76, viewH: 880, render: renderProg, onFocus: function () {} });
         applySubStyle();
     }
     function renderRow(c) {
@@ -59,7 +97,8 @@
         txt.innerHTML = "<div class='crow__name'>" + esc(c.name) + "</div><div class='crow__prog'>" + (cur ? esc(cur[2]) : "&nbsp;") + "</div>" +
             (cur ? "<div class='bar crow__bar'><i style='width:" + Math.round(TV.epg.progress(cur) * 100) + "%'></i></div>" : "");
         r.appendChild(txt);
-        if (ch && c.id === ch.id) r.appendChild(el("div", "crow__fav", TV.icon("speaker", 26)));
+        var on = onChannel();
+        if (on && c.id === on.id) r.appendChild(el("div", "crow__fav", TV.icon("speaker", 26)));
         return r;
     }
 
@@ -92,6 +131,7 @@
             if (pop && pop.kind === "info") refreshPop();
             watchQualities();
             if (tsh) tsTick();
+            if (root.classList.contains("has-list") && ++listTicks % 30 === 0) refreshList();
             var shown = root.classList.contains("is-shown");
             if (shown) tickClock();
             if (!shown) return;
@@ -104,6 +144,7 @@
         clearInterval(clockTimer); clearTimeout(hideTimer); clearInterval(saveTimer); clearTimeout(seekTimer); clearTimeout(subTimer);
         stopExt(); clearInterval(nextTimer);
         scrub = null; pop = null;
+        listZone = "chans"; progTok++; TV.uncalm(progJob); TV.uncalm(infoJob);
         root.className = "osd";
         document.body.classList.remove("is-fullscreen");
         TV.popNav(screen);
@@ -577,6 +618,7 @@
     function liveIcons() {
         var s = TV.player.tracks().filter(function (t) { return t.type === "TEXT"; }).length, out = [];
         if (tsh) out.push("golive");                          // behind live: a button to catch up (no Stop key on many remotes)
+        else if (rewindable()) out.push("rw");                // the provider keeps this channel: back in it (no ⏪ key on many remotes)
         if (tsOn()) out.push("ts");
         if (s) out.push("subs");
         out.push("audio");
@@ -606,7 +648,7 @@
             icons.forEach(function (k, i) {
                 var on = zone === "icons" && i === iconIndex ? " is-focused" : "";
                 if (k === "golive") { box.appendChild(el("div", "pv__btn pv__btn--text" + on, TV.icon("fwd10", 24) + "<span>" + esc(T("Back to Live")) + "</span>")); return; }
-                box.appendChild(el("div", "pv__btn" + on, TV.icon(k === "ts" ? (tsh && tsh.paused ? "play" : "pause") : BTN_ICON[k], 30)));
+                box.appendChild(el("div", "pv__btn" + on, TV.icon(k === "rw" ? "rewind" : k === "ts" ? (tsh && tsh.paused ? "play" : "pause") : BTN_ICON[k], 30)));
             });
             bar.appendChild(box);
         }
@@ -631,7 +673,7 @@
         clearTimeout(zapTimer);
         // A short wait: pressing ▲ three times quickly opens only the third channel
         zapTimer = setTimeout(function () { TV.live.playChannel(c, TV.player.FULL); if (onZap) onZap(c); }, 380);
-        if (root.classList.contains("has-list")) { vlist.refresh(); }
+        if (root.classList.contains("has-list")) { if (view === "grid") drawGrid(true); else vlist.refresh(); }
     }
     function zap(d) {
         var i = indexIn(ctx, ch);
@@ -642,16 +684,519 @@
         zapTo(ctx[(i + d + n) % n]);
     }
     function indexIn(arr, c) { for (var i = 0; i < arr.length; i++) if (arr[i].id === c.id || (arr[i].variants && arr[i].variants.some(function (v) { return v.id === c.id; }))) return i; return -1; }
+    /* The channel on screen: the live one, or the one a replay comes from */
+    function onChannel() { var r = rp(); return ch || (r && r.ch) || null; }
+    /* During a replay opened from a channel, the list is there too (its channels were kept: replay.ctx) */
+    function canList() { var r = rp(); return mode === "live" || !!(r && r.ctx && r.ctx.length); }
+    /* The programme a replay is playing, when c is its channel: the list and the grid open on it, not on what is on now */
+    function anchorOf(c) { var r = rp(); return r && c && r.ch.id === c.id ? r.p[0] : 0; }
     function openList() {
-        var cat = D.catOf(ctx[0] || ch);
+        var on = onChannel(), cat = D.catOf(ctx[0] || on || {});
+        if (!ctx.length || !on) return;
         list.firstChild.innerHTML = "<span>" + esc(ctx === D.favChannels() ? T("Favorites") : (cat.name || T("Channels"))) + "</span><small>" + ctx.length + "</small>";
         root.classList.add("has-list");
-        vlist.set(ctx, Math.max(0, indexIn(ctx, ch)));
-        vlist.setActive(true);
+        view = TV.pref("osdView") === "grid" ? "grid" : "list";       // the view you last chose
+        root.classList.toggle("is-grid", view === "grid");
+        listZone = view === "grid" ? "grid" : "chans"; listTicks = 0;
+        infoFor = null;
+        vlist.set(ctx, Math.max(0, indexIn(ctx, on)));
+        vlist.setActive(view === "list");
         show(0);
         TV.epg.ensure(ctx.slice(Math.max(0, vlist.index - 5), vlist.index + 10));
+        if (view === "grid") openGrid(vlist.index); else loadProgs(vlist.current());
+        drawRail();
     }
-    function closeList() { root.classList.remove("has-list"); show(); }
+    function closeList() {
+        root.classList.remove("has-list");
+        listZone = "chans"; progTok++; TV.uncalm(progJob); TV.uncalm(infoJob); TV.uncalm(gridJob); TV.uncalm(updJob);
+        gHist = {}; gHistOrder = [];
+        show();
+    }
+
+    /* ---------- the two views of the channel list: List or Grid ----------
+       A small rail on the left of the list shows them, a list and a grid of squares, the one you are in lit. ◀ from
+       the channels (List), or Back (Grid, where ◀ moves in time), goes onto it: ▲▼ change the view at once, ▶ or
+       OK goes into it, ◀ or Back closes. The Guide key, the channel list key and the colour keys change the view
+       from anywhere, and the menu of a programme (OK held) has it too. The view chosen is the one opened next time. */
+    function drawRail() {
+        railBtns.forEach(function (b) {
+            b.classList.toggle("is-current", b._view === view && listZone !== "rail");
+            b.classList.toggle("is-focused", b._view === view && listZone === "rail");
+        });
+    }
+    /* into: the focus goes into the view (else it stays on the rail) */
+    function setView(v, into) {
+        var c = currentListChannel(), changed = v !== view;
+        listZone = into ? (v === "grid" ? "grid" : "chans") : "rail";
+        if (changed) {
+            view = v;
+            TV.setPref("osdView", v);
+            // one view replaces the other at once: four large panels fading and sliding together was the slow part
+            root.classList.add("is-switching");
+            clearTimeout(swTimer);
+            swTimer = setTimeout(function () { root.classList.remove("is-switching"); }, 120);
+            root.classList.toggle("is-grid", v === "grid");
+            infoFor = null;
+            progTok++; TV.uncalm(progJob); TV.uncalm(infoJob); TV.uncalm(gridJob);
+            var i = Math.max(0, c ? indexIn(ctx, c) : 0);
+            if (v === "grid") openGrid(i);
+            else { vlist.set(ctx, i); loadProgs(vlist.current()); }
+        }
+        vlist.setActive(listZone === "chans");
+        plist.setActive(false);
+        if (!changed) { if (v === "grid") gridMark(); else showInfo(); }
+        drawRail();
+    }
+    function toggleView() { TV.sound.tick(); setView(view === "grid" ? "list" : "grid", true); }
+    /* The channel you are on in the overlay, whatever the view */
+    function currentListChannel() { return view === "grid" ? (ctx[gRow] || null) : (vlist.current() || null); }
+
+    /* ---------- the grid: every channel's programmes, time across ----------
+       The channels of the list down, three hours across, the programme you are on described above (the same details
+       as in the list). ◀ ▶ go from programme to programme, back in time too: the hours the guide still has for every
+       channel, and for the channel you stay on the days before, when the provider keeps them. ▲▼ change channel
+       (CH+ CH- a page), OK watches: the channel live, or a past programme's replay. */
+    function gFloor(t) { return Math.floor(t / 1800000) * 1800000; }
+    function gList(c) { return (c && (gHist[c.id] || TV.epg.list(c))) || []; }
+    /* A row's cells in the window: its programmes, and empty cells where the guide says nothing ([.., .., "", "", true]) */
+    function gCells(c) {
+        var from = gT0, to = gT0 + G_SPAN, l = gList(c), out = [], t = from;
+        for (var i = 0; i < l.length; i++) {
+            var p = l[i];
+            if (p[1] <= from) continue;
+            if (p[0] >= to) break;
+            if (p[0] > t + 60000) out.push([t, p[0], "", "", true]);
+            out.push(p);
+            t = Math.max(t, p[1]);
+        }
+        if (!out.length) return [[from, to, T("No programme information"), "", true]];
+        if (t < to - 60000) out.push([t, to, "", "", true]);
+        return out;
+    }
+
+    function openGrid(row) {
+        var now = Date.now();
+        gRow = TV.clamp(row || 0, 0, Math.max(0, ctx.length - 1));
+        gTop = TV.clamp(gRow - 3, 0, Math.max(0, ctx.length - G_ROWS));
+        var a = anchorOf(ctx[gRow]);
+        if (a) { gTime = a + 60000; gLive = false; gT0 = gFloor(a); }       // a replay: on its programme
+        else { gTime = now; gLive = true; gT0 = gFloor(now - 20 * 60000); }
+        drawGrid(true);
+        gridSoon();
+    }
+    /* A row: its channel, and its programmes in the window. Built once; moving the focus only changes two classes. */
+    function gridBuildRow(i) {
+        var c = ctx[i], now = Date.now(), on = onChannel(), a = anchorOf(c);
+        var r = el("div", "ogrid__row"), chEl = el("div", "grow__ch"), logo = el("div", "grow__logo");
+        TV.logoBox(logo, c);
+        chEl.appendChild(el("div", "grow__num", String(c.num)));
+        chEl.appendChild(logo);
+        chEl.appendChild(el("div", "grow__name", esc(c.name)));
+        if (on && c.id === on.id) chEl.appendChild(el("div", "ogrid__on", TV.icon("speaker", 22)));
+        r.appendChild(chEl);
+        var pr = el("div", "ogrid__progs"), cells = gCells(c), els = [];
+        var keeps = !!(c.arch && TV.catchup && TV.catchup.can(c, now - 120000));
+        for (var k = 0; k < cells.length; k++) {
+            var p = cells[k], x = Math.max(0, (p[0] - gT0) / 60000 * G_PX), w = Math.min(G_W, (p[1] - gT0) / 60000 * G_PX) - x - 6;
+            if (w < 8) { els.push(null); continue; }
+            var past = p[1] <= now, cell = el("div", "gcell" + (p[4] ? " is-empty" : "") + (p[0] <= now && p[1] > now ? " is-now" : "") + (past ? " is-past" : "") +
+                (keeps && past && !p[4] && TV.catchup.can(c, p[0]) ? " has-replay" : "") + (a && p[0] === a ? " is-playing" : ""),
+                "<div class='gcell__t'>" + esc(p[2] || "") + "</div>" + (w > 150 && !p[4] ? "<div class='gcell__h'>" + TV.hhmm(p[0]) + " – " + TV.hhmm(p[1]) + "</div>" : ""));
+            cell.style.left = Math.round(x) + "px"; cell.style.width = Math.round(w) + "px";
+            pr.appendChild(cell);
+            els.push(cell);
+        }
+        r.appendChild(pr);
+        return { el: r, chEl: chEl, cells: cells, els: els };
+    }
+    /* The grid on screen. Rows are only built when they come into view, when the hours across change or when
+       force says their programmes did; a move of the focus inside what is shown builds nothing (it rebuilt all
+       eight rows at each press before: the slowness of the grid on a TV). */
+    function drawGrid(force) {
+        var now = Date.now(), i;
+        if (gLive) gTime = now;                            // on what is on now: it stays so as time goes
+        if (gRow < gTop) gTop = gRow;
+        if (gRow > gTop + G_ROWS - 1) gTop = gRow - G_ROWS + 1;
+        if (force || !gBuilt || gBuilt.t0 !== gT0 || gBuilt.ctx !== ctx) {
+            gMap = {}; gMarked = null;
+            gridRows.innerHTML = "";
+            var h = "";                                    // the hours across, and the day they are in
+            for (var t = gT0; t < gT0 + G_SPAN; t += 1800000) h += "<div class='guide__tick' style='left:" + Math.round((t - gT0) / 60000 * G_PX) + "px'>" + TV.hhmm(t) + "</div>";
+            gridRuler.innerHTML = h;
+            gridDay.textContent = dayLabel(gT0 + G_SPAN / 2);
+            gBuilt = { t0: gT0, ctx: ctx, top: -1 };
+        }
+        var nx = (now - gT0) / 60000 * G_PX;
+        gridNow.style.display = nx >= 0 && nx <= G_W ? "" : "none";
+        gridNow.style.left = Math.round(G_X + nx) + "px";
+        if (gBuilt.top !== gTop) {
+            for (var k in gMap) { i = +k; if (i < gTop || i >= gTop + G_ROWS) { gridRows.removeChild(gMap[k].el); delete gMap[k]; } }
+            for (i = gTop; i < Math.min(ctx.length, gTop + G_ROWS); i++) {
+                if (!gMap[i]) gMap[i] = gridBuildRow(i);
+                gridRows.appendChild(gMap[i].el);          // in order: a row already there only moves
+            }
+            gBuilt.top = gTop;
+            TV.epg.ensure(ctx.slice(gTop, gTop + G_ROWS));
+        }
+        gridMark();
+    }
+    /* The focus: the programme at gTime on the channel you are on (lit when you are in the grid, outlined from the rail) */
+    function gridMark() {
+        if (gMarked) {
+            if (gMarked.cell) { gMarked.cell.classList.remove("is-focused"); gMarked.cell.classList.remove("is-current"); }
+            gMarked.chEl.classList.remove("is-current");
+        }
+        var row = gMap[gRow];
+        gFocus = null; gMarked = null;
+        if (!row) return;
+        var cells = row.cells, k = 0, n;
+        for (n = 0; n < cells.length; n++) if (cells[n][0] <= gTime && cells[n][1] > gTime) { k = n; break; }
+        if (n === cells.length) k = gTime < cells[0][0] ? 0 : cells.length - 1;
+        for (n = 0; !row.els[k] && n < cells.length; n++) { if (row.els[k + n + 1]) k = k + n + 1; else if (row.els[k - n - 1]) k = k - n - 1; }   // too thin to be drawn: its neighbour
+        gFocus = cells[k];
+        if (row.els[k]) row.els[k].classList.add(listZone === "grid" ? "is-focused" : "is-current");
+        row.chEl.classList.add("is-current");
+        gMarked = { cell: row.els[k] || null, chEl: row.chEl };
+        showInfo();
+    }
+    /* One row again (its whole table came) */
+    function gridRedoRow(i) {
+        var old = gMap[i];
+        if (!old) return;
+        gMap[i] = gridBuildRow(i);
+        gridRows.replaceChild(gMap[i].el, old.el);
+        if (i === gRow) gridMark();
+    }
+    /* The focused programme stays in view: the window moves by half hours */
+    function gShow(p) {
+        var now = Date.now();
+        gLive = p[0] <= now && p[1] > now;
+        if (gLive) { gTime = now; if (now < gT0 + 600000 || now > gT0 + G_SPAN - 1800000) gT0 = gFloor(now - 20 * 60000); return; }
+        if (p[0] < gT0) gT0 = gFloor(p[0]);
+        else if (p[0] > gT0 + G_SPAN - 2700000) gT0 = gFloor(p[0] - 1800000);
+        gTime = Math.max(p[0], gT0) + 60000;
+    }
+    function gridMove(dir) {
+        var c = ctx[gRow], l = gList(c), cur = gFocus, to = null, i;
+        if (!c || !cur) { TV.sound.edge(); return; }
+        if (dir < 0) { for (i = l.length - 1; i >= 0; i--) if (l[i][1] <= cur[0] + 60000 && l[i] !== cur) { to = l[i]; break; } }
+        else for (i = 0; i < l.length; i++) if (l[i][0] >= cur[1] - 60000 && l[i] !== cur) { to = l[i]; break; }
+        if (!to) { TV.sound.edge(); return; }
+        TV.sound.tick();
+        gShow(to);
+        drawGrid();
+    }
+    /* ⏪ ⏩: the same hour a day before or after, on the channel you are on (as far as its programmes go) */
+    function gridDayJump(d) {
+        var l = gList(ctx[gRow]), cur = gFocus, t = (cur ? Math.max(cur[0], gT0) + 60000 : gTime) + d * 86400000, to = null;
+        for (var i = 0; i < l.length; i++) if (l[i][0] <= t && l[i][1] > t) { to = l[i]; break; }
+        if (!to && l.length) to = t < l[0][0] ? l[0] : l[l.length - 1];
+        if (!to || to === cur) { TV.sound.edge(); return; }
+        TV.sound.tick();
+        gShow(to);
+        drawGrid();
+    }
+    function gridRow(d) {
+        var n = TV.clamp(gRow + d, 0, ctx.length - 1);
+        if (n === gRow) { TV.sound.edge(); return; }
+        gRow = n;
+        TV.sound.tick();
+        drawGrid();
+        gridSoon();
+    }
+    /* The channel you stay on: its whole table (the days before, whole plots), as the list asks for it */
+    function gridSoon() {
+        TV.uncalm(gridJob);
+        gridJob = TV.calm(function () {
+            var c = ctx[gRow];
+            if (!c || view !== "grid" || !root.classList.contains("has-list") || gHist[c.id]) return;
+            TV.epg.history(c).then(function (l) {
+                if (!l.length || view !== "grid" || !root.classList.contains("has-list")) return;
+                gHist[c.id] = l;
+                gHistOrder.push(c.id);
+                while (gHistOrder.length > 10) delete gHist[gHistOrder.shift()];
+                var i = ctx.indexOf(c);
+                if (i >= 0) gridRedoRow(i);
+            });
+        }, 350);
+    }
+    function gridKey(code) {
+        if (code === K.LEFT) { gridMove(-1); return; }
+        if (code === K.RIGHT) { gridMove(1); return; }
+        if (code === K.UP) { gridRow(-1); return; }
+        if (code === K.DOWN) { gridRow(1); return; }
+        if (code === K.CH_UP) { gridRow(-(G_ROWS - 1)); return; }
+        if (code === K.CH_DOWN) { gridRow(G_ROWS - 1); return; }
+        if (code === K.RW || code === K.PREV) { gridDayJump(-1); return; }
+        if (code === K.FF || code === K.NEXT) { gridDayJump(1); return; }
+        if (TV.isBack(code)) { setView("grid", false); }          // onto the rail: the views, then Back again closes
+    }
+
+    /* ---------- the channel list's programmes and their details ----------
+       Beside the channel list (OK or ◀ on a channel): the programmes of the channel you are on in the list, the days
+       before included when the provider keeps them (TV.epg.history), and on the right the one you are on: its
+       times, its plot and, with a TMDB key, its IMDb rating, its cast and its director (TV.meta.programme).
+       ▶ goes into the programmes, ▲▼ move, ◀ or Back comes back to the channels. OK on a past programme the
+       provider keeps plays its replay at once; on the one on now, the channel live; OK held: Start Over. */
+    function dayLabel(t) {
+        var d = new Date(t), today = new Date(), k = d.toDateString();
+        if (k === today.toDateString()) return T("Today");
+        if (k === new Date(today.getTime() - 86400000).toDateString()) return T("Yesterday");
+        if (k === new Date(today.getTime() + 86400000).toDateString()) return T("Tomorrow");
+        var s = "";
+        try { s = d.toLocaleDateString(TV.locale, { weekday: "long", day: "numeric", month: "long" }); } catch (e) {}
+        return s ? s.charAt(0).toUpperCase() + s.slice(1) : k;
+    }
+    function canReplay(c, p) { return !!(c && p && p[0] <= Date.now() && TV.catchup && TV.catchup.can(c, p[0])); }
+    function renderProg(it) {
+        if (it.day) return el("div", "prow prow--day", esc(it.day));
+        var p = it.p, now = Date.now(), past = p[1] <= now, on = p[0] <= now && p[1] > now;
+        var keep = past && canReplay(progFor, p), playing = anchorOf(progFor) === p[0];      // the one a replay is playing
+        return el("div", "prow" + (past ? " is-past" : "") + (on ? " is-now" : "") + (keep ? " has-replay" : ""),
+            "<div class='prow__time'>" + TV.hhmm(p[0]) + "</div><div class='prow__txt'><div class='prow__t'>" + esc(p[2] || "") + "</div>" +
+            (on ? "<div class='bar prow__bar'><i style='width:" + Math.round(TV.epg.progress(p) * 100) + "%'></i></div>" : "") + "</div>" +
+            (playing ? "<div class='prow__mark prow__mark--on'>" + TV.icon("speaker", 24) + "</div>" : keep ? "<div class='prow__mark'>" + TV.icon("restart", 24) + "</div>" : on ? "<div class='prow__mark prow__mark--live'>" + esc(T("LIVE")) + "</div>" : ""));
+    }
+    /* The programmes in the list: a line for each day, the focus on `focusStart` (a programme's start) or on what is on now */
+    function setProgs(l, focusStart, keep) {
+        var now = Date.now(), items = [], idx = -1, lastDay = "";
+        // keep: the programme you are on stays where it is on screen (the days before come in above it, unseen)
+        var y = keep && plist.items.length ? plist.index * plist.rowH - plist.scroll : null;
+        (l || []).forEach(function (p) {
+            var k = new Date(p[0]).toDateString();
+            if (k !== lastDay) { lastDay = k; items.push({ day: dayLabel(p[0]) }); }
+            if (idx < 0 && (focusStart ? p[0] >= focusStart : p[1] > now)) idx = items.length;
+            items.push({ p: p });
+        });
+        if (idx < 0) idx = items.length - 1;
+        progEmpty.textContent = items.length ? "" : T("No programme information");
+        if (!items.length && listZone === "progs") { listZone = "chans"; vlist.setActive(true); }
+        // straight at its place: a list that opens on today is not seen running through the days before
+        plist.inner.style.transition = "none";
+        plist.set(items, Math.max(0, idx));
+        if (y !== null && items.length) { plist.scroll = Math.max(0, plist.index * plist.rowH - y); plist.draw(); }
+        void plist.inner.offsetHeight;
+        plist.inner.style.transition = "";
+        plist.setActive(listZone === "progs");
+    }
+    function loadProgs(c) {
+        TV.uncalm(progJob);
+        var tok = ++progTok;
+        progFor = c || null;
+        if (!c) { progHead.innerHTML = ""; setProgs([]); drawInfo(null, null); return; }
+        var days = c.arch && TV.catchup && TV.catchup.can(c, Date.now() - 120000) ? Math.min(30, c.arch) : 0, a = anchorOf(c);
+        progHead.innerHTML = "<span>" + esc(c.name) + "</span>" + (days ? "<small class='osd__keeps'>" + TV.icon("restart", 20) + "<span>" + esc(days === 1 ? T("Replay: 1 day") : T("Replay: {n} days", { n: days })) + "</span></small>" : "");
+        var first = TV.epg.list(c) || [], t0 = Date.now() - 86400000;
+        setProgs(first.filter(function (p) { return p[1] > t0; }), a);
+        showInfo();
+        TV.epg.history(c).then(function (l) {
+            if (tok !== progTok || !root.classList.contains("has-list") || view !== "list") return;
+            var old = plist.items.filter(function (it) { return it.p; });
+            if (old.length === l.length && (!l.length || (old[0].p[0] === l[0][0] && old[old.length - 1].p[0] === l[l.length - 1][0]))) {
+                // the same programmes; their whole plots may have come
+                l.forEach(function (p, i) { old[i].p = p; });
+                showInfo();
+                return;
+            }
+            // more of them (the days before): the one you are on does not move
+            var cur = plist.current(), had = !!(cur && cur.p);
+            if (a && listZone !== "progs") setProgs(l, a);        // a replay's own programme, now that the table has it
+            else setProgs(l, had ? cur.p[0] : a, had);
+            showInfo();
+        });
+    }
+    /* A moment after the last ▲▼ in the channels: nothing is asked for the channels only passed over */
+    function progsSoon() {
+        TV.uncalm(progJob);
+        progJob = TV.calm(function () { if (root.classList.contains("has-list")) loadProgs(vlist.current()); }, 260);
+    }
+    function setListZone(z) {
+        if (z === "progs") {
+            if (progFor !== vlist.current()) loadProgs(vlist.current());
+            if (!plist.items.length) { TV.sound.edge(); return; }
+        }
+        listZone = z;
+        vlist.setActive(z === "chans");
+        plist.setActive(z === "progs");
+        TV.sound.tick();
+        if (z === "chans") {                              // back on what is on now (or on what a replay is playing)
+            var now = Date.now(), items = plist.items, a = anchorOf(progFor);
+            for (var i = 0; i < items.length; i++) if (items[i].p && (a ? items[i].p[0] >= a : items[i].p[1] > now)) { plist.focus(i, true); break; }
+        }
+        showInfo();
+    }
+    function progMove(d) {
+        var i = plist.index + d;
+        while (plist.items[i] && plist.items[i].day) i += d;
+        if (!plist.items[i]) { TV.sound.edge(); return; }
+        plist.focus(i, true);
+        TV.sound.tick();
+        showInfo();
+    }
+    /* The programme described on the right: the one focused in the programmes, or what is on now on the channel */
+    function infoTarget() {
+        if (view === "grid") return { c: ctx[gRow] || null, p: gFocus && !gFocus[4] ? gFocus : null };
+        var it = plist && plist.current();
+        return { c: progFor, p: it && it.p ? it.p : null };
+    }
+    function showInfo() {
+        var tg = infoTarget(), c = tg.c, p = tg.p;
+        var same = infoFor && infoFor.c === c && infoFor.p && p && infoFor.p[0] === p[0] && infoFor.p[2] === p[2];
+        if (same) { infoFor.p = p; drawInfo(c, p, infoFor.m); return; }    // the same one (its whole plot came, or the focus changed panel): what is asked for it goes on
+        TV.uncalm(infoJob);
+        var o = p ? { dur: Math.round((p[1] - p[0]) / 60000) } : null;
+        // already looked up: shown at once, with the rest (nothing comes in later to move the text)
+        var known = c && p && p[2] && TV.meta.hasKey() ? TV.meta.programmeKnown(p[2], o) : null;
+        infoFor = { c: c, p: p, m: known || null };
+        drawInfo(c, p, infoFor.m);
+        if (known !== undefined) return;
+        var my = infoFor;
+        infoJob = TV.calm(function () {
+            if (infoFor !== my || !root.classList.contains("has-list")) return;
+            o.desc = TV.epg.desc(p);
+            TV.meta.programme(p[2], o, function (m) {
+                if (infoFor !== my || !m || !root.classList.contains("has-list")) return;
+                my.m = m;
+                drawInfo(my.c, my.p, m);
+            });
+        }, 450);
+    }
+    /* What the keys do where you are, under the details */
+    function infoHint(c, p) {
+        var now = Date.now(), keeps = !!(c && c.arch && TV.catchup && TV.catchup.can(c, now - 120000)), hint;
+        if (listZone === "rail") return T("▲▼ List or Grid  ·  OK: open  ·  Back: close");
+        if (listZone === "chans") return T("◀ List or Grid") + "  ·  " + (keeps ? T("▶ Programmes and replay") : T("▶ Programmes"));
+        if (!p) hint = T("OK: watch live");
+        else if (p[1] <= now) hint = canReplay(c, p) ? T("OK: watch the replay") : c.arch ? T("This programme is over") : T("This channel has no replay.");
+        else if (p[0] <= now) hint = canReplay(c, p) ? T("OK: watch live  ·  Hold OK: start over") : T("OK: watch live");
+        else hint = T("Starts at {t}", { t: TV.hhmm(p[0]) });
+        return view === "grid" ? hint + "  ·  " + T("Back: List or Grid") : hint;
+    }
+    /* The same details in both views: in the list a tall panel on the right, in the grid a wide one above it
+       (the plot on the left, the cast on the right) */
+    function drawInfo(c, p, m) {
+        if (!c) { infoBox.innerHTML = ""; return; }
+        var now = Date.now(), h = "", side = "";
+        var hint = "<div class='pinfo__hint'>" + esc(infoHint(c, p)) + (TV.meta.hasKey() || !p ? "" : "<span class='pinfo__tip'>" + esc(T("Rating and cast: add your TMDB key in Settings.")) + "</span>") + "</div>";
+        if (!p) {
+            infoBox.innerHTML = "<div class='pinfo__main'><div class='pinfo__title'>" + esc(c.name) + "</div><div class='pinfo__desc'>" + esc(T("No programme information")) + "</div></div>" + hint;
+            return;
+        }
+        /* What comes later from TMDB never moves what is already there: the picture is a wash behind the text,
+           the rating goes at the end of the line of the hours, the rest under the plot (beside it in the grid) */
+        var on = p[0] <= now && p[1] > now, mins = Math.max(1, Math.round((p[1] - p[0]) / 60000));
+        var art = m && m.backdrop ? "<div class='pinfo__art' style='background-image:" + esc(TV.cssUrl(m.backdrop)) + "'></div>" : "";
+        h += "<div class='pinfo__title'>" + esc(p[2] || c.name) + "</div>";
+        h += "<div class='pinfo__when'><span>" + (view === "grid" ? esc(c.name) + " · " : "") + (on ? "" : esc(dayLabel(p[0])) + " · ") + TV.hhmm(p[0]) + " – " + TV.hhmm(p[1]) + "</span>" +
+            (on ? "<div class='bar'><i style='width:" + Math.round(TV.epg.progress(p) * 100) + "%'></i></div><span>" + esc(T("{n} min left", { n: Math.max(1, Math.round((p[1] - now) / 60000)) })) + "</span>"
+                : "<span>" + esc(T("{n} min", { n: mins })) + "</span>") +
+            (m && m.imdb ? "<span class='pinfo__rate'>" + TV.meta.imdbBadge(m.imdb) + "</span>" : "") + "</div>";
+        var cast = m && m.cast ? m.cast.slice(0, 5) : [], desc = TV.epg.desc(p) || (m && m.overview) || "";
+        if (m) {
+            var bits = [];
+            if (m.year) bits.push("<span>" + m.year + "</span>");
+            if (m.genres && m.genres.length) bits.push("<span>" + esc(m.genres.slice(0, 2).join(", ")) + "</span>");
+            if (m.kind === "movie" && m.runtime) bits.push("<span>" + esc(TV.runtime(m.runtime)) + "</span>");
+            if (bits.length) side += "<div class='pinfo__meta'>" + bits.join("") + "</div>";
+        }
+        if (desc) h += "<div class='pinfo__desc" + (cast.length ? "" : " is-long") + "'>" + esc(desc) + "</div>";
+        if (cast.length) {
+            side += "<div class='pinfo__h'>" + esc(T("Cast")) + "</div><div class='pinfo__cast'>" + cast.map(function (a) {
+                return "<div class='pinfo__who'><b>" + esc(a.name) + "</b>" + (a.role ? "<span>" + esc(a.role) + "</span>" : "") + "</div>";
+            }).join("") + "</div>";
+        }
+        if (m && m.director && m.director.length) side += "<div class='pinfo__who pinfo__dir'><span>" + esc(T("Director")) + "</span><b>" + esc(m.director.join(", ")) + "</b></div>";
+        infoBox.innerHTML = art + "<div class='pinfo__main'>" + h + "</div>" + (side ? "<div class='pinfo__side'>" + side + "</div>" : "") + hint;
+    }
+    /* Every 30 s while the list stays open: what is on now, its bar and its time left */
+    function refreshList() {
+        if (Date.now() - TV.keyAt < 1500) return;
+        if (view === "grid") { drawGrid(true); return; }
+        vlist.refresh(); plist.refresh();
+        if (infoFor) drawInfo(infoFor.c, infoFor.p, infoFor.m);
+    }
+    function playReplay(c, p) {
+        if (!canReplay(c, p)) { TV.toast(c.arch ? T("This programme is over") : T("This channel has no replay.")); return; }
+        var r = rp(), ctx0 = ctx;
+        if (r && r.ch.id === c.id && r.p[0] === p[0]) { closeList(); return; }        // the one already playing
+        if (tsh) tsLive(true);
+        if (mode === "vod" && vod) vod.onClose = null;      // from one replay to another: not through the live channel
+        finish();
+        TV.catchup.play(c, p, function () { TV.live.play(c, ctx0); }, 0, ctx0);
+    }
+    /* A channel live: from the list while live, or out of a replay (its own channel or another) */
+    function watchLive(c) {
+        if (mode === "vod") {
+            var ctx0 = ctx;
+            if (vod) vod.onClose = function () { TV.live.play(c, ctx0); };
+            finish();
+            return;
+        }
+        closeList();
+        if (!ch || c.id !== ch.id) zapTo(c);
+    }
+    /* OK on a programme (p: none where the guide says nothing): what is on now, the channel live; a past one, its replay */
+    function actOn(c, p) {
+        var now = Date.now();
+        if (!c) return;
+        if (p && p[0] > now) { TV.toast(T("Starts at {t}", { t: TV.hhmm(p[0]) })); return; }
+        if (!p || p[1] > now) { watchLive(c); return; }
+        playReplay(c, p);
+    }
+    /* OK while the list is open */
+    function listOk() {
+        if (listZone === "rail") { setView(view, true); return; }
+        if (listZone === "progs" || listZone === "grid") { progOk(); return; }
+        var c = vlist.current();
+        if (!c) return;
+        if (mode === "vod") { watchLive(c); return; }
+        if (ch && c.id === ch.id) closeList(); else { zapTo(c); vlist.refresh(); }
+    }
+    function progOk() {
+        var tg = infoTarget();
+        if (view === "list" && !tg.p) return;
+        actOn(tg.c, tg.p);
+    }
+    /* OK held on a programme, in the list or in the grid */
+    function progMenu() {
+        var tg = infoTarget(), c = tg.c, p = tg.p, now = Date.now(), items = [];
+        if (!c) return;
+        if (p && canReplay(c, p)) items.push({ label: p[1] <= now ? T("Watch the Replay") : T("Start Over"), icon: "restart", run: function () { playReplay(c, p); } });
+        items.push({ label: T("Watch Live"), icon: "play", run: function () { watchLive(c); } });
+        items.push({ label: view === "grid" ? T("List View") : T("Grid View"), icon: view === "grid" ? "list" : "grid", run: function () { toggleView(); } });
+        TV.menu((p && p[2]) || c.name, items);
+    }
+    function listKey(code) {
+        // the other view, from anywhere: the Guide key, the channel list key, a colour key
+        if (code === K.GUIDE || code === K.CH_LIST || code === K.RED || code === K.GREEN || code === K.YELLOW || code === K.BLUE) { toggleView(); return; }
+        if (listZone === "rail") {
+            if (code === K.UP || code === K.DOWN) {
+                var v = code === K.UP ? "list" : "grid";
+                if (v === view) TV.sound.edge(); else { TV.sound.tick(); setView(v, false); }
+                return;
+            }
+            if (code === K.RIGHT) { TV.sound.tick(); setView(view, true); return; }
+            if (code === K.LEFT || TV.isBack(code)) closeList();
+            return;
+        }
+        if (listZone === "grid") { gridKey(code); return; }
+        if (listZone === "progs") {
+            if (code === K.UP) { progMove(-1); return; }
+            if (code === K.DOWN) { progMove(1); return; }
+            if (code === K.LEFT || TV.isBack(code)) { setListZone("chans"); return; }
+            if (code === K.RIGHT) TV.sound.edge();
+            return;
+        }
+        if (code === K.UP || code === K.DOWN) {
+            vlist.move(code === K.UP ? -1 : 1);
+            TV.epg.ensure(ctx.slice(Math.max(0, vlist.index - 5), vlist.index + 10));
+            progsSoon();
+            return;
+        }
+        if (code === K.RIGHT) { setListZone("progs"); return; }
+        if (code === K.LEFT) { TV.sound.tick(); setView("list", false); return; }       // onto the rail: List or Grid
+        if (TV.isBack(code)) { closeList(); return; }
+    }
 
     function liveMenu() {
         var fav = D.isFav(ch.id);
@@ -666,12 +1211,90 @@
         // the provider's replay: the programme on now, from its start (issue #10)
         var pnow = TV.epg.now(ch), pcur = pnow && pnow.cur;
         if (!tsh && pcur && TV.catchup && TV.catchup.can(ch, pcur[0])) items.unshift({ label: T("Start Over"), icon: "restart", run: function () {
-            var c = ch, ctx0 = ctx; finish(); TV.catchup.play(c, pcur, function () { TV.live.play(c, ctx0); });
+            var c = ch, ctx0 = ctx; finish(); TV.catchup.play(c, pcur, function () { TV.live.play(c, ctx0); }, 0, ctx0);
         } });
+        if (rewindable()) items.unshift({ label: T("Rewind"), icon: "rewind", run: function () { rewind(); } });
         if (tsh) items.unshift({ label: T("Back to Live"), icon: "fwd10", run: function () { tsLive(); } });
         else if (tsOn()) items.unshift({ label: T("Pause Live TV"), icon: "pause", run: function () { tsPause(); } });
         sleepItem(items);
         TV.menu(ch.num + "  " + ch.name, items);
+    }
+
+    /* ---------- going back in a channel the provider keeps ----------
+       ⏪ (or the bar's first button, or Rewind in the menu) on a live channel with the provider's replay: the
+       programme on now opens in the replay player about a minute back, with its whole timeline. ◀ ▶ then move in it
+       as in a movie (10 s a press, faster when held), ▼ Back to Live. Nothing is kept on the screen and no pause is
+       needed first; a channel without replay keeps the pause above (timeshift). Without a guide: the last two hours. */
+    function rewindable() {
+        if (!ch || tsh || mode !== "live" || !TV.catchup || !ch.arch) return null;
+        var n = TV.epg.now(ch), cur = n && n.cur, now = Date.now();
+        if (cur && TV.catchup.can(ch, cur[0])) return cur;
+        var p = [Math.floor((now - 2 * 3600000) / 60000) * 60000, now + 2 * 3600000, ch.name];
+        return TV.catchup.can(ch, p[0]) ? p : null;
+    }
+    function rewind() {
+        var p = rewindable();
+        if (!p) return false;
+        var c = ch, ctx0 = ctx, at = Math.max(0, (Date.now() - p[0]) / 1000 - RP_EDGE);
+        finish();
+        TV.catchup.play(c, p, function () { TV.live.play(c, ctx0); }, at, ctx0);
+        return true;
+    }
+
+    /* ---------- a replay's own timeline ----------
+       A replay (vod.replay, from TV.catchup.play) is a programme of the guide: its length and where you are in it
+       are counted in the programme's own time, whatever the provider's stream says. A stream that knows its length
+       (the provider gives a real file) is moved in by the player itself. One that doesn't (a bare MPEG-TS) is asked
+       again from the moment wanted: an Xtream archive starts on whole minutes, so a jump lands on the minute.
+       base: where the stream now playing starts in the programme (s); pos0: the player's time when it started. */
+    var RP_EDGE = 45;                                     // the archive is this far behind live, at least (s)
+    function rp() { return (mode === "vod" && vod && vod.replay) || null; }
+    function vdur() { var r = rp(); return r ? Math.max(1, (r.p[1] - r.p[0]) / 1000) : TV.player.duration(); }
+    function vpos() {
+        var r = rp();
+        if (!r) return TV.player.position();
+        return r.base + (r.pos0 === null ? 0 : Math.max(0, TV.player.position() - r.pos0));
+    }
+    /* The furthest moment that can be asked: the end, or for a programme still on, what the archive has by now */
+    function vmax() {
+        var r = rp(), d = vdur();
+        if (!r) return Math.max(0, d - 2);
+        return Math.max(0, Math.min(d - 2, (Date.now() - r.p[0]) / 1000 - RP_EDGE));
+    }
+    function rpUrl(r, sec) {
+        var t = Math.max(r.p[0], Math.floor((r.p[0] + sec * 1000) / 60000) * 60000);
+        r.base = (t - r.p[0]) / 1000; r.pos0 = null; r.native = false;
+        r.skip = Math.max(0, sec - r.base);               // inside that minute: the player's own jump, when it can
+        return TV.catchup.url(r.ch, t, Math.max(r.p[1], t + 60000));
+    }
+    function rpOpen(sec) {
+        var o = vod, r = o.replay, url = rpUrl(r, TV.clamp(sec, 0, vmax()));
+        if (!url) return;
+        TV.log("replay: asked again from " + TV.duration(r.base));
+        tracksDone = false;
+        stateBox.classList.add("is-on");
+        TV.player.play(url, vodOpts(o, r.skip > 3 ? r.skip : 0));
+    }
+    /* The stream stopped before the programme's end: the archive had no more when it was asked (a programme still
+       on). What came since is asked for; nothing more twice in a row, or the live edge reached: back to live. */
+    function rpContinue(o) {
+        var r = o.replay, at = vpos();
+        if (!r || vod !== o || at > vdur() - 20) return false;
+        if (r.endAt !== undefined && at <= r.endAt + 5) return false;
+        if ((Date.now() - r.p[0]) / 1000 - at < RP_EDGE + 75) return false;
+        r.endAt = at;
+        rpOpen(at);
+        return true;
+    }
+    /* Jump to a moment (s): the player's own seek, or for a replay it cannot move in, the archive asked again */
+    function goTo(sec, ok, fail) {
+        var r = rp();
+        if (!r) { TV.player.seekTo(sec, ok, fail); return; }
+        sec = TV.clamp(sec, 0, vmax());
+        var inStream = sec - r.base, len = TV.player.duration();
+        if (r.native && r.pos0 !== null && inStream >= 0 && inStream < len - 2) { TV.player.seekTo(inStream, ok, fail); return; }
+        if (ok) ok();
+        rpOpen(sec);
     }
 
     /* ---------- timeshift: pause a channel, go back in it ----------
@@ -820,29 +1443,51 @@
     }
 
     /* ---------- movies and episodes ---------- */
-    function vodPlay(o) {
-        vod = o; ch = null; tracksDone = false; subsOn = false; scrub = null; vb = null; ext = null; delayMs = 0; os = { state: "idle", list: [] }; nextShown = false;
-        openOsd("vod");
-        var start = o.start || 0;
-        stateBox.classList.add("is-on");
-        TV.player.play(o.url, {
-            live: false, start: start, rect: TV.player.FULL, uhd: /\b(4K|UHD|2160P?)\b/i.test((o.item && o.item.name) || "") || /\b(4K|UHD)\b/i.test((TV.data.catOf(o.item || {}).name) || ""),
+    /* What the player is told for a movie, an episode or a replay (a replay asked again from another moment too) */
+    function vodOpts(o) {
+        return {
+            live: false, start: o.replay ? 0 : (o.start || 0), rect: TV.player.FULL, uhd: /\b(4K|UHD|2160P?)\b/i.test((o.item && o.item.name) || "") || /\b(4K|UHD)\b/i.test((TV.data.catOf(o.item || {}).name) || ""),
             onReady: function () { setTimeout(applyTrackPrefs, 0); },
-            onReconnect: function () { stateBox.classList.add("is-on"); tracksDone = false; },
+            onReconnect: function () { stateBox.classList.add("is-on"); tracksDone = false; if (o.replay) o.replay.pos0 = null; },
             onBuffering: function (b) { stateBox.classList.toggle("is-on", !!b); },
             // the picture moves: no spinner and no error left over it (a slow start had shown "timeout" first)
             onPlaying: function () { stateBox.classList.remove("is-on"); errBox.classList.remove("is-on"); if (!tracksDone) setTimeout(applyTrackPrefs, 600); tell("start"); },
-            onTime: function () { stateBox.classList.remove("is-on"); errBox.classList.remove("is-on"); },
+            onTime: function (ms) {
+                stateBox.classList.remove("is-on"); errBox.classList.remove("is-on");
+                var r = o.replay;
+                if (r && r.pos0 === null) {
+                    // the stream's first moment: a real file (its length is known) is moved in by the player itself
+                    var len = TV.player.duration();
+                    r.native = len > 30;
+                    r.pos0 = r.native ? 0 : (+ms || 0) / 1000;
+                    if (r.native && r.skip > 3 && r.skip < len - 5) TV.player.seekTo(r.skip);
+                    r.skip = 0;
+                }
+            },
             onSubtitle: function (s) { if (subsOn && !ext) showSub(s); },
-            onEnded: function () { o.ended = true; save(true); if (o.next && o.onEpisode && TV.pref("autoNext")) { var n = o.next.ep, cb = o.onEpisode; finish(true); cb(n); } else finish(); },
+            onEnded: function () {
+                if (o.replay && rpContinue(o)) return;
+                o.ended = true; save(true);
+                if (o.next && o.onEpisode && TV.pref("autoNext")) { var n = o.next.ep, cb = o.onEpisode; finish(true); cb(n); } else finish();
+            },
             onError: function (e) {
                 stateBox.classList.remove("is-on");
                 // a format the screen cannot decode (HEVC 10-bit on a small Android box, an old Samsung…)
                 var dec = /DECOD|FORMAT_UNSUPPORTED|NOT_SUPPORTED/i.test(String(e));
+                if (o.replay && !dec) { error(T("This replay is not available right now."), String(e), T("Your provider may not keep this moment. Try another programme, or try again later.")); return; }
                 error(dec ? T("This screen cannot decode this video.") : T("This video cannot be played."), String(e),
                       dec ? T("Try another version of it, if there is one.") : T("Try again later, or try another version if there is one."));
             }
-        });
+        };
+    }
+    function vodPlay(o) {
+        vod = o; ch = null; tracksDone = false; subsOn = false; scrub = null; vb = null; ext = null; delayMs = 0; os = { state: "idle", list: [] }; nextShown = false;
+        if (o.replay && o.replay.ctx && o.replay.ctx.length) ctx = o.replay.ctx;      // its channels: the list opens during a replay too
+        openOsd("vod");
+        stateBox.classList.add("is-on");
+        // a replay: from its start, or from the moment asked (going back in a live channel)
+        var url = o.replay ? rpUrl(o.replay, TV.clamp(o.replay.at || 0, 0, vmax())) || o.url : o.url;
+        TV.player.play(url, vodOpts(o));
         // the series' (or movie's) picture for the "next episode" card: never a picture of the episode
         o.art = o.item && TV.sized(o.item.backdrop || "", "w780");
         TV.meta.lookup(o.noResume ? null : o.item).then(function (m) {
@@ -895,7 +1540,11 @@
         if (vod.ep) {
             if (vod.prev) t.push({ id: "prev", label: T("Previous Episode"), icon: "back10" });
             if (vod.next) t.push({ id: "next", label: T("Next Episode"), icon: "fwd10" });
-        } else t.push({ id: "restart", label: T("Start Over"), icon: "restart" });
+        } else {
+            t.push({ id: "restart", label: T("Start Over"), icon: "restart" });
+            if (vod.replay && vod.replay.live) t.push({ id: "live", label: T("Back to Live"), icon: "fwd10" });   // a replay opened from its channel
+            if (vod.replay && vod.replay.ctx && vod.replay.ctx.length) t.push({ id: "list", label: T("Channels and Programmes"), icon: "list" });
+        }
         return t;
     }
     function buildVodBar() {
@@ -917,7 +1566,7 @@
     function drawVod() {
         if (!vod) return;
         if (!vb || vb.root.parentNode !== bar) buildVodBar();
-        var dur = TV.player.duration(), now = TV.player.position(), paused = TV.player.state() === "PAUSED";
+        var dur = vdur(), now = vpos(), paused = TV.player.state() === "PAUSED";
         var pos = scrub ? scrub.target : now, pct = dur ? TV.clamp(pos / dur, 0, 1) * 100 : 0, nowPct = dur ? TV.clamp(now / dur, 0, 1) * 100 : 0;
         put("pp", paused, function (p) { vb.pp.innerHTML = p ? TV.icon("pause", 22) : ""; });
         put("now", TV.duration(pos), function (t) { vb.now.textContent = t; });
@@ -948,26 +1597,26 @@
        block for 2 to 7 s on each jump and start again from a broken picture (squares); a jump while playing
        takes about 0.1 s and starts clean. */
     function seek(dir, big) {
-        var dur = TV.player.duration();
+        var dur = vdur();
         if (!dur || (scrub && scrub.pending)) return;
-        if (!scrub) { scrub = { target: TV.player.position() }; holdFrom = 0; }
+        if (!scrub) { scrub = { target: vpos() }; holdFrom = 0; }
         var step;
         if (TV.isHeld()) {                                 // held: faster the longer it is held
             if (!holdFrom) holdFrom = Date.now();
             var held = Date.now() - holdFrom;
             step = held < 1500 ? 5 : held < 4000 ? 15 : held < 7000 ? 40 : 90;
         } else { holdFrom = 0; step = big ? 30 : 10; }
-        scrub.target = TV.clamp(scrub.target + dir * step, 0, Math.max(0, dur - 2));
+        scrub.target = TV.clamp(scrub.target + dir * step, 0, vmax());
         TV.sound.tick();
         drawVod(); show(0);
         clearTimeout(seekTimer);
         seekTimer = setTimeout(commitSeek, 900);
     }
     function jumpTo(fraction) {
-        var dur = TV.player.duration();
+        var dur = vdur();
         if (!dur || (scrub && scrub.pending)) return;
         if (!scrub) scrub = {};
-        scrub.target = TV.clamp(dur * fraction, 0, Math.max(0, dur - 2));
+        scrub.target = TV.clamp(dur * fraction, 0, vmax());
         drawVod(); show(0);
         clearTimeout(seekTimer);
         seekTimer = setTimeout(commitSeek, 700);
@@ -979,7 +1628,7 @@
         if (!scrub || scrub.pending) return;
         var s = scrub;
         putSub("");
-        if (Math.abs(s.target - TV.player.position()) < 1) { scrub = null; drawVod(); show(); return; }
+        if (Math.abs(s.target - vpos()) < 1) { scrub = null; drawVod(); show(); return; }
         s.pending = true;
         stateBox.classList.add("is-on");
         drawVod(); show(0);
@@ -993,7 +1642,7 @@
             if (TV.DEV) TV.log("seek to " + Math.round(s.target) + " s took " + (Date.now() - t0) + " ms");
             drawVod(); show();
         }
-        setTimeout(function () { TV.player.seekTo(s.target, function () { done(true); }, function () { done(false); }); }, 40);
+        setTimeout(function () { goTo(s.target, function () { done(true); }, function () { done(false); }); }, 40);
         setTimeout(function () { if (scrub === s) done(true); }, 15000);        // the player never answered: unblock
     }
     function cancelSeek() { clearTimeout(seekTimer); if (scrub && scrub.pending) return; scrub = null; drawVod(); show(); }
@@ -1031,11 +1680,12 @@
     function dismissNext() { clearInterval(nextTimer); nextEl.classList.remove("is-on"); if (zone === "next") zone = "track"; drawVod(); show(); }
 
     function vodMenu() {
-        var items = [{ label: T("Start Over"), icon: "restart", run: function () { scrub = null; TV.player.seekTo(0); show(); } },
+        var items = [{ label: T("Start Over"), icon: "restart", run: function () { scrub = null; goTo(0); show(); } },
                      { label: T("Subtitles"), icon: "cc", run: function () { openPop("subs"); } },
                      { label: T("Audio"), icon: "speaker", run: function () { openPop("audio"); } }];
         if (hasQuality()) items.push({ label: T("Quality"), icon: "quality", run: function () { openPop("quality"); } });
         items.push({ label: T("Stream Info"), icon: "info", run: function () { openPop("info"); } });
+        if (rp() && canList()) items.unshift({ label: T("Channels and Programmes"), icon: "list", run: function () { openList(); } });
         if (vod && vod.prev) items.push({ label: T("Previous Episode") + "  ·  " + vod.prev.label, icon: "back10", run: function () { goEpisode(vod.prev); } });
         if (vod && vod.next) items.push({ label: T("Next Episode") + "  ·  " + vod.next.label, icon: "fwd10", run: function () { goEpisode(vod.next); } });
         sleepItem(items);
@@ -1105,12 +1755,7 @@
     function liveKey(code) {
         var d = TV.digit(code), shown = root.classList.contains("is-shown");
         if (d >= 0) { number(d, function (n) { var c = TV.live.findNumber(n); if (c) zapTo(c); else TV.toast(T("No channel {n}", { n: n })); }); return; }
-        if (root.classList.contains("has-list")) {
-            if (code === K.UP) { vlist.move(-1); TV.epg.ensure(ctx.slice(Math.max(0, vlist.index - 5), vlist.index + 10)); return; }
-            if (code === K.DOWN) { vlist.move(1); TV.epg.ensure(ctx.slice(Math.max(0, vlist.index - 5), vlist.index + 10)); return; }
-            if (code === K.LEFT || TV.isBack(code)) { closeList(); return; }
-            return;
-        }
+        if (root.classList.contains("has-list")) { listKey(code); return; }
         if (zone === "icons") {
             var icons = liveIcons();
             if (code === K.LEFT) { if (iconIndex > 0) { iconIndex--; TV.sound.tick(); } else { zone = "live"; } drawLive(); show(); return; }
@@ -1121,10 +1766,14 @@
         // timeshift: ⏯ pauses and resumes, ◀ ▶ (or ⏪ ⏩) 10 s back or forward (held: 30 s), ⏹ back to live
         if ((code === K.PAUSE || code === K.PLAYPAUSE) && !(tsh && tsh.paused) && tsPause()) return;
         if ((code === K.PLAY || code === K.PLAYPAUSE) && tsh && tsh.paused) { tsResume(); return; }
+        // behind live with nothing on screen: ◀ is the list again; with the bar shown (or paused), it moves in time
+        if (tsh && code === K.LEFT && !shown && !tsh.paused && tsTarget === null) { openList(); return; }
         if (tsh && (code === K.LEFT || code === K.RW)) { tsJump(-1); return; }
         if (tsh && (code === K.RIGHT || code === K.FF)) { tsJump(1); return; }
         if (tsh && code === K.STOP) { tsLive(); return; }
         if (tsh && code === K.UP) { zone = "icons"; iconIndex = 0; TV.sound.tick(); drawLive(); show(0); return; }
+        // ⏪ on a channel the provider keeps: back in it, through its replay (no pause needed first)
+        if (code === K.RW && !tsh && rewind()) return;
         if (code === K.RW && tsOn()) { TV.toast(T("Pause the channel first: APL TV keeps it from that moment.")); return; }
         switch (code) {
             case K.UP: case K.CH_UP: zap(-1); return;
@@ -1132,7 +1781,9 @@
             case K.RIGHT:
                 if (shown && liveIcons().length) { zone = "icons"; iconIndex = 0; TV.sound.tick(); drawLive(); show(0); return; }
                 drawLive(); tickClock(); show(); return;
-            case K.LEFT: case K.INFO: drawLive(); tickClock(); show(); return;
+            case K.LEFT: openList(); return;                   // the channels, their programmes and the past ones (as OK)
+            case K.GUIDE: TV.setPref("osdView", "grid"); openList(); return;      // straight to the grid of every channel
+            case K.INFO: drawLive(); tickClock(); show(); return;
             case K.PREV_CH: case K.PREV: if (prevCh) zapTo(prevCh); return;
             case K.CH_LIST: openList(); return;
         }
@@ -1143,6 +1794,7 @@
     }
     function vodKey(code) {
         var d = TV.digit(code), shown = root.classList.contains("is-shown");
+        if (root.classList.contains("has-list")) { listKey(code); return; }
         if (zone === "next") {
             if (code === K.UP || code === K.LEFT || code === K.RIGHT) { /* the card keeps the focus */ return; }
             if (TV.isBack(code) || code === K.DOWN) { dismissNext(); return; }
@@ -1161,7 +1813,10 @@
             if (code === K.DOWN) { TV.sound.edge(); return; }
         }
         switch (code) {
-            case K.LEFT: seek(-1); return;
+            /* A replay: ◀ opens the channels and programmes as on a live channel while nothing is on screen; with
+               the bar shown (▲, ▶, OK…) or the cursor moving, ◀ ▶ move in time as in any video. ⏪ ⏩ always do. */
+            case K.LEFT: if (rp() && canList() && !shown && !scrub) { openList(); return; } seek(-1); return;
+            case K.CH_LIST: case K.GUIDE: if (rp() && canList() && !scrub) { if (code === K.GUIDE) TV.setPref("osdView", "grid"); openList(); } return;
             case K.RIGHT: seek(1); return;
             case K.RW: seek(-1, true); return;
             case K.FF: seek(1, true); return;
@@ -1193,14 +1848,10 @@
         },
         ok: function () {
             if (pop) { popOk(); return; }
+            if (root.classList.contains("has-list")) { listOk(); return; }
             if (mode === "live") {
-                if (zone === "icons") { var k = liveIcons()[iconIndex]; if (k === "golive") { zone = "live"; iconIndex = 0; tsLive(); return; } if (k === "ts") { if (tsh && tsh.paused) tsResume(); else tsPause(); drawLive(); return; } if (k) openPop(k); return; }
-                if (tsh && tsh.paused && !root.classList.contains("has-list")) { tsResume(); return; }
-                if (root.classList.contains("has-list")) {
-                    var c = vlist.current();
-                    if (c && ch && c.id === ch.id) closeList(); else if (c) { zapTo(c); vlist.refresh(); }
-                    return;
-                }
+                if (zone === "icons") { var k = liveIcons()[iconIndex]; if (k === "golive") { zone = "live"; iconIndex = 0; tsLive(); return; } if (k === "rw") { rewind(); return; } if (k === "ts") { if (tsh && tsh.paused) tsResume(); else tsPause(); drawLive(); return; } if (k) openPop(k); return; }
+                if (tsh && tsh.paused) { tsResume(); return; }
                 openList();
                 return;
             }
@@ -1210,21 +1861,26 @@
                 var t = vb.tabDefs[tabIndex];
                 if (t && t.id === "prev") goEpisode(vod.prev);
                 else if (t && t.id === "next") goEpisode(vod.next);
-                else if (t && t.id === "restart") { TV.player.seekTo(0); zone = "track"; drawVod(); show(); }
+                else if (t && t.id === "restart") { goTo(0); zone = "track"; drawVod(); show(); }
+                else if (t && t.id === "live") finish();
+                else if (t && t.id === "list") { zone = "track"; drawVod(); openList(); }
                 return;
             }
             if (scrub) { commitSeek(); return; }
             TV.player.toggle(); drawVod(); show(TV.player.state() === "PAUSED" ? 0 : 3000);
         },
-        canHold: function () { return !root.classList.contains("has-list") && !scrub && !pop && (zone === "track" || zone === "live"); },
-        longOk: function () { if (mode === "live") liveMenu(); else vodMenu(); }
+        canHold: function () {
+            if (root.classList.contains("has-list")) return (listZone === "progs" || listZone === "grid") && !pop;   // a programme's menu
+            return !scrub && !pop && (zone === "track" || zone === "live");
+        },
+        longOk: function () { if (root.classList.contains("has-list")) progMenu(); else if (mode !== "live") vodMenu(); else liveMenu(); }
     };
 
     /* For the voice assistant (voice.js): each returns false when it does not apply, so the screen does its own thing */
     function voiceSeek(to) {
-        var d = TV.player.duration();
+        var d = vdur();
         if (!open || mode !== "vod" || !d || scrub) return false;
-        TV.player.seekTo(TV.clamp(to, 0, Math.max(0, d - 2)));
+        goTo(TV.clamp(to, 0, vmax()));
         drawVod(); show();
         return true;
     }
@@ -1237,7 +1893,7 @@
             if (mode === "vod") { drawVod(); show(TV.player.state() === "PAUSED" ? 0 : 3000); }
             return true;
         },
-        seekBy: function (sec) { return voiceSeek(TV.player.position() + sec); },
+        seekBy: function (sec) { return voiceSeek(vpos() + sec); },
         seekTo: function (sec) { return voiceSeek(sec); },
         step: function (d) {
             if (!open) return false;
@@ -1245,6 +1901,16 @@
             zap(d); return true;
         }
     };
+
+    /* Programmes arriving while the list is open (a channel's short guide, the guide's refresh): shown once the remote rests */
+    TV.epg.onUpdate(function () {
+        if (!open || !root || !root.classList.contains("has-list")) return;
+        TV.uncalm(updJob);
+        updJob = TV.calm(function () {
+            if (!open || !root.classList.contains("has-list")) return;
+            if (view === "grid") drawGrid(true); else vlist.refresh();
+        }, 700);
+    });
 
     TV.osd = {
         live: live, vod: vodPlay, isOpen: function () { return open; }, buffering: buffering, error: error, number: number,

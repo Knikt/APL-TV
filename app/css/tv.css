@@ -395,13 +395,120 @@ body.is-preview { cursor: default; }
 .osd__seek .bar u { position: absolute; top: -7px; width: 24px; height: 24px; margin-left: -12px; border-radius: 12px; background: #fff; box-shadow: 0 2px 10px rgba(0,0,0,0.5); text-decoration: none; }
 .osd__seekhint { margin-top: 12px; font-size: 21px; color: var(--faint); }
 /* Channel list over the picture (OK in live) */
-.osd__list { position: absolute; left: 40px; top: 40px; bottom: 40px; width: 720px; border-radius: 40px; padding: 26px 22px; overflow: hidden; opacity: 0; transform: translateX(-40px);
+.osd__list { position: absolute; left: 132px; top: 40px; bottom: 40px; width: 600px; border-radius: 40px; padding: 26px 22px; overflow: hidden; opacity: 0; transform: translateX(-40px);
     transition: opacity 220ms ease, transform 300ms var(--ease); pointer-events: none; }
 .osd.has-list .osd__list { opacity: 1; transform: none; }
 .osd__listhead { height: 56px; padding: 0 18px; font-size: 26px; font-weight: 700; display: flex; align-items: center; justify-content: space-between; }
 .osd__listhead small { font-size: 21px; font-weight: 500; color: var(--faint); }
 .osd__listclip { position: absolute; left: 22px; right: 22px; top: 92px; bottom: 26px; overflow: hidden; }
 .osd.has-list .osd__bar { opacity: 0; }
+/* Beside the channel list: the programmes of the channel you are on in it (the past ones too), then the programme
+   you are on (times, plot, rating, cast). No flex "gap" in these rules: Tizen 6 has none, and the spacing generated
+   at the end of tv2.css is only made for the rules that have one. */
+.osd__progs, .osd__pinfo { position: absolute; top: 40px; bottom: 40px; border-radius: 40px; overflow: hidden; opacity: 0; transform: translateX(-40px);
+    transition: opacity 220ms ease, transform 300ms var(--ease); pointer-events: none; }
+.osd__progs { left: 748px; width: 520px; padding: 26px 22px; }
+.osd__pinfo { left: 1284px; right: 40px; padding: 34px 36px 30px; }
+.osd.has-list .osd__progs, .osd.has-list .osd__pinfo { opacity: 1; transform: none; }
+/* These panels are drawn again at each press (the focus moves, the details change): a thin ring, not the wide blurred
+   shadow and the masked edge of the glass, which a TV takes long to paint (the player's bar does the same) */
+.osd__list, .osd__progs, .osd__pinfo, .osd__grid, .osd__rail { box-shadow: inset 0 0 0 1.5px rgba(255,255,255,0.12); }
+.osd__list::before, .osd__progs::before, .osd__pinfo::before, .osd__grid::before, .osd__rail::before { display: none; }
+/* From one view to the other: at once */
+.osd.is-switching .osd__list, .osd.is-switching .osd__progs, .osd.is-switching .osd__pinfo, .osd.is-switching .osd__grid { transition: none; }
+.osd.has-list .osd__clock { opacity: 0; }
+.osd__progs .osd__listhead span { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.osd__keeps { flex: none; display: flex; align-items: center; margin-left: 14px; }
+.osd__keeps svg { margin-right: 7px; }
+.osd__progempty { position: absolute; left: 40px; right: 40px; top: 112px; font-size: 23px; color: var(--dim); }
+.prow { display: flex; align-items: center; height: 70px; padding: 0 16px 0 14px; border-radius: 20px; transition: transform 220ms var(--spring), background 150ms ease, color 150ms ease; }
+.prow__time { flex: none; min-width: 78px; margin-right: 16px; font-size: 23px; font-weight: 600; color: var(--dim); font-variant-numeric: tabular-nums; }
+.prow__txt { flex: 1; min-width: 0; }
+.prow__t { font-size: 25px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.prow__bar { margin-top: 7px; width: 200px; height: 4px; }
+.prow__mark { flex: none; margin-left: 12px; display: flex; color: var(--dim); }
+.prow__mark--live { padding: 3px 8px; border-radius: 6px; background: var(--live); color: #fff; font-size: 15px; font-weight: 800; letter-spacing: 0.6px; }
+.prow.is-past { color: rgba(255,255,255,0.42); }
+.prow.is-past .prow__time { color: rgba(255,255,255,0.3); }
+.prow.is-past.has-replay { color: rgba(255,255,255,0.9); }
+.prow.is-past.has-replay .prow__time { color: var(--dim); }
+.prow.is-current { background: rgba(255,255,255,0.10); }
+.osd__progs .prow.is-focused { background: var(--focus-bg); color: var(--focus-fg); transform: scale(1.03); box-shadow: 0 14px 30px rgba(0,0,0,0.35); }
+.osd__progs .prow.is-focused .prow__time, .osd__progs .prow.is-focused .prow__mark { color: #6e6e73; }
+.osd__progs .prow.is-focused .prow__mark--live { color: #fff; }
+.osd__progs .prow.is-focused .bar { background: rgba(0,0,0,0.14); }
+.osd__progs .prow.is-focused .bar i { background: #1d1d1f; }
+.prow--day { align-items: flex-end; padding-bottom: 12px; font-size: 19px; font-weight: 700; letter-spacing: 0.8px; text-transform: uppercase; color: var(--blue); }
+/* The picture, when TMDB gives one: a wash behind the top of the text, so its arrival moves nothing */
+.pinfo__art { position: absolute; left: 0; right: 0; top: 0; height: 330px; z-index: 0; opacity: 0.42; background: center 22% / cover no-repeat;
+    -webkit-mask-image: linear-gradient(180deg, #000 30%, transparent); mask-image: linear-gradient(180deg, #000 30%, transparent); }
+.pinfo__main, .pinfo__side { position: relative; z-index: 1; }
+.pinfo__rate { flex: none; margin-left: auto; display: flex; }
+.pinfo__when .pinfo__rate { margin-left: auto; padding-left: 14px; }
+.pinfo__rate .imdb { padding: 0; height: 28px; }
+.pinfo__title { font-size: 38px; font-weight: 700; line-height: 1.15; letter-spacing: -0.3px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.pinfo__when { display: flex; align-items: center; margin-top: 12px; font-size: 22px; color: var(--dim); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.pinfo__when .bar { flex: 1; max-width: 190px; height: 6px; margin: 0 16px; }
+.pinfo__when span + span { margin-left: 16px; }
+.pinfo__meta { display: flex; align-items: center; flex-wrap: wrap; margin-top: 14px; font-size: 22px; color: var(--dim); }
+.pinfo__meta > * { margin-right: 16px; }
+.pinfo__meta .imdb { padding-left: 0; }
+.pinfo__desc { margin-top: 18px; font-size: 23px; line-height: 1.38; color: rgba(255,255,255,0.84); white-space: pre-line; display: -webkit-box; -webkit-line-clamp: 9; -webkit-box-orient: vertical; overflow: hidden; }
+.pinfo__desc.is-long { -webkit-line-clamp: 20; }
+.pinfo__h { margin-top: 20px; font-size: 18px; font-weight: 700; letter-spacing: 0.8px; text-transform: uppercase; color: var(--faint); }
+.pinfo__cast { margin-top: 8px; }
+.pinfo__who { display: flex; align-items: baseline; font-size: 22px; line-height: 1.5; white-space: nowrap; overflow: hidden; }
+.pinfo__who b { flex: none; max-width: 62%; font-weight: 600; overflow: hidden; text-overflow: ellipsis; }
+.pinfo__who span { min-width: 0; margin-left: 12px; color: var(--dim); overflow: hidden; text-overflow: ellipsis; }
+.pinfo__dir { margin-top: 12px; }
+.pinfo__dir span { flex: none; margin: 0 12px 0 0; }
+.pinfo__hint { position: absolute; left: 36px; right: 36px; bottom: 24px; font-size: 19px; line-height: 1.4; color: var(--faint); }
+.pinfo__tip { display: block; }
+.pinfo__hint { z-index: 1; }
+.prow__mark--on, .osd__progs .prow.is-focused .prow__mark--on { color: #ffd60a; }
+.osd__progs .prow.is-focused .prow__mark--on { color: #ff9f0a; }
+/* The two views of the list, on a rail at its left: a list, a grid of squares; the one you are in is lit */
+.osd__rail { position: absolute; left: 40px; top: 40px; width: 76px; padding: 8px 0; border-radius: 38px; opacity: 0; transform: translateX(-40px);
+    transition: opacity 220ms ease, transform 300ms var(--ease); pointer-events: none; }
+.osd.has-list .osd__rail { opacity: 1; transform: none; }
+.osd__railbtn { width: 60px; height: 68px; margin: 0 auto; border-radius: 22px; display: flex; flex-direction: column; align-items: center; justify-content: center; color: var(--dim);
+    transition: transform 220ms var(--spring), background 150ms ease, color 150ms ease; }
+.osd__railbtn + .osd__railbtn { margin-top: 6px; }
+.osd__railbtn span { margin-top: 3px; font-size: 14px; font-weight: 700; }
+.osd__railbtn.is-current { background: rgba(255,255,255,0.16); color: #fff; }
+.osd__railbtn.is-focused { background: var(--focus-bg); color: var(--focus-fg); transform: scale(1.08); box-shadow: 0 12px 26px rgba(0,0,0,0.4); }
+/* The grid view: the details in a wide panel above (the plot on the left, the cast on the right), every channel
+   below, three hours across. The cells and the channel boxes are the TV guide's own (.gcell, .grow__ch). */
+.osd__grid { position: absolute; left: 132px; right: 40px; top: 344px; bottom: 40px; border-radius: 40px; overflow: hidden; opacity: 0; transform: translateX(-40px);
+    transition: opacity 220ms ease, transform 300ms var(--ease); pointer-events: none; }
+.osd.has-list.is-grid .osd__grid { opacity: 1; transform: none; }
+.osd.has-list.is-grid .osd__list, .osd.has-list.is-grid .osd__progs { opacity: 0; }
+.ogrid__day { position: absolute; left: 22px; top: 12px; width: 330px; height: 40px; padding-left: 14px; line-height: 40px; font-size: 19px; font-weight: 700; letter-spacing: 0.8px; text-transform: uppercase;
+    color: var(--blue); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ogrid__ruler { position: absolute; left: 368px; top: 12px; width: 1358px; height: 40px; overflow: hidden; }
+.ogrid__rows { position: absolute; left: 22px; right: 22px; top: 58px; }
+.ogrid__row { position: relative; height: 72px; margin-bottom: 6px; }
+.ogrid__row .grow__ch { width: 330px; height: 72px; }
+.ogrid__row .grow__num { width: 40px; }
+.ogrid__row .grow__logo { width: 84px; height: 50px; }
+.ogrid__row .grow__name { flex: 1; font-size: 20px; }
+.ogrid__on { flex: none; display: flex; color: #ffd60a; }
+.ogrid__progs { position: absolute; left: 346px; top: 0; width: 1358px; height: 72px; overflow: hidden; }
+.ogrid__progs .gcell { height: 72px; }
+.ogrid__progs .gcell.is-current { opacity: 1; box-shadow: inset 0 0 0 3px rgba(255,255,255,0.75); }
+.ogrid__now { top: 56px; bottom: 14px; }
+.osd.is-grid .osd__pinfo { left: 132px; bottom: auto; height: 288px; padding: 24px 36px 0; display: flex; }
+.osd.is-grid .pinfo__main { flex: 1; min-width: 0; }
+.osd.is-grid .pinfo__side { flex: none; width: 480px; margin-left: 44px; }
+.osd.is-grid .pinfo__art, .osd.is-grid .pinfo__tip, .osd.is-grid .pinfo__cast .pinfo__who:nth-child(n+5) { display: none; }
+.osd.is-grid .pinfo__title { font-size: 34px; -webkit-line-clamp: 1; }
+.osd.is-grid .pinfo__meta { margin-top: 2px; }
+.osd.is-grid .pinfo__when .pinfo__rate { margin-left: 10px; }
+.osd.is-grid .pinfo__desc { margin-top: 14px; -webkit-line-clamp: 3; }
+.osd.is-grid .pinfo__desc.is-long { -webkit-line-clamp: 4; }
+.osd.is-grid .pinfo__h { margin-top: 10px; }
+.ogrid__progs .gcell.is-playing { box-shadow: inset 0 -4px 0 #ffd60a; }
+.osd.is-grid .pinfo__hint { bottom: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* ===================== MULTIVIEW ===================== */
 .mvui { position: fixed; top: 0; right: 0; bottom: 0; left: 0; z-index: 30; display: none; }

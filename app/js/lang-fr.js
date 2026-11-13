@@ -901,5 +901,28 @@ window.TV_LANG_FR = {
     /* Shown through T() from 365Scores' tables: the groups of a competition (the KHL's conferences) */
     "Western Conference": "Conférence Ouest",
     "Scandinavia": "Scandinavie",
-    "Eastern Conference": "Conférence Est"
+    "Eastern Conference": "Conférence Est",
+    /* The channel list's programmes (the past ones, replay at once), their details, and going back in a live channel */
+    "Replay: 1 day": "Replay : 1 jour",
+    "Replay: {n} days": "Replay : {n} jours",
+    "{n} min": "{n} min",
+    "▶ Programmes and replay": "▶ Programmes et replay",
+    "▶ Programmes": "▶ Programmes",
+    "OK: watch the replay": "OK : voir le replay",
+    "OK: watch live  ·  Hold OK: start over": "OK : regarder en direct  ·  OK maintenu : depuis le début",
+    "OK: watch live": "OK : regarder en direct",
+    "Rating and cast: add your TMDB key in Settings.": "Note et casting : ajoute ta clé TMDB dans Réglages.",
+    "Watch Live": "Regarder en direct",
+    "Rewind": "Revenir en arrière",
+    "This replay is not available right now.": "Ce replay n'est pas disponible pour le moment.",
+    "Your provider may not keep this moment. Try another programme, or try again later.": "Ton fournisseur ne garde peut-être pas ce moment. Essaie un autre programme, ou réessaie plus tard.",
+    /* The channel list's two views (the rail): List or Grid */
+    "List": "Liste",
+    "Grid": "Grille",
+    "List View": "Vue liste",
+    "Grid View": "Vue grille",
+    "▲▼ List or Grid  ·  OK: open  ·  Back: close": "▲▼ Liste ou grille  ·  OK : ouvrir  ·  Retour : fermer",
+    "◀ List or Grid": "◀ Liste ou grille",
+    "Back: List or Grid": "Retour : liste ou grille",
+    "Channels and Programmes": "Chaînes et programmes"
 };

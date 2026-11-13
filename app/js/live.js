@@ -515,14 +515,18 @@
         var days = ch && ch.arch ? Math.min(30, ch.arch) : 0, now = Date.now();
         return !!days && start < now - 30000 && start > now - days * 86400000 && !!catchupUrl(ch, start, start + 3600000);
     }
-    // p: [start, end, title]; played like a movie (seeking, pause), from its start
-    function playCatchup(ch, p, onClose) {
+    /* p: [start, end, title]; played like a movie (seeking, pause), from its start, or from `at` seconds into it
+       (going back in a live channel). The player keeps the programme's own timeline (osd.js, "replay"): a jump the
+       provider's stream cannot make by itself asks the archive again from that moment. onClose given: it goes
+       back to the channel, so the player offers Back to Live. */
+    function playCatchup(ch, p, onClose, at, context) {
         var url = catchupUrl(ch, p[0], p[1]);
         if (!url) { TV.toast(T("This channel has no replay.")); return; }
-        TV.log("replay: " + ch.name + " from " + new Date(p[0]).toISOString());
+        TV.log("replay: " + ch.name + " from " + new Date(p[0]).toISOString() + (at ? " + " + Math.round(at) + " s" : ""));
         var day = new Date(p[0]).toLocaleDateString(TV.locale, { weekday: "long", day: "numeric", month: "long" });
         TV.osd.vod({ url: url, item: { id: "replay:" + ch.id, name: p[2] || ch.name, kind: "replay" }, title: p[2] || ch.name, sub: ch.name + " · " + day + " · " + TV.hhmm(p[0]),
-                     start: 0, noResume: true, onClose: onClose || function () {} });
+                     start: 0, noResume: true, onClose: onClose || function () {},
+                     replay: { ch: ch, p: p, at: at || 0, live: !!onClose, ctx: context || null } });
     }
     TV.catchup = { url: catchupUrl, can: canCatchup, play: playCatchup };
 

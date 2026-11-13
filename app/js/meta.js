@@ -88,9 +88,10 @@
         });
     }
 
-    function details(kind, id) {
+    /* light: only what a programme of the guide shows (no logos, trailers nor keywords: a third of the answer) */
+    function details(kind, id, light) {
         var lang = TV.locale;
-        return tmdb("/" + kind + "/" + id, "language=" + lang + "&append_to_response=credits,external_ids,images,videos,keywords&include_image_language=" + TV.lang + ",en,null").then(function (d) {
+        return tmdb("/" + kind + "/" + id, "language=" + lang + "&append_to_response=" + (light ? "credits,external_ids" : "credits,external_ids,images,videos,keywords&include_image_language=" + TV.lang + ",en,null")).then(function (d) {
             var needEn = !d.overview && TV.lang !== "en";
             return (needEn ? tmdb("/" + kind + "/" + id, "language=en-US").then(function (en) { d.overview = en.overview; d.tagline = d.tagline || en.tagline; return d; }, function () { return d; }) : Promise.resolve(d));
         }).then(function (d) {
@@ -206,6 +207,101 @@
         }
     }
     function clearQueue() { queue = []; }
+
+    /* ---------- a programme of the TV guide: the movie or the series it is ----------
+       The programme list over a channel (osd.js) shows the rating, the cast and the director of the programme
+       you are on. A guide only gives a title ("Le BGG : le bon gros géant", "Les Simpson S12 E5"), so TMDB is
+       searched for movies and series at once, and a result is only kept when it is believable: the same title,
+       or a close one that the guide's own text confirms (its year, an actor, the director), and for a movie a
+       length that fits the programme's. No information is better than another film's. o: { dur: minutes, desc }.
+       cb(m or null), then once more if the rating comes later from IMDb's own file. */
+    var progMemo = {}, progFly = {}, progCount = 0;
+    function progTitle(text) {
+        var s = String(text || ""), year = 0;
+        s = s.replace(/[\[(]\s*((?:19|20)\d{2})\s*[\])]/, function (x, y) { year = +y; return " "; });
+        s = s.replace(/\s*[\[(][^\])]*[\])]/g, " ");                                   // (VM), [HD], (2/8)…
+        s = s.replace(/\s*[-–—:|,]?\s*\b(S\d{1,2}\s*[-.:x]?\s*E(P)?\s*\d{1,3}\b.*|(saison|season|staffel|temporada|sezon|serie)\s*\d+.*|([ée]pisode|episode|ep\.|folge|odc\.)\s*\d+.*)$/i, "");
+        return { title: s.replace(/\s+/g, " ").replace(/^[\s\-–—:|]+|[\s\-–—:|,]+$/g, ""), year: year };
+    }
+    function progPick(results, t, o) {
+        var out = [];
+        results.slice(0, 12).forEach(function (r, i) {
+            if (r.media_type !== "movie" && r.media_type !== "tv") return;
+            var c = closeness(t.title, r), y = parseInt(String(r.release_date || r.first_air_date || "").slice(0, 4), 10) || 0;
+            if (c < 0.6) return;
+            var s = c * 100 + Math.max(0, 8 - i * 2) + Math.min(8, Math.log(1 + (r.vote_count || 0)) * 1.3);
+            if (t.year && y) s += y === t.year ? 25 : (Math.abs(y - t.year) === 1 ? 8 : -40);
+            if (o.dur) s += r.media_type === "movie" ? (o.dur >= 70 ? 6 : o.dur < 45 ? -30 : -6) : (o.dur >= 100 ? -4 : 0);
+            out.push({ r: r, c: c, s: s });
+        });
+        return out.sort(function (a, b) { return b.s - a.s; }).slice(0, 2);
+    }
+    function progOk(m, c, t, o) {
+        if (m.kind === "movie" && o.dur && m.runtime && (m.runtime > o.dur + 25 || m.runtime < o.dur * 0.4)) return false;
+        if (t.year && m.year && Math.abs(m.year - t.year) > 1) return false;
+        var d = " " + S.fold(o.desc || "") + " ", said = !!(t.year && m.year === t.year);
+        if (!said && m.year > 1900 && d.indexOf(" " + m.year + " ") >= 0) said = true;
+        if (!said) m.cast.slice(0, 5).map(function (x) { return x.name; }).concat(m.director || []).forEach(function (n) {
+            var f = S.fold(n);
+            if (f.length > 5 && d.indexOf(f) >= 0) said = true;
+        });
+        if (said) return true;
+        return c.c >= 0.95 && (c.r.vote_count || 0) >= 5;
+    }
+    function progTry(cands, i, t, o) {
+        if (i >= cands.length) return Promise.resolve(null);
+        return details(cands[i].r.media_type, cands[i].r.id, true).then(function (m) {
+            if (!progOk(m, cands[i], t, o)) return progTry(cands, i + 1, t, o);
+            return { tmdbId: m.tmdbId, kind: m.kind, title: m.title, year: m.year, runtime: m.runtime, genres: m.genres, overview: m.overview,
+                     backdrop: TV.sized(m.backdrop, "w780"), imdbId: m.imdbId, imdb: m.imdb, tmdb: m.tmdb,
+                     cast: m.cast.slice(0, 8).map(function (x) { return { name: x.name, role: x.role }; }), director: m.director, at: Date.now() };
+        });
+    }
+    function progKey(t, o) {
+        var f = S.fold(t.title);
+        return !KEY || f.length < 3 ? "" : "v1:" + TV.lang + ":" + f + ":" + (t.year || "") + ":" + (!o.dur ? "" : o.dur >= 70 ? "l" : o.dur < 45 ? "s" : "m");
+    }
+    /* What is already known of a programme, at once: its details, null (nothing believable), or undefined (not asked yet) */
+    function programmeKnown(title, o) {
+        var key = progKey(progTitle(title), o || {});
+        if (!key) return null;
+        return Object.prototype.hasOwnProperty.call(progMemo, key) ? progMemo[key] : undefined;
+    }
+    function programme(title, o, cb) {
+        o = o || {};
+        var t = progTitle(title), key = progKey(t, o);
+        if (!key) { cb(null); return; }
+        function done(m) {
+            cb(m);
+            if (!m || !m.imdbId || m.imdb || !TV.helper || !TV.helper.imdb || Date.now() < imdbOffUntil || (m.imdbTry && Date.now() - m.imdbTry < 12 * 3600 * 1000)) return;
+            askImdb(m.imdbId).then(function (r) {
+                if (r < 0) return;
+                m.imdbTry = Date.now();
+                if (r) m.imdb = r;
+                TV.idb.set("pmeta:" + key, m);
+                if (r) { try { cb(m); } catch (e) {} }
+            });
+        }
+        if (Object.prototype.hasOwnProperty.call(progMemo, key)) { done(progMemo[key]); return; }
+        if (!progFly[key]) {
+            progFly[key] = TV.idb.get("pmeta:" + key).then(function (saved) {
+                if (saved && Date.now() - saved.at < (saved.none ? 3 : 30) * 86400 * 1000) return saved;
+                return tmdb("/search/multi", "query=" + encodeURIComponent(t.title) + "&language=" + TV.locale + "&include_adult=false").then(function (j) {
+                    return progTry(progPick(j && j.results || [], t, o), 0, t, o);
+                }).then(function (m) {
+                    m = m || { none: true, at: Date.now() };
+                    TV.idb.set("pmeta:" + key, m);
+                    return m;
+                });
+            }).then(function (m) {
+                delete progFly[key];
+                if (++progCount > 400) { progMemo = {}; progCount = 0; }
+                progMemo[key] = m && !m.none ? m : null;
+                return progMemo[key];
+            }, function (e) { delete progFly[key]; TV.log("programme “" + t.title + "”: " + e.message); return null; });
+        }
+        progFly[key].then(done);
+    }
 
     /* A season's episodes from TMDB: names, plots and pictures in your language */
     function season(tvId, n) {
@@ -637,10 +733,10 @@
 
     function setKey(k) {
         KEY = String(k || "").trim() || (global.TV_KEYS && global.TV_KEYS.tmdb) || "";
-        memo = {}; inflight = {}; certMemo = {};
+        memo = {}; inflight = {}; certMemo = {}; progMemo = {}; progFly = {}; progCount = 0;
     }
     function testKey(k) {
         return TV.fetchJSON(API + "/configuration?api_key=" + encodeURIComponent(String(k || "").trim()), { timeout: 12000, noProxy: true }).then(function (j) { return !!(j && j.images); }, function () { return false; });
     }
-    TV.meta = { setKey: setKey, testKey: testKey, keySource: function () { return global.TV_KEYS && global.TV_KEYS.tmdb ? "setup" : (TV.load("tmdbKey", "") ? "settings" : ""); }, certs: certs, certBadge: certBadge, ageCountries: COUNTRIES, ageCountry: ageCountry, themeWords: themeWords, themes: themes, themeMatch: themeMatch, themeTitles: themeTitles, bannerSafe: bannerSafe, bannerKnown: bannerKnown, allAges: allAges, similar: similar, byPerson: byPerson, collection: collection, genres: genres, genreTitles: genreTitles, topRated: topRated, trending: trending, person: person, lookup: lookup, want: want, clearQueue: clearQueue, season: season, img: img, fmt: fmt, imdbBadge: imdbBadge, known: known, enabled: function () { return !!KEY; } };
+    TV.meta = { programme: programme, programmeKnown: programmeKnown, hasKey: function () { return !!KEY; }, setKey: setKey, testKey: testKey, keySource: function () { return global.TV_KEYS && global.TV_KEYS.tmdb ? "setup" : (TV.load("tmdbKey", "") ? "settings" : ""); }, certs: certs, certBadge: certBadge, ageCountries: COUNTRIES, ageCountry: ageCountry, themeWords: themeWords, themes: themes, themeMatch: themeMatch, themeTitles: themeTitles, bannerSafe: bannerSafe, bannerKnown: bannerKnown, allAges: allAges, similar: similar, byPerson: byPerson, collection: collection, genres: genres, genreTitles: genreTitles, topRated: topRated, trending: trending, person: person, lookup: lookup, want: want, clearQueue: clearQueue, season: season, img: img, fmt: fmt, imdbBadge: imdbBadge, known: known, enabled: function () { return !!KEY; } };
 })(window);
