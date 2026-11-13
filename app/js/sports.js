@@ -1488,12 +1488,13 @@
     var details = {}, videos = {}, videoFound = {};
     function eventId(m) { return m.id.slice(m.id.indexOf(":") + 1); }
     function summaryOf(m) {
-        if (m.src === "365") return Promise.resolve(null);
         var c = details[m.id];
         if (c && c.p) return c.p;
         if (c && Date.now() - c.at < (isLive(m) ? 30000 : 10 * 60000)) return Promise.resolve(c.d);
-        var p = limited(function () { return TV.fetchJSON(API + m.sport + "/" + m.league[0] + "/summary?event=" + eventId(m), { timeout: 15000 }); }).then(function (j) {
-            details[m.id] = { at: Date.now(), d: readSummary(j, m) };
+        // a 365Scores competition's match: no ESPN summary, but its table (table365)
+        var p = (m.src === "365" ? table365(m) : limited(function () { return TV.fetchJSON(API + m.sport + "/" + m.league[0] + "/summary?event=" + eventId(m), { timeout: 15000 }); })
+            .then(function (j) { return readSummary(j, m); })).then(function (d) {
+            details[m.id] = { at: Date.now(), d: d };
             return details[m.id].d;
         }, function (e) {
             TV.log("sports: summary: " + e.message);
@@ -1502,6 +1503,54 @@
         });
         details[m.id] = { at: c ? c.at : 0, d: c ? c.d : null, p: p };
         return p;
+    }
+    /* A 365Scores competition's table, from its standings (what the club list reads too): the columns 365Scores
+       shows for that sport (no draws in basketball, no points in the EuroLeague), the group of the two teams when
+       there are groups (the KHL's conferences), and in football the places 365Scores colours (European places,
+       relegation). Kept 10 minutes, one minute while the match is played. */
+    var stand365 = {};
+    function standings365(id, live) {
+        var c = stand365[id];
+        if (c && c.p) return c.p;
+        if (c && Date.now() - c.at < (live ? 60000 : 10 * 60000)) return Promise.resolve(c.j);
+        var p = limited(function () { return TV.fetchJSON(S365 + "standings/?" + q365() + "&competitions=" + id, { timeout: 15000 }); }).then(function (j) {
+            stand365[id] = { at: Date.now(), j: j };
+            return j;
+        }, function (e) {
+            TV.log("sports: 365 standings " + id + ": " + e.message);
+            stand365[id] = { at: Date.now(), j: c ? c.j : null };
+            return stand365[id].j;
+        });
+        stand365[id] = { at: c ? c.at : 0, j: c ? c.j : null, p: p };
+        return p;
+    }
+    function zone365(name) {
+        return /champions league/i.test(name) ? "ucl" : /europa league/i.test(name) ? "uel" : /conference league/i.test(name) ? "uecl" :
+               /relegation play/i.test(name) ? "relpo" : /relegation/i.test(name) ? "rel" : "";
+    }
+    function table365(m) {
+        if (!is365(m.league)) return Promise.resolve(null);
+        return standings365(String(m.league[0]).slice(5), isLive(m)).then(function (j) {
+            var st = j && j.standings && j.standings[0], rows = (st && st.rows) || [];
+            if (!rows.length) return null;
+            var ids = [String(m.home.id), String(m.away.id)], cols = {}, dest = {}, group = null, title = T(m.league[1]);
+            (st.headers || []).forEach(function (h) { cols[h.key] = 1; });
+            (st.destinations || []).forEach(function (x) { dest[x.num] = zone365(x.name || ""); });
+            rows.forEach(function (r) { if (group === null && r.groupNum != null && ids.indexOf("365-" + (r.competitor && r.competitor.id)) >= 0) group = r.groupNum; });
+            if (group !== null) {
+                rows = rows.filter(function (r) { return r.groupNum === group; });
+                (st.groups || []).forEach(function (g) { if (g.num === group && g.name) title += " · " + g.name; });
+            }
+            var num = function (v) { return v == null || v === "" ? "" : String(Math.round(v)); };
+            var table = { title: title, rows: rows.map(function (r, i) {
+                var c = r.competitor || {}, gd = Math.round(r.ratio || 0);
+                return { rank: num(r.position) || String(i + 1), id: "365-" + c.id, team: c.name || "", logo: img365("Competitors", c.id, c.imageVersion),
+                         gp: num(r.gamePlayed), w: num(r.gamesWon), d: cols.gamesEven ? num(r.gamesEven) : "", l: num(r.gamesLost),
+                         gd: cols.ratio ? (gd > 0 ? "+" + gd : String(gd)) : "", pts: cols.points ? num(r.points) : "" };
+            }) };
+            if (m.sport === "soccer") table.zones = rows.map(function (r) { return dest[r.destinationNum] || ""; });
+            return { events: [], stats: [], lineups: [], form: [], table: table, scorers: { h: [], a: [] }, photo: "" };
+        });
     }
     // "Arda Güler" → "Güler", "Kevin De Bruyne" → "De Bruyne"
     function lastName(n) {
@@ -2075,12 +2124,12 @@
             h = "<div class='mlu'>" + col(of(two[0]), two[0]) + col(of(two[1]), two[1]) + "</div>";
         } else if (t === "table") {
             // FotMob's table: the places that qualify in colour, the crests, played / won / drawn / lost, goal difference, points
-            var ids = [String(m.home.id), String(m.away.id)], zones = tableZones(m, d.table.rows.length), used = {};
+            var ids = [String(m.home.id), String(m.away.id)], zones = d.table.zones || tableZones(m, d.table.rows.length), used = {};
             var crestOf = function (id) { return m.sport === "soccer" && id ? "https://a.espncdn.com/i/teamlogos/soccer/500/" + id + ".png" : ""; };
             h = "<div class='mtb'><div class='mtb__title'>" + esc(d.table.title) + "</div><div class='mtb__row mtb__row--head'><b>#</b><span>" + esc(T("Team")) + "</span><em>" + esc(T("P")) + "</em>" +
                 "<em>" + esc(T("W")) + "</em><em>" + esc(T("D")) + "</em><em>" + esc(T("L")) + "</em><em>" + esc(T("GD")) + "</em><em class='mtb__pts'>" + esc(T("Pts")) + "</em></div>" +
                 d.table.rows.map(function (rw, i) {
-                    var z = zones[i], u = crestOf(rw.id);
+                    var z = zones[i], u = rw.logo || crestOf(rw.id);
                     if (z) used[z] = 1;
                     return "<div class='mtb__row" + (ids.indexOf(rw.id) >= 0 ? " is-team" : "") + "'><b" + (z ? " class='mtb__z mtb__z--" + z + "'" : "") + ">" + esc(rw.rank) + "</b><span>" +
                            (u ? "<i style='background-image:" + esc(crestBg(u, 60)) + "'></i>" : "") + esc(shown({ name: rw.team }, true)) + "</span><em>" + esc(rw.gp) + "</em><em>" + esc(rw.w) +
