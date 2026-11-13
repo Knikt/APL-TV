@@ -346,7 +346,8 @@
        a big Xtream account (27,000 channels, 100,000 movies) fits only this way. */
     var FIELDS = {
         live: ["id", "sid", "url", "num", "name", "raw", "q", "key", "logo", "cat", "epg", "arch"],
-        movies: ["id", "sid", "url", "name", "title", "year", "poster", "cat", "rating", "added", "ext"],
+        // srvDone (watched on your Jellyfin or Emby server) last: the other sources' rows end before it, no bigger
+        movies: ["id", "sid", "url", "name", "title", "year", "poster", "cat", "rating", "added", "ext", "srvDone"],
         series: ["id", "seriesId", "name", "title", "year", "poster", "cat", "rating", "added", "backdrop", "eps"]
     };
     var PICS = { logo: 1, poster: 1, backdrop: 1 };
@@ -779,27 +780,90 @@
     }
     function resumeOf(id) { return resumes()[id] || null; }
     function isDone(id) { var e = resumes()[id]; return !!(e && e.done); }
+    /* A movie's or an episode's tick: APL TV's own resume point when it has one, else what the media server
+       said (js/media.js srvDone: the catalog and the movie's page for a movie, the series page for an episode) */
+    function watched(item, ep) { var e = resumes()[ep ? item.id + "|" + ep.id : item.id]; return e ? !!e.done : !!(ep || item).srvDone; }
     /* Marked by hand (OK held): watched or not, a movie, an episode, or many episodes at once */
     function markWatched(item, eps, on) {
-        var r = resumes(), list = eps && eps.length ? eps : [null];
+        var r = resumes(), list = eps && eps.length ? eps : [null], keys = [];
+        // a movie ticked from the server's answer (js/media.js srvDone, kept in the saved catalog): unticked
+        // there too, so it does not come back when the app starts again
+        var resave = !on && !(eps && eps.length) && item.srvDone && cats[item.src];
         list.forEach(function (ep) {
             var k = ep ? item.id + "|" + ep.id : item.id;
+            keys.push(k);
             if (on) r[k] = { pos: 1, dur: 1, item: item.id, ep: ep ? ep.id : null, done: true, manual: true, at: Date.now() };
-            else delete r[k];
+            else { delete r[k]; (ep || item).srvDone = false; }
         });
         trimResumes(r);
         TV.save("resume", r);
         fire("resume");
+        if (resave) TV.idb.set("catm:" + item.src, pack(cats[item.src].movies, "movies", item.src));
+        // the same on your Jellyfin or Emby server (js/media.js; other sources: nothing)
+        if (TV.media && TV.media.played) TV.media.played(item, eps, on).then(function (ok) { if (ok && on) serverHas(keys); });
+    }
+    /* Your media server took these (it answered): if it drops one later (marked unwatched there), so does APL TV */
+    function serverHas(keys) {
+        var r = resumes(), any = false;
+        keys.forEach(function (k) { if (r[k] && !r[k].srv) { r[k].srv = true; any = true; } });
+        if (any) TV.save("resume", r);
     }
     /* Out of "Continue Watching" (OK held): where you were is forgotten, what you finished stays ticked */
     function forget(item) {
         var r = resumes();
         Object.keys(r).forEach(function (k) { if ((k === item.id || k.indexOf(item.id + "|") === 0) && !(r[k] && r[k].done && k !== item.id)) delete r[k]; });
         TV.save("resume", r);
+        // only a media server's resume points can bring it back (syncResumes): nothing to keep for the others
+        var src = sourceOf(item);
+        if (src && src.type === "jellyfin") {
+            var f = forgotten(), keys;
+            f[item.id] = Date.now();
+            keys = Object.keys(f);
+            if (keys.length > 500) keys.sort(function (a, b) { return f[a] - f[b]; }).slice(0, keys.length - 500).forEach(function (k) { delete f[k]; });
+            TV.save("resumeForgot", f);
+        }
         fire("resume");
     }
+    /* When each title was taken out of Continue Watching: a media server's older resume point does not bring it back */
+    function forgotten() { return TV.load("resumeForgot", {}) || {}; }
     /* After a video: the rows and covers that show progress are drawn again */
     function resumeChanged() { fire("resume"); }
+    /* What your Jellyfin or Emby server knows (js/media.js), title by title: the most recent of the server's
+       and APL TV's wins. "gone": the server has no resume point any more (reset, or started again).
+       "onlyKnown" (the whole catalog): changes a title APL TV already has, never adds one. */
+    function syncResumes(list) {
+        var r = resumes(), f = forgotten(), changed = false;
+        (list || []).forEach(function (s) {
+            if (!s || !s.key) return;
+            var mine = r[s.key];
+            if (s.onlyKnown && !mine) return;
+            // nothing on the server: what it had (srv) was dropped there (marked unwatched) and goes here too,
+            // unless it was played here after the question was sent; APL TV's own history, which the server
+            // never had, stays
+            if (s.none) { if (mine && mine.srv && !(s.asOf && mine.at >= s.asOf)) { delete r[s.key]; changed = true; } return; }
+            // the server knows this one now: if it drops it later, so does APL TV
+            if (mine && !mine.srv) { mine.srv = true; changed = true; }
+            if (mine && mine.at >= s.at) return;
+            // watched on both sides: nothing to change (a mark by hand stays one, out of Recently Watched)
+            if (mine && mine.done && s.done) return;
+            // taken out of Continue Watching after that: it stays out (a watched one still gets its tick)
+            if (!s.done && f[s.item] >= s.at) return;
+            if (s.gone) { if (mine) { delete r[s.key]; changed = true; } return; }
+            var e = { pos: s.pos, dur: s.dur, item: s.item, ep: s.ep || null, at: s.at, srv: true };
+            if (s.done) e.done = true;
+            if (s.epLabel) e.epLabel = s.epLabel;
+            // a series' own line (js/osd.js save): the episode to resume, or the next one ("Up Next")
+            if (s.series) e.series = true;
+            if (s.upNext) e.upNext = true;
+            r[s.key] = e;
+            changed = true;
+        });
+        if (!changed) return false;
+        trimResumes(r);
+        TV.save("resume", r);
+        fire("resume");
+        return true;
+    }
     /* "Recently Watched": what you played lately, finished or not, the latest first (marks by hand left out) */
     function recentlyWatched(kind) {
         var r = resumes(), seen = {}, out = [];
@@ -1124,8 +1188,8 @@
         chanGroups: chanGroups, chanGroupOf: chanGroupOf, addChanGroup: addChanGroup, renameChanGroup: renameChanGroup, deleteChanGroup: deleteChanGroup, toggleChanGroup: toggleChanGroup, moveInChanGroup: moveInChanGroup,
         pushRecent: pushRecent, recentChannels: recentChannels,
         myList: myList, inMyList: inMyList, toggleMyList: toggleMyList,
-        setResume: setResume, resumeOf: resumeOf, continueWatching: continueWatching, isDone: isDone, markWatched: markWatched, recentlyWatched: recentlyWatched,
-        forget: forget, resumeChanged: resumeChanged,
+        setResume: setResume, resumeOf: resumeOf, continueWatching: continueWatching, isDone: isDone, watched: watched, markWatched: markWatched, recentlyWatched: recentlyWatched,
+        forget: forget, resumeChanged: resumeChanged, syncResumes: syncResumes, serverHas: serverHas,
         isHidden: isHidden, setHidden: setHidden, preferVersion: preferVersion, setCatOff: setCatOff, setGroupOff: setGroupOff, editData: editData, applyPhoneEdit: applyPhoneEdit, offGroups: offGroups, offCats: offCats, hiddenList: hiddenList, unhide: unhide, versionKey: versionKey,
         buildThemes: buildThemes, checkTheme: checkTheme, themesOn: themesOn, catNameHidden: catNameHidden,
         itemsIn: itemsIn, vodUrl: vodUrl, vodInfo: vodInfo, seriesInfo: seriesInfo, search: search,

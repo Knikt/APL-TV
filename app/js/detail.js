@@ -164,10 +164,10 @@
         if (!ep) return null;
         if (r.upNext) return { ep: ep, pos: 0, next: true };                 // set when the episode before was finished
         var er = D.resumeOf(item.id + "|" + ep.id);
-        if (er && er.done) { var n = nextEp(ep); return n ? { ep: n, pos: 0, next: true } : { ep: ep, pos: 0, next: false }; }
+        if (D.watched(item, ep)) { var n = nextEp(ep); return n ? { ep: n, pos: 0, next: true } : { ep: ep, pos: 0, next: false }; }
         return { ep: ep, pos: er ? er.pos : (r.pos || 0), next: false };
     }
-    function seasonDone(k) { var l = seasons[k] || []; return l.length > 0 && l.every(function (e) { return D.isDone(item.id + "|" + e.id); }); }
+    function seasonDone(k) { var l = seasons[k] || []; return l.length > 0 && l.every(function (e) { return D.watched(item, e); }); }
 
     /* ---------- drawing ---------- */
     function draw() {
@@ -194,7 +194,7 @@
         if (it.kind === "series" && (seasonKeys.length || m.seasons)) { var n = seasonKeys.length || m.seasons; bits.push("<span>" + esc(n > 1 ? T("{n} seasons", { n: n }) : T("1 season")) + "</span>"); }
         var cat = D.catOf(it);
         if (cat.tag) bits.push("<span class='badge'>" + esc(cat.tag) + "</span>");
-        if (it.kind === "movie" && D.isDone(it.id)) bits.push("<span class='detail__seen'>" + TV.icon("check", 24) + esc(T("Watched")) + "</span>");
+        if (it.kind === "movie" && D.watched(it)) bits.push("<span class='detail__seen'>" + TV.icon("check", 24) + esc(T("Watched")) + "</span>");
         mainEl.appendChild(el("div", "detail__meta", bits.join("<span class='dot'></span>")));
         if (m.tagline) mainEl.appendChild(el("div", "detail__tagline", esc(m.tagline)));
         mainEl.appendChild(el("div", "detail__desc", esc(m.overview || it._plot || it.plot || (meta === null ? "" : T("No description available.")))));
@@ -307,7 +307,7 @@
     function makeEp(ep) {
         var c = el("div", "ep"), art = el("div", "ep__art"), key = item.id + "|" + ep.id;
         var r = D.resumeOf(key);
-        if (r && r.done) { art.appendChild(el("div", "ep__seen", TV.icon("check", 20) + esc(T("Watched")))); c.classList.add("is-seen"); }
+        if (D.watched(item, ep)) { art.appendChild(el("div", "ep__seen", TV.icon("check", 20) + esc(T("Watched")))); c.classList.add("is-seen"); }
         else if (r && r.dur) { var b = el("div", "card__bar"); b.innerHTML = "<i style='width:" + Math.round(100 * Math.min(1, r.pos / r.dur)) + "%'></i>"; art.appendChild(b); }
         c.appendChild(art);
         c.appendChild(el("div", "ep__n", esc(T("Episode {n}", { n: ep.episode })) + (ep.dur ? " · " + esc(TV.runtime(Math.round(ep.dur / 60))) : "")));
@@ -377,10 +377,10 @@
     function titleMenu() {
         var it = item, items = [];
         if (it.kind === "movie") {
-            var done = D.isDone(it.id);
+            var done = D.watched(it);
             items.push({ label: done ? T("Mark as Unwatched") : T("Mark as Watched"), icon: "eyeCheck", run: function () { D.markWatched(it, null, !done); draw(); } });
         } else if (seasonKeys.length) {
-            var all = allEps(), allDone = all.every(function (e) { return D.isDone(it.id + "|" + e.id); });
+            var all = allEps(), allDone = all.every(function (e) { return D.watched(it, e); });
             items.push({ label: allDone ? T("Mark Series as Unwatched") : T("Mark Series as Watched"), icon: "eyeCheck", run: function () { D.markWatched(it, all, !allDone); draw(); } });
         }
         items.push({ label: T("Hide This Title"), icon: "eyeOff", run: function () { hide(it); } });
@@ -388,7 +388,7 @@
     }
     function epMenu(ep) {
         if (!ep) return;
-        var key = item.id + "|" + ep.id, done = D.isDone(key), k = seasonKeys[seasonIndex], sd = seasonDone(k);
+        var done = D.watched(item, ep), k = seasonKeys[seasonIndex], sd = seasonDone(k);
         TV.menu(T("S{s} E{e}", { s: ep.season, e: ep.episode }) + " · " + (ep._name || ep.title || ""), [
             { label: done ? T("Mark as Unwatched") : T("Mark as Watched"), icon: "eyeCheck", run: function () { D.markWatched(item, [ep], !done); draw(); } },
             { label: sd ? T("Mark Season {n} as Unwatched", { n: k }) : T("Mark Season {n} as Watched", { n: k }), icon: "eyeCheck", run: function () { D.markWatched(item, seasons[k], !sd); draw(); } }

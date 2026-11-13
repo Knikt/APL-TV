@@ -81,12 +81,12 @@
             src.kind = sv.kind;
             return TV.http(sv.base + "/Users/AuthenticateByName", { method: "POST", headers: (function () { var h = jfAuth(src, null); h["Content-Type"] = "application/json"; return h; })(),
                 body: JSON.stringify({ Username: src.user || "", Pw: src.pass || "" }), timeout: 20000 }).then(function (r) {
-                if (r.status === 401 || r.status === 400 || r.status === 403) throw new Error(T("The server refused this username or password."));
+                if (r.status === 401 || r.status === 400 || r.status === 403) throw refused(src);
                 if (r.status === 0) throw new Error(T("The server does not answer. Check its address and that it is on."));
                 if (r.status < 200 || r.status >= 300) throw new Error("HTTP " + r.status);
                 var j = JSON.parse(r.text);
-                if (!j.AccessToken || !j.User) throw new Error(T("The server refused this username or password."));
-                save(src, { base: sv.base, kind: sv.kind, token: j.AccessToken, userId: j.User.Id, serverName: sv.name });
+                if (!j.AccessToken || !j.User) throw refused(src);
+                save(src, { base: sv.base, kind: sv.kind, token: j.AccessToken, userId: j.User.Id, serverName: sv.name, refused: false });
                 // no name was given: the server's own ("My Jellyfin") rather than its address
                 if (src.autoName && sv.name) { save(src, { name: sv.name, autoName: false }); }
                 TV.log(sv.kind + ": signed in on " + sv.base.replace(/^(https?:\/\/[^\/]+).*$/, "$1"));
@@ -94,10 +94,31 @@
             });
         });
     }
+    /* The server said no to this username and password: kept on the source, so APL TV stops signing in by
+       itself (the server locks the user out, on every device, after a few tries) until the password is
+       changed in Settings or Refresh Now is chosen there (js/settings.js) */
+    function refused(src) {
+        var msg = T("The server refused this username or password.");
+        // also shown under the source in Settings, even when found in the background (Home)
+        save(src, { refused: true, error: msg });
+        return new Error(msg);
+    }
+    /* One sign-in at a time per server: calls sent together (jfFresh) that all get a 401 wait for
+       the same one, then take its key. None at all after a refusal. */
+    var logins = {};
+    function jfRelogin(src) {
+        var cur = src0(src.id);
+        if (src.refused || (cur && cur.refused)) return Promise.reject(new Error(T("The server refused this username or password.")));
+        if (!logins[src.id]) logins[src.id] = jfLogin(src).then(function (s) { delete logins[src.id]; return s; }, function (e) { delete logins[src.id]; throw e; });
+        return logins[src.id].then(function (s) {
+            if (s !== src) ["base", "kind", "token", "userId", "serverName"].forEach(function (k) { src[k] = s[k]; });
+            return src;
+        });
+    }
     function jfGet(src, path, timeout) {
         function once() { return getJSON(src.base + path + (path.indexOf("?") >= 0 ? "&" : "?") + "api_key=" + encodeURIComponent(src.token), jfAuth(src, src.token), timeout); }
-        if (!src.token || !src.base) return jfLogin(src).then(once);
-        return once().catch(function (e) { if (e.auth || e.message === "HTTP 0") return jfLogin(src).then(once); throw e; });
+        if (!src.token || !src.base) return jfRelogin(src).then(once);
+        return once().catch(function (e) { if (e.auth || e.message === "HTTP 0") return jfRelogin(src).then(once); throw e; });
     }
     function jfImg(src, x, kind, w) {
         var tag = kind === "Backdrop" ? (x.BackdropImageTags || [])[0] : (x.ImageTags || {})[kind];
@@ -105,16 +126,48 @@
         return src.base + "/Items/" + x.Id + "/Images/" + kind + "?" + qs({ maxWidth: w, quality: 90, tag: tag });
     }
     function tmdbOf(p) { p = p || {}; return String(p.Tmdb || p.tmdb || p.TMDB || ""); }
+    /* "2024-05-01T20:15:42.1234567Z": 7 decimals, which older TV engines cannot read. In ms, or 0 (none, or "0001-01-01") */
+    function jfDate(s) { var t = Date.parse(String(s || "").replace(/(\.\d{3})\d+/, "$1")); return t > 0 ? t : 0; }
+    /* Where the server says you are in a movie or an episode (its UserData), for js/data.js syncResumes.
+       Watched there: done, as the server decided with its own resume settings. Nothing at all ("none"):
+       never played there, or marked unwatched there (the server then forgets the date too). asOf: when the
+       question was sent (this screen's clock), so a video played here since then is not undone by this answer. */
+    function jfSeen(x, key, itemId, epId, epLabel, asOf) {
+        var u = x.UserData || {}, at = jfDate(u.LastPlayedDate), pos = Math.round((u.PlaybackPositionTicks || 0) / 1e7), dur = Math.round((x.RunTimeTicks || 0) / 1e7);
+        var e = { key: key, at: at, item: itemId, ep: epId || null, asOf: asOf || 0 };
+        if (u.Played) { e.pos = dur || 1; e.dur = dur || 1; e.done = true; }
+        else if (pos > 0) { e.pos = pos; e.dur = dur; if (epLabel) e.epLabel = epLabel; }
+        else if (at) e.gone = true;
+        else e.none = true;
+        return e;
+    }
+    /* A movie's page opens: its state on the server right now (marked unwatched there, watched on the phone…),
+       before the page shows "Watched". 4 s at most, no new sign-in; no answer: as APL TV knew it. Watched
+       there: kept on the movie itself (srvDone, js/data.js watched), so opening a page does not put it in
+       Recently Watched. */
+    function jfMovie(src, item) {
+        if (!src.token || !src.base || !src.userId || !item.sid) return Promise.resolve(false);
+        var asOf = Date.now();
+        return getJSON(src.base + "/Users/" + src.userId + "/Items?" + qs({ Ids: item.sid, EnableUserData: "true", api_key: src.token }), jfAuth(src, src.token), 4000).then(function (j) {
+            var x = j && j.Items && j.Items[0];
+            if (!x || x.Id !== item.sid || !TV.data.syncResumes) return false;
+            var s = jfSeen(x, item.id, item.id, null, null, asOf);
+            item.srvDone = !!s.done;
+            if (!(s.pos && !s.done)) s.onlyKnown = true;
+            return TV.data.syncResumes([s]);
+        }).catch(function () { return false; });
+    }
     function jfItems(src, viewId, type, onItems, progress) {
         var start = 0, total = 0, got = 0;
         function page() {
             var q = qs({ ParentId: viewId, Recursive: "true", IncludeItemTypes: type, Fields: "Overview,ProviderIds,DateCreated", EnableImageTypes: "Primary,Backdrop",
-                         ImageTypeLimit: 1, SortBy: "DateCreated", SortOrder: "Descending", StartIndex: start, Limit: PAGE });
+                         ImageTypeLimit: 1, SortBy: "DateCreated", SortOrder: "Descending", StartIndex: start, Limit: PAGE, EnableUserData: "true" });
+            var asOf = Date.now();
             return jfGet(src, "/Users/" + src.userId + "/Items?" + q, 120000).then(function (j) {
                 var items = (j && j.Items) || [];
                 total = j && j.TotalRecordCount || items.length;
                 got += items.length; start += items.length;
-                onItems(items);
+                onItems(items, asOf);
                 if (progress) progress();
                 if (items.length && got < total && got < MAX_ITEMS) return page();
             });
@@ -123,7 +176,8 @@
     }
     function jfLoad(src, progress, out) {
         progress(T("Connecting to {name}…", { name: src.name }));
-        return jfLogin(src).then(function () {
+        var seen = [];
+        return jfRelogin(src).then(function () {
             return jfGet(src, "/Users/" + src.userId + "/Views");
         }).then(function (v) {
             var views = ((v && v.Items) || []).filter(function (x) { return x.CollectionType === "movies" || x.CollectionType === "tvshows" || x.CollectionType === "homevideos" || !x.CollectionType; });
@@ -133,13 +187,23 @@
                     var part = series ? out.series : out.movies, cat = catOf(src.id, view.Id, view.Name, series ? "series" : "movie");
                     part.cats.push(cat);
                     progress(series ? T("Loading series…") : T("Loading movies…"));
-                    return jfItems(src, view.Id, series ? "Series" : "Movie", function (items) {
+                    return jfItems(src, view.Id, series ? "Series" : "Movie", function (items, asOf) {
                         items.forEach(function (x) {
                             if (!x || !x.Id) return;
                             var base = { src: src.id, name: x.Name || "", year: x.ProductionYear || 0, poster: jfImg(src, x, "Primary", 500), backdrop: jfImg(src, x, "Backdrop", 1280) || undefined,
                                          cat: cat.id, rating: x.CommunityRating || 0, added: Math.floor((Date.parse(x.DateCreated || "") || 0) / 1000), plot: x.Overview || "", tmdb: tmdbOf(x.ProviderIds) };
                             if (series) { base.id = src.id + "|s" + x.Id; base.seriesId = x.Id; base.kind = "series"; }
-                            else { base.id = src.id + "|m" + x.Id; base.sid = x.Id; base.kind = "movie"; base.url = "media:" + src.id + ":jf:" + x.Id; base.dur = Math.round((x.RunTimeTicks || 0) / 1e7); }
+                            else {
+                                base.id = src.id + "|m" + x.Id; base.sid = x.Id; base.kind = "movie"; base.url = "media:" + src.id + ":jf:" + x.Id; base.dur = Math.round((x.RunTimeTicks || 0) / 1e7);
+                                // the whole catalog: only what is half watched comes in; the rest only updates the titles
+                                // APL TV already has, so a long server history does not push out the other sources'.
+                                // Watched there: the tick comes from the movie itself (js/data.js watched)
+                                var s = jfSeen(x, base.id, base.id, null, null, asOf);
+                                // only when watched: kept with the saved catalog (js/data.js FIELDS), no room taken otherwise
+                                if (s.done) base.srvDone = true;
+                                if (!(s.pos && !s.done)) s.onlyKnown = true;
+                                seen.push(s);
+                            }
                             part.items.push(base);
                         });
                     }, function () { progress((series ? T("Loading series…") : T("Loading movies…")) + " " + part.items.length); });
@@ -150,24 +214,121 @@
             out.movies.cats = out.movies.cats.filter(function (c) { return out.movies.items.some(function (m) { return m.cat === c.id; }); });
             out.series.cats = out.series.cats.filter(function (c) { return out.series.items.some(function (m) { return m.cat === c.id; }); });
             out.account = { server: src.serverName || "", kind: src.kind };
+            // the movies you started or watched elsewhere (phone, web): Continue Watching and the ticks
+            if (seen.length && TV.data.syncResumes) TV.data.syncResumes(seen);
             return out;
         });
     }
+    /* Marked by hand (js/data.js markWatched): a movie, or episodes (one, a season, the whole series). The server
+       hears it too (its PlayedItems), so every client shows the same: watched, or not watched and back to the
+       start. One episode after the other, stopping at the first the server does not take (a whole series with
+       the server down would otherwise wait 10 s per episode). Only Jellyfin and Emby. */
+    function played(item, eps, on) {
+        var src = item && src0(item.src);
+        if (!src || src.type !== "jellyfin" || !src.token || !src.base || !src.userId) return Promise.resolve(false);
+        var ids = (eps && eps.length ? eps.map(function (e) { return e && e.id; }) : [item.sid]).filter(function (id) { return !!id; }), h = jfAuth(src, src.token);
+        if (!ids.length) return Promise.resolve(false);
+        return ids.reduce(function (p, id) {
+            return p.then(function (ok) {
+                if (!ok) return false;
+                return TV.http(src.base + "/Users/" + src.userId + "/PlayedItems/" + encodeURIComponent(id), { method: on ? "POST" : "DELETE", headers: h, timeout: 10000 })
+                    .then(function (r) { return r.status >= 200 && r.status < 300; }, function () { return false; });
+            });
+        }, Promise.resolve(true));
+    }
+    /* "S1 E2 · Its name": the same label as an episode played here (js/detail.js playEp) */
+    function jfLabel(x) {
+        var s = x.ParentIndexNumber !== undefined && x.ParentIndexNumber !== null ? x.ParentIndexNumber : 1;
+        return T("S{s} E{e}", { s: s, e: x.IndexNumber || 0 }) + (x.Name ? " · " + x.Name : "");
+    }
+    /* Continue Watching from the server when Home or its tab opens, without waiting for the catalog (refreshed
+       every 6 h): what is half watched (/Items/Resume), the episodes watched lately, and each series' next
+       episode (/Shows/NextUp). At most once a minute per server; quietly nothing when it does not answer, and
+       then not again for 10 minutes. */
+    var FRESH_MS = 60000, FRESH_FAIL_MS = 600000, freshAt = {};
+    function jfFresh(src) {
+        if (!src.token || !src.base || !src.userId || Date.now() - (freshAt[src.id] || 0) < FRESH_MS) return Promise.resolve(false);
+        var asOf = freshAt[src.id] = Date.now();
+        function list(path, q) { q.EnableUserData = "true"; q.Limit = 50; return jfGet(src, path + "?" + qs(q), 20000).then(function (j) { return (j && j.Items) || []; }); }
+        return Promise.all([
+            list("/Users/" + src.userId + "/Items/Resume", { MediaTypes: "Video" }),
+            list("/Users/" + src.userId + "/Items", { IncludeItemTypes: "Episode", Filters: "IsPlayed", SortBy: "DatePlayed", SortOrder: "Descending", Recursive: "true" }),
+            list("/Shows/NextUp", { UserId: src.userId })
+        ]).then(function (r) {
+            var seen = [], last = {};
+            r[0].concat(r[1]).forEach(function (x) {
+                if (x.Type === "Movie") { var mid = src.id + "|m" + x.Id, m = jfSeen(x, mid, mid, null, null, asOf); if (m) seen.push(m); return; }
+                if (x.Type !== "Episode" || !x.SeriesId) return;
+                var sid = src.id + "|s" + x.SeriesId, label = jfLabel(x), e = jfSeen(x, sid + "|" + x.Id, sid, x.Id, label, asOf);
+                if (!e) return;
+                // watched there: only updates the episodes APL TV knows (their tick comes from the series page,
+                // js/data.js watched), so a season marked watched there does not fill Recently Watched
+                if (e.done) e.onlyKnown = true;
+                seen.push(e);
+                // when the series was last watched, for its next episode below; a mark by hand here is not a
+                // viewing and brings no "Up Next"
+                var mine = TV.data.resumeOf && TV.data.resumeOf(e.key);
+                if (e.done) { if (!(mine && mine.manual) && e.at > (last[x.SeriesId] || 0)) last[x.SeriesId] = e.at; }
+                else if (e.pos) seen.push({ key: sid, at: e.at, item: sid, ep: x.Id, pos: e.pos, dur: e.dur, epLabel: label, series: true });
+            });
+            // the next episode carries no date: the one of the episode finished before it (none known: left out,
+            // so series watched long ago do not fill Continue Watching)
+            r[2].forEach(function (x) {
+                var u = x.UserData || {}, at = last[x.SeriesId];
+                if (!at || x.Type !== "Episode" || u.Played || u.PlaybackPositionTicks > 0) return;
+                var sid = src.id + "|s" + x.SeriesId;
+                seen.push({ key: sid, at: at, item: sid, ep: x.Id, pos: 0, dur: 0, epLabel: jfLabel(x), series: true, upNext: true });
+            });
+            return seen.length && TV.data.syncResumes ? TV.data.syncResumes(seen) : false;
+        }).catch(function () {
+            // no answer (server off, refused): not asked again for 10 minutes, instead of at every Home
+            freshAt[src.id] = Date.now() + FRESH_FAIL_MS - FRESH_MS;
+            return false;
+        });
+    }
+    /* Every Jellyfin and Emby source (Home), or only one (its tab) */
+    function fresh(srcId) {
+        return Promise.all(TV.data.sources().filter(function (s) { return s.type === "jellyfin" && (!srcId || s.id === srcId); }).map(jfFresh));
+    }
     function jfSeries(src, item) {
-        return jfGet(src, "/Shows/" + encodeURIComponent(item.seriesId) + "/Episodes?" + qs({ UserId: src.userId, Fields: "Overview,ProviderIds", EnableImageTypes: "Primary" }), 60000).then(function (j) {
-            var seasons = {};
+        var asOf = Date.now();
+        return jfGet(src, "/Shows/" + encodeURIComponent(item.seriesId) + "/Episodes?" + qs({ UserId: src.userId, Fields: "Overview,ProviderIds", EnableImageTypes: "Primary", EnableUserData: "true" }), 60000).then(function (j) {
+            var seasons = {}, seen = [];
             ((j && j.Items) || []).forEach(function (x) {
                 var s = x.ParentIndexNumber !== undefined && x.ParentIndexNumber !== null ? x.ParentIndexNumber : 1;
+                // the same key and label as an episode played here (js/detail.js playEp)
+                var w = jfSeen(x, item.id + "|" + x.Id, item.id, x.Id, jfLabel(x), asOf);
+                // watched there: its tick comes from the episode itself (js/data.js watched), not from the resume points,
+                // so a long series watched elsewhere does not push the other sources' out; half watched ones come in
+                if (!(w.pos && !w.done)) w.onlyKnown = true;
+                seen.push(w);
                 (seasons[s] = seasons[s] || []).push({ id: x.Id, season: s, episode: x.IndexNumber || 0, title: x.Name || "", url: "media:" + src.id + ":jf:" + x.Id,
-                    image: jfImg(src, x, "Primary", 600), plot: x.Overview || "", dur: Math.round((x.RunTimeTicks || 0) / 1e7) });
+                    image: jfImg(src, x, "Primary", 600), plot: x.Overview || "", dur: Math.round((x.RunTimeTicks || 0) / 1e7), srvDone: !!w.done });
             });
+            // the episodes you started elsewhere, and the ones APL TV knows, before the page draws its ticks
+            if (seen.length && TV.data.syncResumes) TV.data.syncResumes(seen);
             Object.keys(seasons).forEach(function (s) { seasons[s].sort(function (a, b) { return a.episode - b.episode; }); });
             return { seasons: seasons, info: { plot: item.plot || "", tmdb: item.tmdb || "" } };
         });
     }
     function jfStream(src, id) {
         function link() { return src.base + "/Videos/" + encodeURIComponent(id) + "/stream?" + qs({ static: "true", MediaSourceId: id, api_key: src.token, ApiKey: src.kind === "jellyfin" ? src.token : "", DeviceId: deviceId() }); }
-        return src.token ? Promise.resolve(link()) : jfLogin(src).then(link);
+        return src.token ? Promise.resolve(link()) : jfRelogin(src).then(link);
+    }
+    /* Where you are, told to the server: started, every 10 s, stopped. Other clients then show the same
+       resume point, and the server decides with its own resume settings when a video counts as watched.
+       Only Jellyfin and Emby: any other address sends nothing. A server that does not answer changes
+       nothing either (no message): playback goes on and the position stays in APL TV. */
+    var REPORT = { start: "/Sessions/Playing", progress: "/Sessions/Playing/Progress", stop: "/Sessions/Playing/Stopped" };
+    function report(url, event, pos) {
+        var m = String(url || "").match(/^media:([^:]+):jf:(.+)$/), src = m && src0(m[1]);
+        if (!src || !src.token || !src.base || !REPORT[event]) return Promise.resolve(false);
+        var id = decodeURIComponent(m[2]), h = jfAuth(src, src.token);
+        h["Content-Type"] = "application/json";
+        // the file itself is played (static stream): DirectPlay, and its only version is the item
+        var body = { ItemId: id, MediaSourceId: id, PlayMethod: "DirectPlay", CanSeek: true, PositionTicks: Math.max(0, Math.round((pos || 0) * 1e7)) };
+        return TV.http(src.base + REPORT[event], { method: "POST", headers: h, body: JSON.stringify(body), timeout: 10000 })
+            .then(function (r) { return r.status >= 200 && r.status < 300; }, function () { return false; });
     }
 
     /* ---------- Plex ---------- */
@@ -305,9 +466,13 @@
         var part = decodeURIComponent(m[3]);
         return (src.base ? Promise.resolve(src.base) : plexBase(src)).then(function (b) { return b + part + (part.indexOf("?") >= 0 ? "&" : "?") + plexQ(src.token); });
     }
-    /* The movie's page: its plot, length and TMDB id from the server (no extra request) */
-    function info(item) { return { info: { plot: item.plot || "", tmdb_id: item.tmdb || "", duration_secs: item.dur || 0, backdrop_path: item.backdrop ? [item.backdrop] : [] } }; }
+    /* The movie's page: its plot, length and TMDB id from the server (already in the catalog), once its watched
+       state is fresh (Jellyfin and Emby: one small request) */
+    function info(item) {
+        var src = src0(item.src), d = { info: { plot: item.plot || "", tmdb_id: item.tmdb || "", duration_secs: item.dur || 0, backdrop_path: item.backdrop ? [item.backdrop] : [] } };
+        return (src && src.type === "jellyfin" ? jfMovie(src, item) : Promise.resolve(false)).then(function () { return d; });
+    }
 
-    TV.media = { load: load, seriesInfo: seriesInfo, resolve: resolve, info: info, normServer: normServer,
+    TV.media = { load: load, seriesInfo: seriesInfo, resolve: resolve, info: info, normServer: normServer, report: report, fresh: fresh, played: played,
                  plex: { pin: plexPin, check: plexCheck, servers: plexServers } };
 })(window);

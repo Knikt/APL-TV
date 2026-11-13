@@ -278,7 +278,18 @@
         } else if (s.type === "jellyfin") {
             rows.push({ label: T("Server"), value: s.server });
             rows.push({ label: T("Username"), value: s.user });
-            rows.push({ label: T("Password"), value: s.pass ? "••••••••" : T("None"), secret: true });
+            // changed on the server: typed again here, then signed in once with it (js/media.js stops trying by
+            // itself after a refusal). Nothing typed (Back closes the keyboard and keeps the text, js/ui.js): a
+            // password already set stays as it is, and no sign-in is sent. The page is built again after, so the
+            // row and the source's state show what is now true
+            rows.push({ label: T("Password"), value: s.pass ? "••••••••" : T("None"), secret: true, acc: "chevron", run: function (row) {
+                edit(row, { value: "", secret: true, onCancel: function () { redraw(); }, onDone: function (v) {
+                    if (!v && s.pass) { redraw(); return; }
+                    s.pass = v; s.refused = false;
+                    D.updateSource(id, { pass: v, refused: false });
+                    loadWithProgress(s, function () { replaceTop(sourcePage(id)); });
+                } });
+            } });
         } else if (s.type === "plex") {
             rows.push({ label: T("Server"), value: s.name });
             rows.push({ label: T("Link the Screen Again"), icon: "link", acc: "chevron", desc: T("If Plex asks for it, or after you changed your Plex password."), run: function () { push(plexPage(s.id)); } });
@@ -287,7 +298,12 @@
             desc: T("An XMLTV address (.xml or .xml.gz), if your provider gives you one."),
             run: function (row) { edit(row, { value: s.epg || "", url: true, onDone: function (v) { D.updateSource(id, { epg: v }); D.rebuild(); TV.epg.loadAll(true); redraw(); } }); } });
         rows.push({ label: fmtCount(s), desc: s.error || "" });
-        rows.push({ label: T("Refresh Now"), icon: "refresh", run: function () { loadWithProgress(s, function () { redraw(); }); } });
+        rows.push({ label: T("Refresh Now"), icon: "refresh", run: function () {
+            // asked for here: a Jellyfin or Emby server that refused the password gets one more try (even when the
+            // refusal came in the background after this page was drawn)
+            if (s.type === "jellyfin") { s.refused = false; D.updateSource(id, { refused: false }); }
+            loadWithProgress(s, function () { redraw(); });
+        } });
         rows.push({ label: T("Delete This Playlist"), danger: true, run: function () {
             TV.alert({ title: T("Delete “{name}”?", { name: s.name }), message: T("Its channels, favorites and guide will be removed from APL TV."), buttons: [
                 { label: T("Cancel") }, { label: T("Delete"), danger: true, run: function () { D.removeSource(id); pop(); } }] });
@@ -580,7 +596,7 @@
         TV.editText({ value: o.value, secret: o.secret, url: o.url,
             onInput: function (t) { if (v) v.textContent = o.secret ? new Array(Math.min(t.length, 12) + 1).join("•") : t; },
             onDone: function (t) { r.classList.remove("is-editing"); o.onDone(t); },
-            onCancel: function () { r.classList.remove("is-editing"); } });
+            onCancel: function () { r.classList.remove("is-editing"); if (o.onCancel) o.onCancel(); } });
     }
     function push(p) { var cur = pages[pages.length - 1]; if (cur && cur.onLeave) cur.onLeave(); pages.push(p); redraw(0); }
     function pop() {
