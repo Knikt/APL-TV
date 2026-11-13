@@ -97,7 +97,12 @@
     /* The server said no to this username and password: kept on the source, so APL TV stops signing in by
        itself (the server locks the user out, on every device, after a few tries) until the password is
        changed in Settings or Refresh Now is chosen there (js/settings.js) */
-    function refused(src) { save(src, { refused: true }); return new Error(T("The server refused this username or password.")); }
+    function refused(src) {
+        var msg = T("The server refused this username or password.");
+        // also shown under the source in Settings, even when found in the background (Home)
+        save(src, { refused: true, error: msg });
+        return new Error(msg);
+    }
     /* One sign-in at a time per server: calls sent together (jfFresh) that all get a 401 wait for
        the same one, then take its key. None at all after a refusal. */
     var logins = {};

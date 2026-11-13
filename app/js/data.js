@@ -786,6 +786,9 @@
     /* Marked by hand (OK held): watched or not, a movie, an episode, or many episodes at once */
     function markWatched(item, eps, on) {
         var r = resumes(), list = eps && eps.length ? eps : [null], keys = [];
+        // a movie ticked from the server's answer (js/media.js srvDone, kept in the saved catalog): unticked
+        // there too, so it does not come back when the app starts again
+        var resave = !on && !(eps && eps.length) && item.srvDone && cats[item.src];
         list.forEach(function (ep) {
             var k = ep ? item.id + "|" + ep.id : item.id;
             keys.push(k);
@@ -795,6 +798,7 @@
         trimResumes(r);
         TV.save("resume", r);
         fire("resume");
+        if (resave) TV.idb.set("catm:" + item.src, pack(cats[item.src].movies, "movies", item.src));
         // the same on your Jellyfin or Emby server (js/media.js; other sources: nothing)
         if (TV.media && TV.media.played) TV.media.played(item, eps, on).then(function (ok) { if (ok && on) serverHas(keys); });
     }

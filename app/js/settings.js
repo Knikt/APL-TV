@@ -276,12 +276,15 @@
             rows.push({ label: T("Server"), value: s.server });
             rows.push({ label: T("Username"), value: s.user });
             // changed on the server: typed again here, then signed in once with it (js/media.js stops trying by
-            // itself after a refusal)
+            // itself after a refusal). Nothing typed (Back closes the keyboard and keeps the text, js/ui.js): a
+            // password already set stays as it is, and no sign-in is sent. The page is built again after, so the
+            // row and the source's state show what is now true
             rows.push({ label: T("Password"), value: s.pass ? "••••••••" : T("None"), secret: true, acc: "chevron", run: function (row) {
-                edit(row, { value: "", secret: true, onDone: function (v) {
+                edit(row, { value: "", secret: true, onCancel: function () { redraw(); }, onDone: function (v) {
+                    if (!v && s.pass) { redraw(); return; }
                     s.pass = v; s.refused = false;
                     D.updateSource(id, { pass: v, refused: false });
-                    loadWithProgress(s, function () { redraw(); });
+                    loadWithProgress(s, function () { replaceTop(sourcePage(id)); });
                 } });
             } });
         } else if (s.type === "plex") {
@@ -590,7 +593,7 @@
         TV.editText({ value: o.value, secret: o.secret, url: o.url,
             onInput: function (t) { if (v) v.textContent = o.secret ? new Array(Math.min(t.length, 12) + 1).join("•") : t; },
             onDone: function (t) { r.classList.remove("is-editing"); o.onDone(t); },
-            onCancel: function () { r.classList.remove("is-editing"); } });
+            onCancel: function () { r.classList.remove("is-editing"); if (o.onCancel) o.onCancel(); } });
     }
     function push(p) { var cur = pages[pages.length - 1]; if (cur && cur.onLeave) cur.onLeave(); pages.push(p); redraw(0); }
     function pop() {
