@@ -134,6 +134,11 @@
             desc: T("Plots, pictures, ratings, genres and More Like This come from TMDB. Get a free key at themoviedb.org › Settings › API, then type it here."),
             run: function (row) {
                 if (src === "setup") return;
+                // typed with the remote here, or on the phone (the key alone: the playlist fields stay empty)
+                TV.menu(T("TMDB Key"), [{ label: T("With the Remote"), icon: "keyboard", run: function () { remote(row); } },
+                                        { label: T("From Your Phone"), icon: "phone", run: function () { push(phonePage()); } }]);
+            } });
+        function remote(row) {
                 edit(row, { value: TV.load("tmdbKey", ""), onDone: function (v) {
                     v = String(v || "").replace(/\s+/g, "");
                     if (!v) { TV.save("tmdbKey", ""); TV.meta.setKey(""); redraw(); return; }
@@ -144,7 +149,7 @@
                         redraw();
                     });
                 } });
-            } });
+        }
         rows.push({ section: T("Voice") });
         var code = TV.voice ? TV.voice.relayCode() : "";
         rows.push({ label: T("Alexa Skill"), value: code ? T("On") : T("Off"), acc: "chevron",
@@ -529,6 +534,16 @@
     function phonePage() {
         return { title: T("From Your Phone"), custom: drawPhone, onLeave: stopPhone, rows: [] };
     }
+    /* A TMDB key from the phone: checked with TMDB, then kept like one typed in Settings (not over APL Launcher Setup's) */
+    function takeTmdbKey(v) {
+        v = String(v || "").replace(/\s+/g, "");
+        if (!v || TV.meta.keySource() === "setup") return;
+        TV.meta.testKey(v).then(function (ok) {
+            if (!ok) { TV.toast(T("TMDB did not accept this key.")); return; }
+            TV.save("tmdbKey", v); TV.meta.setKey(v);
+            TV.toast(T("TMDB key saved"));
+        });
+    }
     function drawPhone() {
         root.innerHTML = "";
         var qr = el("div", "qr");
@@ -561,6 +576,9 @@
                     if (!r.items || !r.items.length) return;
                     stopPhone();
                     var it = r.items[r.items.length - 1];
+                    // the TMDB key typed on the phone, with the playlist or alone
+                    if (it.tmdb) takeTmdbKey(it.tmdb);
+                    if (it.type === "key") { state.innerHTML = "<i></i>" + esc(T("Received! Loading…")); setTimeout(function () { pop(); }, 1200); return; }
                     // Plex from the phone: its code on the screen, to type on plex.tv/link
                     if (it.type === "plex") { replaceTop(plexPage()); return; }
                     if (it.type === "jellyfin") { delete it.epg; if (!it.user && !it.server) return; }

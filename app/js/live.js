@@ -526,5 +526,29 @@
     }
     TV.catchup = { url: catchupUrl, can: canCatchup, play: playCatchup };
 
+    /* Android: the sound goes on but the picture stays still. Seen on a Fire TV with an Xtream account's MPEG-TS
+       channels, fine in HLS: the account's channels go to HLS (Settings > Live Stream Format) and this one starts again.
+       Still frozen, or already HLS (a 4K stream a Fire TV Stick cannot keep up with): the channel's next lower quality,
+       and 4K no longer comes first on this device. */
+    TV.player.onVideoStall = function (dropped) {
+        var ch = playing;
+        TV.log("picture frozen" + (ch ? " on " + ch.name + " " + (ch.q || "") : "") + " (" + dropped + " frames dropped)");
+        if (!ch) return;
+        var src = D.sources().filter(function (s) { return s.id === ch.src; })[0];
+        if (src && src.type === "xtream" && TV.pref("liveFormat") !== "m3u8") {
+            TV.setPref("liveFormat", "m3u8");
+            TV.toast(T("Picture frozen: switching to {quality}", { quality: "HLS" }));
+            playChannel(ch, FULL);
+            return;
+        }
+        var group = null;
+        D.channelsIn(ch.cat).forEach(function (x) { if (x.id === ch.id || (x.variants && x.variants.some(function (v) { return v.id === ch.id; }))) group = x; });
+        var S = TV.smart, all = (group && group.variants) || [], r = S.qualityRank(ch.q), next = null;
+        all.forEach(function (v) { if (!next && v.id !== ch.id && S.qualityRank(v.q) < r) next = v; });
+        if (ch.q === "4K" && TV.noUhd) { TV.noUhd(); D.regroup(); }
+        if (!next) return;
+        TV.toast(T("Picture frozen: switching to {quality}", { quality: next.q || T("Standard") }));
+        playChannel(next, FULL);
+    };
     TV.live = { play: function (ch, ctx) { fullScreen(ch, ctx); }, findNumber: findNumber, playChannel: function (ch, rect, url, more) { playChannel(ch, rect, url, more); }, pickCategory: pickCategory, guideMenu: guideMenu };
 })(window);

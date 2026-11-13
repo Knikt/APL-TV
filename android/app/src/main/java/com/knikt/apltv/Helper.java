@@ -260,7 +260,9 @@ final class Helper {
             JSONObject item = new JSONObject();
             String ty = b.optString("type");
             boolean m3u = "m3u".equals(ty), stalker = "stalker".equals(ty);
-            item.put("type", m3u ? "m3u" : stalker ? "stalker" : "jellyfin".equals(ty) ? "jellyfin" : "plex".equals(ty) ? "plex" : "xtream");   // Jellyfin and Emby: server, user, password like Xtream
+            item.put("type", m3u ? "m3u" : stalker ? "stalker" : "jellyfin".equals(ty) ? "jellyfin" : "plex".equals(ty) ? "plex" : "key".equals(ty) ? "key" : "xtream");   // Jellyfin and Emby: server, user, password like Xtream
+            String tmdb = b.optString("tmdb").replaceAll("\\s+", "");
+            if (!tmdb.isEmpty()) item.put("tmdb", cut(tmdb, 400));            // the TMDB key, with the playlist or alone
             item.put("name", cut(b.optString("name"), 80));
             item.put("epg", cut(b.optString("epg"), 2000));
             if (m3u) item.put("url", cut(b.optString("url"), 4000));

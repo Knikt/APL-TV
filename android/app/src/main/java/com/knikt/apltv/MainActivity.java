@@ -184,6 +184,8 @@ public class MainActivity extends Activity {
         @JavascriptInterface public String platform() { return "android"; }
         /* "Sony BRAVIA XR A80L": for js/saver.js, which recognises OLED TV sets by their name */
         @JavascriptInterface public String model() { return android.os.Build.MANUFACTURER + " " + android.os.Build.MODEL; }
+        /* Whether 4K versions of a channel go first (js/player.js) */
+        @JavascriptInterface public boolean canUhd() { return Player.canUhd(MainActivity.this); }
         /* The version of the package itself (.apk): the app's pages update themselves, the package doesn't */
         @JavascriptInterface public String version() { try { return getPackageManager().getPackageInfo(getPackageName(), 0).versionName; } catch (Exception e) { return ""; } }
         @JavascriptInterface public void exit() { runOnUiThread(() -> { player.close(); finishAndRemoveTask(); }); }

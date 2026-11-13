@@ -22,7 +22,7 @@ var zlib = require("zlib");
 var os = require("os");
 var crypto = require("crypto");
 
-var PORT = 8765, VERSION = "1.1.0";
+var PORT = 8765, VERSION = "1.1.1";
 var IDLE_MS = 15 * 60 * 1000, SESSION_MS = 20 * 60 * 1000;
 var UA = "APL TV/" + VERSION + " (" + (global.APLTV_PLATFORM || "Tizen") + ")";
 
@@ -567,7 +567,10 @@ var PHONE_PL = {
     "Paste the playlist's link.": "Wklej link do playlisty.",
     "Look at your TV: the Plex code is there. Type it on plex.tv/link.": "Spójrz na telewizor: jest na nim kod Plex. Wpisz go na plex.tv/link.",
     "This code has expired: scan the new one on the screen.": "Ten kod wygasł: zeskanuj nowy kod z ekranu.",
-    "The screen did not answer. Is the phone on the same Wi-Fi?": "Ekran nie odpowiedział. Czy telefon jest w tej samej sieci Wi-Fi?"
+    "The screen did not answer. Is the phone on the same Wi-Fi?": "Ekran nie odpowiedział. Czy telefon jest w tej samej sieci Wi-Fi?",
+    "TMDB key (optional)": "Klucz TMDB (opcjonalnie)",
+    "For posters, summaries and ratings: your free key from themoviedb.org (Settings › API). You can send it alone.": "Do plakatów, opisów i ocen: Twój darmowy klucz z themoviedb.org (Ustawienia › API). Możesz wysłać sam klucz.",
+    "Look at your screen: APL TV is checking your TMDB key.": "Spójrz na ekran: APL TV sprawdza Twój klucz TMDB."
 };
 function phonePage(lang, token, ok) {
     var fr = /^fr/i.test(lang || ""), pl = /^pl/i.test(lang || "");
@@ -597,6 +600,8 @@ function phonePage(lang, token, ok) {
         "<div id=fp class=hide><p class=hint>" + t("Plex links with a code: tap the button below, a code appears on the TV, then type it on plex.tv/link with this phone.", "Plex se relie avec un code : touche le bouton ci-dessous, un code s'affiche sur la TV, puis tape-le sur plex.tv/link avec ce t\u00E9l\u00E9phone.") + "</p></div>" +
         "<div class=card id=fe><label>" + t("Name (optional)", "Nom (facultatif)") + "</label><input id=name placeholder='" + t("My TV", "Ma TV") + "'>" +
         "<div class=row id=fepg><label>" + t("TV guide address, XMLTV (optional)", "Adresse du guide TV, XMLTV (facultatif)") + "</label><input id=epg inputmode=url autocapitalize=off autocorrect=off></div></div>" +
+        "<div class=card><label>" + t("TMDB key (optional)", "Clé TMDB (facultatif)") + "</label><input id=tmdb autocapitalize=off autocorrect=off spellcheck=false></div>" +
+        "<p class=hint>" + t("For posters, summaries and ratings: your free key from themoviedb.org (Settings › API). You can send it alone.", "Pour les affiches, les résumés et les notes : ta clé gratuite de themoviedb.org (Paramètres › API). Tu peux l'envoyer seule.") + "</p>" +
         "<button class=go id=go type=button>" + t("Send to the screen", "Envoyer à l'écran") + "</button><div class=msg id=msg></div></div>" +
         "<div id=done class='done hide'><div class=big>✓</div><h2>" + t("Sent!", "C'est envoyé !") + "</h2><p id=donep>" + t("Look at your screen: APL TV is loading your playlist.", "Regarde ton écran : APL TV charge ta playlist.") + "</p></div>" +
         "<script>var K=" + JSON.stringify(token).replace(/</g, "\\u003c") + ",mode='xtream';function $(i){return document.getElementById(i)}" +
@@ -604,14 +609,15 @@ function phonePage(lang, token, ok) {
         "function sw(m){mode=m;for(var k in M){$(M[k][0]).className=k==m?'on':'';$(M[k][1]).className=k==m?'':'hide'}$('fe').className=m=='plex'?'card hide':'card';$('fepg').className=m=='jellyfin'?'row hide':'row';" +
         "$('go').textContent=m=='plex'?" + JSON.stringify(t("Show the Plex code on the TV", "Afficher le code Plex sur la TV")) + ":" + JSON.stringify(t("Send to the screen", "Envoyer \u00E0 l'\u00E9cran")) + "}" +
         "$('bx').onclick=function(){sw('xtream')};$('bm').onclick=function(){sw('m3u')};$('bs').onclick=function(){sw('stalker')};$('bj').onclick=function(){sw('jellyfin')};$('bp').onclick=function(){sw('plex')};" +
-        "$('go').onclick=function(){var b={k:K,type:mode,name:$('name').value,epg:$('epg').value};" +
-        "if(mode=='xtream'){b.server=$('server').value;b.user=$('user').value;b.pass=$('pass').value;if(!b.server||(!/get\\.php/i.test(b.server)&&(!b.user||!b.pass))){$('msg').textContent=" + JSON.stringify(t("Fill in the server, the username and the password.", "Remplis le serveur, l'identifiant et le mot de passe.")) + ";return}}" +
-        "else if(mode=='stalker'){b.portal=$('portal').value;b.mac=$('mac').value;if(!b.portal||b.mac.replace(/[^0-9a-f]/gi,'').length!=12){$('msg').textContent=" + JSON.stringify(t("Fill in the portal and a MAC address like 00:1A:79:12:34:56.", "Remplis le portail et une adresse MAC comme 00:1A:79:12:34:56.")) + ";return}}" +
-        "else if(mode=='jellyfin'){b.server=$('jserver').value;b.user=$('juser').value;b.pass=$('jpass').value;b.epg='';if(!b.server||!b.user){$('msg').textContent=" + JSON.stringify(t("Fill in the server's address and your user name.", "Remplis l'adresse du serveur et ton nom d'utilisateur.")) + ";return}}" +
+        "$('go').onclick=function(){var b={k:K,type:mode,name:$('name').value,epg:$('epg').value,tmdb:$('tmdb').value.trim()};" +
+        "var only=function(m){if(b.tmdb){b.type='key';return true}$('msg').textContent=m;return false};" +
+        "if(mode=='xtream'){b.server=$('server').value;b.user=$('user').value;b.pass=$('pass').value;if(!b.server||(!/get\\.php/i.test(b.server)&&(!b.user||!b.pass))){if(!only(" + JSON.stringify(t("Fill in the server, the username and the password.", "Remplis le serveur, l'identifiant et le mot de passe.")) + "))return}}" +
+        "else if(mode=='stalker'){b.portal=$('portal').value;b.mac=$('mac').value;if(!b.portal||b.mac.replace(/[^0-9a-f]/gi,'').length!=12){if(!only(" + JSON.stringify(t("Fill in the portal and a MAC address like 00:1A:79:12:34:56.", "Remplis le portail et une adresse MAC comme 00:1A:79:12:34:56.")) + "))return}}" +
+        "else if(mode=='jellyfin'){b.server=$('jserver').value;b.user=$('juser').value;b.pass=$('jpass').value;b.epg='';if(!b.server||!b.user){if(!only(" + JSON.stringify(t("Fill in the server's address and your user name.", "Remplis l'adresse du serveur et ton nom d'utilisateur.")) + "))return}}" +
         "else if(mode=='plex'){b.name='';b.epg=''}" +
-        "else{b.url=$('url').value;if(!b.url){$('msg').textContent=" + JSON.stringify(t("Paste the playlist's link.", "Colle le lien de la playlist.")) + ";return}}" +
+        "else{b.url=$('url').value;if(!b.url){if(!only(" + JSON.stringify(t("Paste the playlist's link.", "Colle le lien de la playlist.")) + "))return}}" +
         "$('go').disabled=true;$('msg').textContent='';var x=new XMLHttpRequest();x.open('POST','/submit');x.setRequestHeader('Content-Type','application/json');" +
-        "x.onload=function(){if(x.status==200){$('form').className='hide';$('done').className='done';if(mode=='plex')$('donep').textContent=" + JSON.stringify(t("Look at your TV: the Plex code is there. Type it on plex.tv/link.", "Regarde ta TV : le code Plex y est. Tape-le sur plex.tv/link.")) + "}else{$('go').disabled=false;$('msg').textContent=x.status==403?" + JSON.stringify(t("This code has expired: scan the new one on the screen.", "Ce code a expiré : scanne le nouveau sur l'écran.")) + ":" + JSON.stringify(t("The screen did not answer. Is the phone on the same Wi-Fi?", "L'écran n'a pas répondu. Le téléphone est-il sur le même Wi-Fi ?")) + "}};" +
+        "x.onload=function(){if(x.status==200){$('form').className='hide';$('done').className='done';if(b.type=='key')$('donep').textContent=" + JSON.stringify(t("Look at your screen: APL TV is checking your TMDB key.", "Regarde ton écran : APL TV vérifie ta clé TMDB.")) + ";else if(mode=='plex')$('donep').textContent=" + JSON.stringify(t("Look at your TV: the Plex code is there. Type it on plex.tv/link.", "Regarde ta TV : le code Plex y est. Tape-le sur plex.tv/link.")) + "}else{$('go').disabled=false;$('msg').textContent=x.status==403?" + JSON.stringify(t("This code has expired: scan the new one on the screen.", "Ce code a expiré : scanne le nouveau sur l'écran.")) + ":" + JSON.stringify(t("The screen did not answer. Is the phone on the same Wi-Fi?", "L'écran n'a pas répondu. Le téléphone est-il sur le même Wi-Fi ?")) + "}};" +
         "x.onerror=function(){$('go').disabled=false;$('msg').textContent=" + JSON.stringify(t("The screen did not answer. Is the phone on the same Wi-Fi?", "L'écran n'a pas répondu. Le téléphone est-il sur le même Wi-Fi ?")) + "};x.send(JSON.stringify(b))};" +
         "</script></body></html>";
 }
@@ -1068,7 +1074,8 @@ function handler(req, res) {
             var b = null;
             try { b = JSON.parse(body); } catch (e) {}
             if (!b || !sessionOk(b.k)) { wrongCode(); send(res, 403, { ok: 0 }); return; }
-            var item = { type: b.type === "m3u" ? "m3u" : b.type === "stalker" ? "stalker" : b.type === "jellyfin" ? "jellyfin" : b.type === "plex" ? "plex" : "xtream", name: String(b.name || "").slice(0, 80), epg: String(b.epg || "").slice(0, 2000) };
+            var item = { type: b.type === "m3u" ? "m3u" : b.type === "stalker" ? "stalker" : b.type === "jellyfin" ? "jellyfin" : b.type === "plex" ? "plex" : b.type === "key" ? "key" : "xtream", name: String(b.name || "").slice(0, 80), epg: String(b.epg || "").slice(0, 2000) };
+            if (b.tmdb) item.tmdb = String(b.tmdb).replace(/\s+/g, "").slice(0, 400);          // the TMDB key, with the playlist or alone
             if (item.type === "m3u") item.url = String(b.url || "").slice(0, 4000);
             else if (item.type === "stalker") { item.portal = String(b.portal || "").slice(0, 400); item.mac = String(b.mac || "").slice(0, 40); }
             else { item.server = String(b.server || "").slice(0, 400); item.user = String(b.user || "").slice(0, 200); item.pass = String(b.pass || "").slice(0, 200); }

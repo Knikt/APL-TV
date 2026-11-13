@@ -234,6 +234,9 @@
        requests (opts.provider: its playlist, its Xtream API), a 404 is asked again too; and once a request was
        refused, a 404 under another name never ends the tries. */
     function refused(status, opts) { return !!REFUSED[status] || (status === 404 && !!opts.provider); }
+    /* Other panels say nothing at all: they cut the connection of a name they don't let in (the helper then answers
+       502 with the network's own words). Asked again as the players too; a timeout or an unknown server is not that. */
+    function cut(e) { return !!e && e.status === 502 && /reset|hang up|closed|end of (stream|file)|EPIPE|aborted/i.test(String(e.body || "")); }
     var PLAYER_UAS = ["VLC/3.0.21 LibVLC/3.0.21", "IPTVSmartersPro", "okhttp/4.12.0"];
     var hostUa = null;
     function hostKey(url) { var m = String(url || "").match(/^https?:\/\/([^\/?#]+)/i); return m ? m[1].toLowerCase() : ""; }
@@ -263,10 +266,13 @@
         return e;
     }
     function askAgain(url, opts, status, body, ownDone) {
-        var known = TV.uaFor(url), tries = (ownDone ? [] : [""]).concat(PLAYER_UAS), i = 0, old = false, last = { status: status, body: body };
+        var known = TV.uaFor(url), tries = (ownDone ? [] : [""]).concat(PLAYER_UAS), i = 0, old = false, last = { status: status, body: body }, gone = null;
         if (known) tries = [known].concat(tries.filter(function (u) { return u !== known && !(u === "" && known === helperUa()); }));
         return (function next() {
-            if (i >= tries.length) throw refusedError(last.status || 403, last.body, opts.provider);
+            if (i >= tries.length) {
+                if (!last.status && gone) throw gone;       // cut under every name: the network's own error
+                throw refusedError(last.status || 403, last.body, opts.provider);
+            }
             var ua = tries[i++];
             if (ua && old) return next();                  // a helper from before 1.0.7: only its own request
             return (ua ? TV.helper.sget(url, { "User-Agent": ua }, opts.timeout) : TV.helper.fetch(url, opts.timeout)).then(function (text) {
@@ -274,6 +280,7 @@
                 return text;
             }, function (e) {
                 if (e.old) { old = true; return next(); }
+                if (cut(e)) { gone = gone || e; return next(); }
                 if (!REFUSED[e.status] && e.status !== 404) throw e;   // another answer (the network…): that is the real one
                 if (e.status !== 404 || !last.status) last = { status: e.status, body: e.body };   // a refusal says more than a 404
                 return next();
@@ -283,6 +290,10 @@
     // Through the helper's own request; refused there too, as the players that panels let in
     function viaHelper(url, opts) {
         return TV.helper.fetch(url, opts.timeout).catch(function (e) {
+            if (cut(e)) {
+                TV.log("the server cut the connection, even through the helper: asked again as a player");
+                return askAgain(url, opts, 0, "", true).catch(function (e2) { throw e2.status && e2.status !== 502 ? e2 : e; });
+            }
             if (!refused(e.status, opts)) throw e;
             TV.log("refused by the server (" + e.status + "), even through the helper: asked again as a player");
             return askAgain(url, opts, e.status, e.body, true);

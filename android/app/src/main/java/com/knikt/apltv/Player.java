@@ -79,6 +79,27 @@ final class Player {
 
     Player(Activity act, FrameLayout root) { this.act = act; this.root = root; }
 
+    /* 4K first only where it can be shown and decoded: a 4K mode on the screen and a decoder for HEVC 2160p at 50
+       frames a second (a Fire TV Stick on an HD TV, or an older box, gets the FHD version of a channel first) */
+    static boolean canUhd(Activity a) {
+        try {
+            if (android.os.Build.VERSION.SDK_INT < 23) return false;
+            boolean panel = false;
+            android.view.Display d = a.getWindowManager().getDefaultDisplay();
+            for (android.view.Display.Mode m : d.getSupportedModes()) if (Math.max(m.getPhysicalWidth(), m.getPhysicalHeight()) >= 3840) panel = true;
+            if (!panel) return false;
+            for (android.media.MediaCodecInfo i : new android.media.MediaCodecList(android.media.MediaCodecList.REGULAR_CODECS).getCodecInfos()) {
+                if (i.isEncoder()) continue;
+                for (String t : i.getSupportedTypes()) {
+                    if (!"video/hevc".equalsIgnoreCase(t)) continue;
+                    android.media.MediaCodecInfo.VideoCapabilities v = i.getCapabilitiesForType(t).getVideoCapabilities();
+                    if (v != null && v.areSizeAndRateSupported(3840, 2160, 50)) return true;
+                }
+            }
+        } catch (Exception e) { /* unknown: FHD first */ }
+        return false;
+    }
+
     void attach(WebView web) {
         this.web = web;
         view = new PlayerView(act);
@@ -135,12 +156,26 @@ final class Player {
         ui.post(ticker);
     }
 
-    /* The page hears the time twice a second while it plays */
+    /* The page hears the time twice a second while it plays.
+       A picture that stays still while the sound goes on (a 4K stream a Fire TV Stick cannot keep up with: every
+       frame comes too late and is dropped) is told to the page once, after 5 s: it takes a lower quality. */
+    private int lastRendered = -1;
+    private long lastFrameAt = 0;
+    private boolean stallSaid = false;
     private final Runnable ticker = new Runnable() {
         @Override public void run() {
             if (exo != null) {
                 positionMs = exo.getCurrentPosition();
-                if (exo.isPlaying()) event("time", String.valueOf((long) positionMs));
+                if (exo.isPlaying()) {
+                    event("time", String.valueOf((long) positionMs));
+                    DecoderCounters dc = exo.getVideoFormat() != null ? exo.getVideoDecoderCounters() : null;
+                    if (dc != null) {
+                        dc.ensureUpdated();
+                        long now = android.os.SystemClock.elapsedRealtime();
+                        if (dc.renderedOutputBufferCount != lastRendered || lastFrameAt == 0) { lastRendered = dc.renderedOutputBufferCount; lastFrameAt = now; }
+                        else if (!stallSaid && now - lastFrameAt > 5000) { stallSaid = true; event("videostall", String.valueOf(dc.droppedBufferCount)); }
+                    }
+                }
                 if (System.currentTimeMillis() - statsWanted < 4000) readStats();
             }
             ui.postDelayed(this, 500);
@@ -159,6 +194,7 @@ final class Player {
         ui.post(() -> {
             ensure();
             url = u; prepared = false; wantPlay = false; durationMs = 0; positionMs = 0; lastSummary = "";
+            lastRendered = -1; lastFrameAt = 0; stallSaid = false;
             videoOverride = -1; video.clear(); videoJson = "{}"; statsJson = "{}";
             selector.setParameters(selector.buildUponParameters().setForceHighestSupportedBitrate(false).clearOverrides().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false));
             exo.stop();

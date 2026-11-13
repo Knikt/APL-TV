@@ -155,9 +155,16 @@
     /* 4K: Samsung's player wants to be told before it prepares a UHD stream */
     var uhdPanel = null;
     function canUhd() {
-        if (uhdPanel === null) { try { uhdPanel = !!global.webapis.productinfo.isUdPanelSupported(); } catch (e) { uhdPanel = true; } }
+        if (uhdPanel === null) {
+            /* Android: the package says it (a 4K screen mode and a decoder for it); an older package, or a picture that
+               already froze in 4K here ("no4k"): FHD first. Samsung: its panel. LG: 4K. */
+            if (TV.ANDROID) { try { uhdPanel = !TV.load("no4k", 0) && !!(global.APLAndroid && global.APLAndroid.canUhd && global.APLAndroid.canUhd()); } catch (e) { uhdPanel = false; } }
+            else { try { uhdPanel = !!global.webapis.productinfo.isUdPanelSupported(); } catch (e) { uhdPanel = true; } }
+        }
         return uhdPanel;
     }
+    TV.canUhd = canUhd;
+    TV.noUhd = function () { TV.save("no4k", 1); uhdPanel = false; };
     function streamInfo() {
         try {
             var info = av.getCurrentStreamInfo() || [];

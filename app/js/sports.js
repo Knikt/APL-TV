@@ -93,7 +93,9 @@
         for (var i = 0; i < f.teams.length; i++) if (f.teams[i].s === sport && String(f.teams[i].id) === String(t.id)) return true;
         return false;
     }
-    function isFavMatch(m) { return favTeam(m.home, m.sport) || favTeam(m.away, m.sport); }
+    // twinFav: ESPN's matches that stand for a 365Scores club's (Lech Poznan in the Europa League), ESPN naming the club its own way
+    var twinFav = {};
+    function isFavMatch(m) { return !!twinFav[m.id] || favTeam(m.home, m.sport) || favTeam(m.away, m.sport); }
     var AWAY_FIRST = { basketball: 1, football: 1, hockey: 1 };       // American sports write the visitors first
 
     /* ---------- the scores ---------- */
@@ -1014,8 +1016,13 @@
         c._update = function () {
             var st = statusOf(m), two = sides(m), w = where[m.id], bits = [], board = m.state !== "pre" && !/CANCEL|POSTPONED/.test(m.status);
             var cr = function (t, cls) { return "<i class='mc__crest" + cls + "' style='background-image:" + esc(crestBg(crest(t, m.sport), 160)) + "'></i>"; };
+            /* the capsule between the scores: a short word as it is; the period and the clock on two lines ("QT2", "06:52");
+               a long word smaller, on two lines if it must ("Terminé (t.a.b.)") */
+            var stx = String(st.text || ""), dot = stx.indexOf(" · "), pill = stx.length <= 10 ? "<span>" + esc(stx) + "</span>"
+                : dot > 0 ? "<span class='is-two'><em>" + esc(stx.slice(0, dot)) + "</em><em>" + esc(stx.slice(dot + 3)) + "</em></span>"
+                : "<span class='is-long'>" + esc(stx) + "</span>";
             var paintBg = "var(--mc-tex), " + split(two[0], two[1], 110), html = (board
-                    ? "<div class='mc__board'>" + cr(two[0], "") + "<b class='" + result(two[0], m, st) + "'>" + esc(two[0].score || "0") + "</b><span>" + esc(st.text) + "</span>" +
+                    ? "<div class='mc__board'>" + cr(two[0], "") + "<b class='" + result(two[0], m, st) + "'>" + esc(two[0].score || "0") + "</b>" + pill +
                       "<b class='" + result(two[1], m, st) + "'>" + esc(two[1].score || "0") + "</b>" + cr(two[1], "") + "</div>"
                     : cr(two[0], " mc__crest--a") + cr(two[1], " mc__crest--b")) +
                 (board ? (st.live ? "<span class='mc__badge is-live'>" + esc(T("Live")) + "</span>" : "") : badge(m, dated)) +
@@ -1480,10 +1487,12 @@
             matches = out.sort(byTime);
             if (fresh) TV.log("sports: " + out.length + " matches (" + dayOff + ") in " + (Date.now() - t0) + " ms, " + jobs.length + " requests");
             // My Teams: your teams' matches in what is shown (today's, tomorrow's, or the calendar's)
-            var mid = {};
+            var mid = {}, twins = r.mine.map(function (m) { return espnTwin(m, r.lists); });
+            twinFav = {};
+            twins.forEach(function (tw) { if (tw) twinFav[tw.id] = 1; });         // its tile and banner say it is yours (★)
             mine = out.filter(isFavMatch);
             mine.forEach(function (m) { mid[m.id] = 1; });
-            r.mine.forEach(function (m) { var tw = espnTwin(m, r.lists); if (tw) m = tw; if (!mid[m.id]) { mid[m.id] = 1; mine.push(tw ? keep(m) : keepSoft(m)); } });
+            r.mine.forEach(function (m, i) { var tw = twins[i]; if (tw) m = tw; if (!mid[m.id]) { mid[m.id] = 1; mine.push(tw ? keep(m) : keepSoft(m)); } });
             officialTv(matches.concat(mine));
             if (!visible && !sheet.open) return;
             var changed = fresh || sigNow() !== shownSig;
@@ -1574,22 +1583,27 @@
         return standings365(String(m.league[0]).slice(5), isLive(m)).then(function (j) {
             var st = j && j.standings && j.standings[0], rows = (st && st.rows) || [];
             if (!rows.length) return null;
-            var ids = [String(m.home.id), String(m.away.id)], cols = {}, dest = {}, group = null, title = T(m.league[1]);
+            var ids = [String(m.home.id), String(m.away.id)], cols = {}, dest = {}, groupOf = {};
             (st.headers || []).forEach(function (h) { cols[h.key] = 1; });
             (st.destinations || []).forEach(function (x) { dest[x.num] = zone365(x.name || ""); });
-            rows.forEach(function (r) { if (group === null && r.groupNum != null && ids.indexOf("365-" + (r.competitor && r.competitor.id)) >= 0) group = r.groupNum; });
-            if (group !== null) {
-                rows = rows.filter(function (r) { return r.groupNum === group; });
-                (st.groups || []).forEach(function (g) { if (g.num === group && g.name) title += " · " + g.name; });
-            }
+            rows.forEach(function (r) { var id = "365-" + (r.competitor && r.competitor.id); if (r.groupNum != null && ids.indexOf(id) >= 0) groupOf[id] = r.groupNum; });
             var num = function (v) { return v == null || v === "" ? "" : String(Math.round(v)); };
-            var table = { title: title, rows: rows.map(function (r, i) {
-                var c = r.competitor || {}, gd = Math.round(r.ratio || 0);
-                return { rank: num(r.position) || String(i + 1), id: "365-" + c.id, team: c.name || "", logo: img365("Competitors", c.id, c.imageVersion),
-                         gp: num(r.gamePlayed), w: num(r.gamesWon), d: cols.gamesEven ? num(r.gamesEven) : "", l: num(r.gamesLost),
-                         gd: cols.ratio ? (gd > 0 ? "+" + gd : String(gd)) : "", pts: cols.points ? num(r.points) : "" };
-            }) };
-            if (m.sport === "soccer") table.zones = rows.map(function (r) { return dest[r.destinationNum] || ""; });
+            // one group's table (or the whole one), titled with the app's name of the competition and the group's
+            function tableOf(group) {
+                var mine = group == null ? rows : rows.filter(function (r) { return r.groupNum === group; }), title = T(m.league[1]);
+                if (group != null) (st.groups || []).forEach(function (g) { if (g.num === group && g.name) title += " · " + T(g.name); });
+                var t = { title: title, rows: mine.map(function (r, i) {
+                    var c = r.competitor || {}, gd = Math.round(r.ratio || 0);
+                    return { rank: num(r.position) || String(i + 1), id: "365-" + c.id, team: c.name || "", logo: img365("Competitors", c.id, c.imageVersion),
+                             gp: num(r.gamePlayed), w: num(r.gamesWon), d: cols.gamesEven ? num(r.gamesEven) : "", l: num(r.gamesLost),
+                             gd: cols.ratio ? (gd > 0 ? "+" + gd : String(gd)) : "", pts: cols.points ? num(r.points) : "" };
+                }) };
+                if (m.sport === "soccer") t.zones = mine.map(function (r) { return dest[r.destinationNum] || ""; });
+                return t;
+            }
+            /* the two teams' group; two groups (a KHL match between its conferences): the home team's, then the visitors' */
+            var gh = groupOf[ids[0]], ga = groupOf[ids[1]], table = tableOf(gh != null ? gh : ga);
+            if (gh != null && ga != null && ga !== gh) table.more = tableOf(ga);
             return { events: [], stats: [], lineups: [], form: [], table: table, scorers: { h: [], a: [] }, photo: "" };
         });
     }
@@ -2169,18 +2183,23 @@
             h = "<div class='mlu'>" + col(of(two[0]), two[0]) + col(of(two[1]), two[1]) + "</div>";
         } else if (t === "table") {
             // FotMob's table: the places that qualify in colour, the crests, played / won / drawn / lost, goal difference, points
-            var ids = [String(m.home.id), String(m.away.id)], zones = d.table.zones || tableZones(m, d.table.rows.length), used = {};
+            var ids = [String(m.home.id), String(m.away.id)];
             var crestOf = function (id) { return m.sport === "soccer" && id ? "https://a.espncdn.com/i/teamlogos/soccer/500/" + id + ".png" : ""; };
-            h = "<div class='mtb'><div class='mtb__title'>" + esc(d.table.title) + "</div><div class='mtb__row mtb__row--head'><b>#</b><span>" + esc(T("Team")) + "</span><em>" + esc(T("P")) + "</em>" +
-                "<em>" + esc(T("W")) + "</em><em>" + esc(T("D")) + "</em><em>" + esc(T("L")) + "</em><em>" + esc(T("GD")) + "</em><em class='mtb__pts'>" + esc(T("Pts")) + "</em></div>" +
-                d.table.rows.map(function (rw, i) {
-                    var z = zones[i], u = rw.logo || crestOf(rw.id);
-                    if (z) used[z] = 1;
-                    return "<div class='mtb__row" + (ids.indexOf(rw.id) >= 0 ? " is-team" : "") + "'><b" + (z ? " class='mtb__z mtb__z--" + z + "'" : "") + ">" + esc(rw.rank) + "</b><span>" +
-                           (u ? "<i style='background-image:" + esc(crestBg(u, 60)) + "'></i>" : "") + esc(shown({ name: rw.team }, true)) + "</span><em>" + esc(rw.gp) + "</em><em>" + esc(rw.w) +
-                           "</em><em>" + esc(rw.d) + "</em><em>" + esc(rw.l) + "</em><em>" + esc(rw.gd) + "</em><em class='mtb__pts'>" + esc(rw.pts) + "</em></div>";
-                }).join("") +
-                "<div class='mtb__legend'>" + Object.keys(ZONE_TEXT).filter(function (z) { return used[z]; }).map(function (z) { return "<span><i class='mtb__z--" + z + "'></i>" + esc(T(ZONE_TEXT[z])) + "</span>"; }).join("") + "</div></div>";
+            // the teams' table; a second one when they play in two groups (the visitors' conference)
+            var oneTable = function (tb, first) {
+                var zones = tb.zones || (first ? tableZones(m, tb.rows.length) : []), used = {};
+                return "<div class='mtb'><div class='mtb__title'>" + esc(tb.title) + "</div><div class='mtb__row mtb__row--head'><b>#</b><span>" + esc(T("Team")) + "</span><em>" + esc(T("P")) + "</em>" +
+                    "<em>" + esc(T("W")) + "</em><em>" + esc(T("D")) + "</em><em>" + esc(T("L")) + "</em><em>" + esc(T("GD")) + "</em><em class='mtb__pts'>" + esc(T("Pts")) + "</em></div>" +
+                    tb.rows.map(function (rw, i) {
+                        var z = zones[i], u = rw.logo || crestOf(rw.id);
+                        if (z) used[z] = 1;
+                        return "<div class='mtb__row" + (ids.indexOf(rw.id) >= 0 ? " is-team" : "") + "'><b" + (z ? " class='mtb__z mtb__z--" + z + "'" : "") + ">" + esc(rw.rank) + "</b><span>" +
+                               (u ? "<i style='background-image:" + esc(crestBg(u, 60)) + "'></i>" : "") + esc(shown({ name: rw.team }, true)) + "</span><em>" + esc(rw.gp) + "</em><em>" + esc(rw.w) +
+                               "</em><em>" + esc(rw.d) + "</em><em>" + esc(rw.l) + "</em><em>" + esc(rw.gd) + "</em><em class='mtb__pts'>" + esc(rw.pts) + "</em></div>";
+                    }).join("") +
+                    "<div class='mtb__legend'>" + Object.keys(ZONE_TEXT).filter(function (z) { return used[z]; }).map(function (z) { return "<span><i class='mtb__z--" + z + "'></i>" + esc(T(ZONE_TEXT[z])) + "</span>"; }).join("") + "</div></div>";
+            };
+            h = oneTable(d.table, true) + (d.table.more ? oneTable(d.table.more, false) : "");
         } else if (t === "form") {
             // each side's last five: won, drawn, lost, against whom, the score
             var fcol = function (tm) {

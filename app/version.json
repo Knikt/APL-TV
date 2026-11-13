@@ -1,8 +1,8 @@
 {
- "version": "1.1.0",
+ "version": "1.1.1",
  "loader": 1,
  "reinstall": "1.0.1",
- "notes": "A new Sports tab: live scores, your teams, the channels showing each match and official video summaries. Also your own names for channels, the provider's replay in the TV guide and an Arabic search keyboard.",
+ "notes": "Your playlists sorted by themselves: countries and languages recognised in every category, the provider's separators and codes taken off. Also Polish football in Sports, tables for basketball, hockey and handball, and a frozen picture on Fire TV caught.",
  "platforms": {
   "tizen": {
    "reinstall": "1.0.1"

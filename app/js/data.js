@@ -502,9 +502,11 @@
                 seen[c.key] = e;
                 out.push(e);
             });
+            // 4K first only where it plays (TV.canUhd: a Fire TV Stick froze the picture of TF1 4K); else after HD
+            var uhd = !TV.canUhd || TV.canUhd(), rank = function (q) { var n = S.qualityRank(q); return n === 4 && !uhd ? 1.5 : n; };
             out = out.map(function (e) {
                 if (!e.variants) return e.self;
-                var v = e.variants.slice().sort(function (a, b) { return S.qualityRank(b.q) - S.qualityRank(a.q); });
+                var v = e.variants.slice().sort(function (a, b) { return rank(b.q) - rank(a.q); });
                 var best = v[0], copy = {};
                 Object.keys(best).forEach(function (k) { copy[k] = best[k]; });
                 copy.variants = v; copy.num = Math.min.apply(null, v.map(function (x) { return x.num; }));
@@ -1217,7 +1219,7 @@
     restoreThemes();            // the titles already known for your hidden themes, before anything is drawn
     TV.data = {
         sources: sources, addSource: addSource, removeSource: removeSource, updateSource: updateSource, normServer: normServer, xtreamFromUrl: xtreamFromUrl,
-        loadSource: loadSource, start: start, refresh: refresh, onChange: onChange, rebuild: rebuild, xAuth: xAuth,
+        loadSource: loadSource, start: start, refresh: refresh, onChange: onChange, rebuild: rebuild, xAuth: xAuth, regroup: function () { groupCache = {}; },
         catalog: function () { return merged; },
         channelsIn: channelsIn, channelsNamed: channelsNamed, channel: channel, streamUrl: streamUrl, catOf: catOf, sourceOf: sourceOf,
         favIds: favIds, isFav: isFav, toggleFav: toggleFav, favChannels: favChannels, moveFav: moveFav,

@@ -896,5 +896,10 @@ window.TV_LANG_FR = {
     "New Shows": "Nouvelles séries",
     "APL TV {v} is out: install its new .ipk once": "APL TV {v} est sortie : installe une fois son nouveau .ipk",
     "APL TV {v} is out: install its new .apk once": "APL TV {v} est sortie : installe une fois son nouveau .apk",
-    "Runs the installed version again, until the next update.": "Relance la version installée, jusqu'à la prochaine mise à jour."
+    "Picture frozen: switching to {quality}": "Image figée : passage en {quality}",
+    "Runs the installed version again, until the next update.": "Relance la version installée, jusqu'à la prochaine mise à jour.",
+    /* Shown through T() from 365Scores' tables: the groups of a competition (the KHL's conferences) */
+    "Western Conference": "Conférence Ouest",
+    "Scandinavia": "Scandinavie",
+    "Eastern Conference": "Conférence Est"
 };
