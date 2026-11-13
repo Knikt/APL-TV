@@ -333,6 +333,7 @@ window.TV_LANG_PL = {
     "APL TV restarts in the new language.": "APL TV uruchomi się ponownie w nowym języku.",
     "TV Guide": "Przewodnik TV",
     "Update the TV Guide": "Zaktualizuj przewodnik TV",
+    "Off: no programmes are downloaded or shown. Lighter on a slow TV, where a large guide keeps the processor busy for minutes.": "Wyłączone: program TV nie jest pobierany ani wyświetlany. Odciąża wolne telewizory, na których duży przewodnik zajmuje procesor nawet przez kilka minut.",
     "Downloads the programmes of the next 24 hours again.": "Ponownie pobiera program na najbliższe 24 godziny.",
     "Updating the TV guide…": "Aktualizowanie przewodnika TV…",
     "TV guide updated": "Zaktualizowano przewodnik TV",
