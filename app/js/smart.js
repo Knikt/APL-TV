@@ -157,6 +157,7 @@
         /* Text compared for search: lower case, no accents, no punctuation */
         fold: function (s) {
             s = String(s || "").toLowerCase();
+            s = s.replace(/\u0142/g, "l");                               // Polish ł has no decomposition: "Wisła" folded to "wis a"
             try { s = s.normalize("NFD").replace(/[̀-ͯ]/g, ""); } catch (e) {}
             /* Arabic (asked on Reddit): one form per letter, as people type them (the hamza and madda forms of alef,
                taa marbuta, alef maqsura), no vowel marks nor stretching; its punctuation a space. Arabic, Greek,
