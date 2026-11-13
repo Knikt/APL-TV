@@ -42,7 +42,7 @@
             ["ned.1", "Eredivisie", "", "Netherlands"], ["ned.cup", "KNVB Beker", "", "Netherlands"],
             ["bel.1", "Belgian Pro League", "", "Rest of Europe"], ["tur.1", "Süper Lig", "", "Rest of Europe"], ["sco.1", "Scottish Premiership", "", "Rest of Europe"],
             ["gre.1", "Greek Super League", "", "Rest of Europe"], ["sui.1", "Swiss Super League", "", "Rest of Europe"], ["aut.1", "Austrian Bundesliga", "", "Rest of Europe"],
-            ["s365:153", "Ekstraklasa", "", "Rest of Europe"],                     // not at ESPN: 365Scores, like the "s365:" leagues below
+            ["s365:153", "Ekstraklasa", "", "Rest of Europe"], ["s365:157", "Puchar Polski", "", "Rest of Europe"],   // not at ESPN: 365Scores, like the "s365:" leagues below
             ["den.1", "Danish Superliga", "", "Rest of Europe"], ["nor.1", "Eliteserien", "", "Rest of Europe"], ["swe.1", "Allsvenskan", "", "Rest of Europe"],
             ["rus.1", "Russian Premier League", "", "Rest of Europe"],
             ["usa.1", "MLS", "", "Americas"], ["mex.1", "Liga MX", "", "Americas"], ["bra.1", "Brasileirão", "", "Americas"], ["arg.1", "Liga Profesional (Argentina)", "", "Americas"],
@@ -173,8 +173,12 @@
         return { id: "365-" + c.id, name: c.name || "", short: c.name || "", nick: c.name || "", loc: "", logo: img365("Competitors", c.id, c.imageVersion),
                  color: col(c.color), alt: col(c.awayColor), score: c.score >= 0 ? String(c.score) : "", winner: !!c.isWinner };
     }
+    /* 365Scores' numbers of the competitions ESPN has: a 365Scores club's European matches (the Ekstraklasa's) go in
+       the app's own competition (its name, the rights where you live), and ESPN's own match takes their place (espnTwin) */
+    var ESPN_OF_365 = { 572: "uefa.champions", 573: "uefa.europa", 7685: "uefa.europa.conf", 472: "uefa.super_cup", 321: "club.friendly" };
     function league365(sp, compId, name) {
         for (var i = 0; i < sp.leagues.length; i++) if (sp.leagues[i][0] === "s365:" + compId) return sp.leagues[i];
+        if (sp.id === "soccer" && ESPN_OF_365[compId]) return leagueBySlug(sp, ESPN_OF_365[compId], name);
         return leagueBySlug(sp, "s365:" + compId, name);
     }
     function read365(g, sp, lg) {
@@ -383,14 +387,24 @@
         if (m.sport === "basketball" || m.sport === "football") return p > 4 ? T("OT") : T("Q{n}", { n: p });
         return String(p);
     }
+    /* 365Scores' short words are English ("P3", "Q2", "HT", "1st"): said as ESPN's are, the period in your language,
+       the minute for football and handball */
+    function live365(m) {
+        var s = String(m.live || ""), c = String(m.clock || ""), p;
+        if (/^(HT|Halftime)$/i.test(s)) return T("Half-time");
+        if (/^(SO|Shootout|Pens?|Penalties)$/i.test(s)) return T("Penalties");
+        if (m.sport === "soccer" || m.sport === "handball") return /^\d+(\.\d+)?$/.test(c) ? Math.ceil(parseFloat(c)) + "'" : c || T("Live");
+        if ((p = /^P(\d)$/.exec(s))) s = T("P{n}", { n: p[1] });
+        else if ((p = /^Q(\d)$/.exec(s))) s = T("Q{n}", { n: p[1] });
+        else if (/^OT\d*$/i.test(s)) s = T("OT");
+        return c ? s + " · " + c : s || T("Live");
+    }
     function statusOf(m) {
         var n = m.status;
         if (/POSTPONED/.test(n)) return { text: T("Postponed"), done: m.state === "post" };
         if (/CANCEL|ABANDON/.test(n)) return { text: T("Cancelled"), done: true };
         if (m.state === "pre") return { text: TV.hhmm(m.start) };
-        // football from 365Scores (the Ekstraklasa) reads like ESPN's: the minute, Half-time
-        if (m.src === "365" && m.state === "in" && m.sport === "soccer") return { text: /^(HT|Halftime)$/i.test(m.live) ? T("Half-time") : m.clock || T("Live"), live: true };
-        if (m.src === "365") return m.state === "in" ? { text: m.clock ? m.live + " · " + m.clock : m.live || T("Live"), live: true } : { text: T("Final"), done: true };
+        if (m.src === "365") return m.state === "in" ? { text: live365(m), live: true } : { text: T("Final"), done: true };
         if (m.state === "in") {
             if (/HALFTIME/.test(n)) return { text: T("Half-time"), live: true };
             if (/SHOOTOUT/.test(n)) return { text: T("Penalties"), live: true };
@@ -658,7 +672,7 @@
         // Poland: the rights confirmed for 2026-27 (satkurier.pl's list, October 2026)
         PL: [["CANAL+", "CANAL+ SPORT*|CANAL+ PREMIUM|CANAL+ EXTRA*", "uefa.champions eng.1 esp.1 s365:153"], ["Eleven Sports", "ELEVEN SPORTS*", "ger.1 ger.2 ita.1 fra.1"],
              ["Polsat Sport", "POLSAT SPORT*", "uefa.europa uefa.europa.conf ned.1 sco.1 ita.coppa_italia ksa.1 conmebol.libertadores conmebol.sudamericana"],
-             ["TVP", "TVP SPORT|TVP 1|TVP 2", "eng.fa eng.league_cup eng.2 eng.3 por.taca.portugal"]]
+             ["TVP", "TVP SPORT|TVP 1|TVP 2", "eng.fa eng.league_cup eng.2 eng.3 por.taca.portugal s365:157"]]
     };
     var TV_NATIONAL = { FR: [["TF1", "TF1|M6", "france"], ["L'Équipe / beIN SPORTS", "L'EQUIPE|BEIN SPORTS*", ""]], PL: [["TVP", "TVP 1|TVP SPORT|TVP 2", "poland"]] };
     var NATIONAL_LEAGUES = " uefa.nations fifa.worldq.uefa uefa.euroq fifa.friendly fifa.world uefa.euro ";
@@ -1398,6 +1412,20 @@
         document.body.classList.toggle("in-rows", !!on && zone > 0);
     }
 
+    /* A club from 365Scores (the Ekstraklasa) in a competition ESPN has: ESPN's own match, the one its competition
+       shows, with its details and its score in play; 365Scores' copy only when ESPN has none */
+    function sameTeam(a, b, sport) { var al = aliases(a, sport); return aliases(b, sport).some(function (s) { return al.indexOf(s) >= 0; }); }
+    function espnTwin(m, lists) {
+        if (m.src !== "365" || is365(m.league)) return null;
+        for (var i = 0; i < lists.length; i++) {
+            for (var j = 0; lists[i] && j < lists[i].length; j++) {
+                var x = lists[i][j];
+                if (x.src === "365" || x.lkey !== m.lkey || Math.abs(x.start - m.start) > 20 * 60000) continue;
+                if (sameTeam(m.home, x.home, m.sport) || sameTeam(m.home, x.away, m.sport) || sameTeam(m.away, x.home, m.sport) || sameTeam(m.away, x.away, m.sport)) return x;
+            }
+        }
+        return null;
+    }
     /* The day's matches, every league at once (six requests at a time). quiet: a refresh, nothing redrawn
        unless a match came, went or started. */
     function load(fresh) {
@@ -1455,7 +1483,7 @@
             var mid = {};
             mine = out.filter(isFavMatch);
             mine.forEach(function (m) { mid[m.id] = 1; });
-            r.mine.forEach(function (m) { if (!mid[m.id]) { mid[m.id] = 1; mine.push(keepSoft(m)); } });
+            r.mine.forEach(function (m) { var tw = espnTwin(m, r.lists); if (tw) m = tw; if (!mid[m.id]) { mid[m.id] = 1; mine.push(tw ? keep(m) : keepSoft(m)); } });
             officialTv(matches.concat(mine));
             if (!visible && !sheet.open) return;
             var changed = fresh || sigNow() !== shownSig;
@@ -1613,7 +1641,7 @@
         // Poland: the channels as YouTube's Polish results show them (November 2026)
         PL: [["CANAL+ SPORT", "uefa.champions eng.1 esp.1 s365:153"], ["ELEVEN SPORTS PL", "ger.1 ger.2 ita.1 fra.1"],
              ["Polsat Sport", "uefa.europa uefa.europa.conf ita.1 ned.1 sco.1 ita.coppa_italia"],
-             ["TVP Sport", "uefa.champions s365:153 eng.fa eng.league_cup eng.2 eng.3 por.taca.portugal ger.dfb_pokal " + NATIONAL]]
+             ["TVP Sport", "uefa.champions s365:153 s365:157 eng.fa eng.league_cup eng.2 eng.3 por.taca.portugal ger.dfb_pokal " + NATIONAL]]
     };
     YT_RIGHTS.IE = YT_RIGHTS.GB; YT_RIGHTS.AT = YT_RIGHTS.DE; YT_RIGHTS.LU = YT_RIGHTS.BE; YT_RIGHTS.MC = YT_RIGHTS.FR;
     // The competitions' own channels (their summaries go where no broadcaster has them)
@@ -2305,7 +2333,7 @@
     var SUGGEST = ["uefa.champions", "uefa.europa", "uefa.europa.conf", "fifa.world", "uefa.euro", "uefa.nations", "fifa.worldq.uefa", "uefa.euroq", "fifa.friendly",
                    "eng.1", "esp.1", "ita.1", "ger.1", "nba", "nfl", "nhl", "180659", "164205", "17567", "289234"];
     var SUGGEST_LANG = { fr: ["fra.1", "fra.2", "fra.coupe_de_france", "270559", "271937", "fra.w.1", "s365:569", "s365:38", "s365:6182", "s365:542", "s365:5712"], en: ["eng.fa", "eng.league_cup", "267979", "sco.1", "eng.w.1"],
-        es: ["esp.copa_del_rey", "esp.w.1"], pt: ["por.1"], it: ["ita.coppa_italia"], de: ["ger.dfb_pokal"], nl: ["ned.1"], tr: ["tur.1"], ar: ["ksa.1", "caf.nations"], pl: ["s365:153"] };
+        es: ["esp.copa_del_rey", "esp.w.1"], pt: ["por.1"], it: ["ita.coppa_italia"], de: ["ger.dfb_pokal"], nl: ["ned.1"], tr: ["tur.1"], ar: ["ksa.1", "caf.nations"], pl: ["s365:153", "s365:157"] };
     function draftOf() {
         var f = chosen();
         if (f) return JSON.parse(JSON.stringify(f));
