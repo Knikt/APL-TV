@@ -45,6 +45,8 @@
                 "⁵": "5", "⁶": "6", "⁷": "7", "⁸": "8", "⁹": "9", "ᵃ": "a", "ᵇ": "b", "ᵈ": "d", "ᵉ": "e", "ᵍ": "g", "ʰ": "h", "ⁱ": "i", "ʲ": "j", "ᵏ": "k", "ˡ": "l",
                 "ᵐ": "m", "ⁿ": "n", "ᵒ": "o", "ᵖ": "p", "ʳ": "r", "ᵗ": "t", "ᵘ": "u", "ʷ": "w", "ʸ": "y", "ᶻ": "z", "⁺": "+" };
     var SUP_RE = new RegExp("[" + Object.keys(SUP).join("") + "]+", "g");
+    // Letters NFD leaves whole, as people type them on a keyboard without them
+    var FOLD = { "ł": "l", "œ": "oe", "æ": "ae", "ø": "o", "ß": "ss", "đ": "d", "ð": "d", "þ": "th", "ı": "i" }, FOLD_RE = /[łœæøßđðþı]/g;
     function plain(s) { return String(s || "").replace(SUP_RE, function (m) { var o = ""; for (var i = 0; i < m.length; i++) o += SUP[m.charAt(i)] || ""; return " " + o + " "; }); }
     // Regions written before the country ("EU| FR| Sport", "AF| CM| …"): skipped, the country after them counts
     var REGIONS = { SRS: 1, SER: 1, VOD: 1, MOV: 1, EU: 1, EUR: 1, EUROPE: 1, AS: 1, ASIA: 1, AM: 1, AMERICA: 1, LATAM: 1, LATINO: 1, MENA: 1, ME: 1, NA: 1, SA: 1, INT: 1, WORLD: 1, OTT: 1 };
@@ -157,6 +159,7 @@
         /* Text compared for search: lower case, no accents, no punctuation */
         fold: function (s) {
             s = String(s || "").toLowerCase();
+            s = s.replace(FOLD_RE, function (c) { return FOLD[c]; });    // "Wisła", "Cœur", "Bodø" were "wis a", "c ur", "bod"
             try { s = s.normalize("NFD").replace(/[̀-ͯ]/g, ""); } catch (e) {}
             /* Arabic (asked on Reddit): one form per letter, as people type them (the hamza and madda forms of alef,
                taa marbuta, alef maqsura), no vowel marks nor stretching; its punctuation a space. Arabic, Greek,
