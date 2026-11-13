@@ -76,7 +76,7 @@ cp "$WGT" "$OUT/$NAME"
 LIST="$(unzip -l "$OUT/$NAME")"
 echo "$LIST" | grep -v -E " images/"
 for f in config.xml index.html icon.png version.json service/service.js js/boot.js js/build.js js/updater.js js/app.js js/keys.local.js js/dev.local.js \
-         js/lang-fr.js css/tv.css css/tv2.css author-signature.xml signature1.xml; do
+         js/lang-fr.js js/lang-pl.js css/tv.css css/tv2.css author-signature.xml signature1.xml; do
     grep -q " $f\$" <<<"$LIST" || { echo "$f is missing from $NAME" >&2; exit 1; }
 done
 if grep -q -E " (fonts|sounds)/.+" <<<"$LIST"; then echo "fonts or sounds ended up in $NAME" >&2; exit 1; fi

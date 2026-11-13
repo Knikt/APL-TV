@@ -16,6 +16,7 @@
  },
  "scripts": [
   "js/lang-fr.js",
+  "js/lang-pl.js",
   "js/i18n.js",
   "js/keys.local.js",
   "js/dev.local.js",

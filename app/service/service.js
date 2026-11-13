@@ -538,9 +538,40 @@ function phoneCss() {
         "button.go:disabled{opacity:.5}.msg{margin-top:16px;text-align:center;color:#ff6961}.done{text-align:center;padding-top:60px}.done .big{font-size:80px}.done h2{font-size:28px;margin:16px 0 8px}" +
         ".done p{color:rgba(255,255,255,.65)}.hide{display:none}";
 }
+/* The phone page in Polish, keyed by its English texts (the French is written next to each one below) */
+var PHONE_PL = {
+    "This code has expired": "Ten kod wygasł",
+    "On the screen, open APL TV › Settings › Add a playlist › From your phone, then scan the new code.": "Na ekranie otwórz APL TV › Ustawienia › Dodaj playlistę › Z telefonu, a potem zeskanuj nowy kod.",
+    "Send your playlist to the screen. It goes straight to it on your Wi-Fi, through no other website.": "Wyślij playlistę na ekran. Trafi na niego bezpośrednio przez Twoją sieć Wi-Fi, bez pośrednictwa żadnej strony internetowej.",
+    "Server": "Serwer",
+    "Username": "Nazwa użytkownika",
+    "Password": "Hasło",
+    "The three details your provider gave you. A get.php link pasted in Server works too.": "Trzy dane od Twojego dostawcy. Możesz też wkleić link get.php w polu Serwer.",
+    "Playlist address (M3U)": "Adres playlisty (M3U)",
+    "Paste the link of your M3U playlist.": "Wklej link do playlisty M3U.",
+    "Portal address": "Adres portalu",
+    "MAC address": "Adres MAC",
+    "The portal (MAG, Ministra) and the MAC address your provider registered.": "Portal (MAG, Ministra) i adres MAC zarejestrowany przez dostawcę.",
+    "Your Jellyfin or Emby server: its address, your user name and your password.": "Twój serwer Jellyfin lub Emby: jego adres, nazwa użytkownika i hasło.",
+    "Plex links with a code: tap the button below, a code appears on the TV, then type it on plex.tv/link with this phone.": "Plex łączy się za pomocą kodu: stuknij przycisk poniżej, a gdy na telewizorze pojawi się kod, wpisz go na plex.tv/link na tym telefonie.",
+    "Name (optional)": "Nazwa (opcjonalnie)",
+    "My TV": "Mój telewizor",
+    "TV guide address, XMLTV (optional)": "Adres przewodnika TV, XMLTV (opcjonalnie)",
+    "Send to the screen": "Wyślij na ekran",
+    "Sent!": "Wysłano!",
+    "Look at your screen: APL TV is loading your playlist.": "Spójrz na ekran: APL TV wczytuje Twoją playlistę.",
+    "Show the Plex code on the TV": "Pokaż kod Plex na telewizorze",
+    "Fill in the server, the username and the password.": "Wpisz serwer, nazwę użytkownika i hasło.",
+    "Fill in the portal and a MAC address like 00:1A:79:12:34:56.": "Wpisz portal i adres MAC, np. 00:1A:79:12:34:56.",
+    "Fill in the server's address and your user name.": "Wpisz adres serwera i nazwę użytkownika.",
+    "Paste the playlist's link.": "Wklej link do playlisty.",
+    "Look at your TV: the Plex code is there. Type it on plex.tv/link.": "Spójrz na telewizor: jest na nim kod Plex. Wpisz go na plex.tv/link.",
+    "This code has expired: scan the new one on the screen.": "Ten kod wygasł: zeskanuj nowy kod z ekranu.",
+    "The screen did not answer. Is the phone on the same Wi-Fi?": "Ekran nie odpowiedział. Czy telefon jest w tej samej sieci Wi-Fi?"
+};
 function phonePage(lang, token, ok) {
-    var fr = /^fr/i.test(lang || "");
-    function t(en, f) { return fr ? f : en; }
+    var fr = /^fr/i.test(lang || ""), pl = /^pl/i.test(lang || "");
+    function t(en, f) { return fr ? f : (pl && PHONE_PL[en]) || en; }
     var css = phoneCss();
     if (!ok) {
         return "<!doctype html><html><head><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'><title>APL TV</title><style>" + css + "</style></head><body>" +
@@ -611,7 +642,16 @@ var EDIT_TEXT = {
           again: "Continuer \u00E0 modifier", expired: "Ce code a expir\u00E9", expiredHow: "Sur la TV, ouvre APL TV \u203A R\u00E9glages \u203A Modifier sur ton t\u00E9l\u00E9phone, puis scanne le nouveau code.",
           noAnswer: "La TV n'a pas r\u00E9pondu. Le t\u00E9l\u00E9phone est-il sur le m\u00EAme Wi-Fi ?", error: "Un probl\u00E8me est survenu. Scanne \u00E0 nouveau le code.", loading: "Chargement de ta playlist\u2026",
           findCat: "Chercher une cat\u00E9gorie", noCat: "Aucune cat\u00E9gorie avec ce nom.", sel1: "1 s\u00E9lectionn\u00E9e", seln: "{n} s\u00E9lectionn\u00E9es", toTop: "Tout en haut", toBottom: "Tout en bas",
-          moveAfter: "Placer apr\u00E8s\u2026", placeHint: "Touche maintenant la cat\u00E9gorie apr\u00E8s laquelle les mettre.", cancel: "Annuler" }
+          moveAfter: "Placer apr\u00E8s\u2026", placeHint: "Touche maintenant la cat\u00E9gorie apr\u00E8s laquelle les mettre.", cancel: "Annuler" },
+    pl: { sub: "Ukrywaj lub przeno\u015B kategorie, tw\u00F3rz grupy kana\u0142\u00F3w i uk\u0142adaj ulubione. Potem wy\u015Blij wszystko do telewizora.", cats: "Kategorie", groups: "Grupy", favs: "Ulubione",
+          live: "TV", movies: "Filmy", series: "Seriale", catsHint: "Prze\u0142\u0105cznik ukrywa lub pokazuje kategori\u0119 wsz\u0119dzie na telewizorze. Przytrzymaj \u2261 i przeci\u0105gnij, aby przenie\u015B\u0107 kategori\u0119, albo stuknij kategorie, aby je zaznaczy\u0107 i przenie\u015B\u0107 wszystkie naraz.", none: "Nic tu nie ma.",
+          groupsHint: "Twoje w\u0142asne listy kana\u0142\u00F3w, widoczne w TV na \u017Cywo i w Przewodniku po Ulubionych. Przytrzymaj \u2261 i przeci\u0105gnij, aby przenie\u015B\u0107 kana\u0142.", rename: "Zmie\u0144 nazw\u0119", del: "Usu\u0144", addChans: "Dodaj kana\u0142y", newGroup: "Nowa grupa",
+          favsHint: "Twoje ulubione kana\u0142y w kolejno\u015Bci, w jakiej pokazuje je telewizor. Przytrzymaj \u2261 i przeci\u0105gnij, aby przenie\u015B\u0107 kana\u0142.", noChans: "Brak kana\u0142\u00F3w.", search: "Szukaj kana\u0142u", done: "Gotowe", noMatch: "Brak kana\u0142u o tej nazwie.",
+          groupName: "Nazwa grupy", delGroup: "Usun\u0105\u0107 grup\u0119 \u201E{name}\u201D?", send: "Wy\u015Blij do telewizora", sent: "Wys\u0142ano!", sentHow: "Sp\u00F3jrz na telewizor: zmiany ju\u017C tam s\u0105.",
+          again: "Edytuj dalej", expired: "Ten kod wygas\u0142", expiredHow: "Na telewizorze otw\u00F3rz APL TV \u203A Ustawienia \u203A Edytuj na telefonie, a potem zeskanuj nowy kod.",
+          noAnswer: "Telewizor nie odpowiedzia\u0142. Czy telefon jest w tej samej sieci Wi-Fi?", error: "Co\u015B posz\u0142o nie tak. Zeskanuj kod ponownie.", loading: "Wczytywanie playlisty\u2026",
+          findCat: "Szukaj kategorii", noCat: "Brak kategorii o tej nazwie.", sel1: "Zaznaczone: 1", seln: "Zaznaczone: {n}", toTop: "Na g\u00F3r\u0119", toBottom: "Na d\u00F3\u0142",
+          moveAfter: "Umie\u015B\u0107 za\u2026", placeHint: "Teraz stuknij kategori\u0119, za kt\u00F3r\u0105 maj\u0105 si\u0119 znale\u017A\u0107.", cancel: "Anuluj" }
 };
 var EDIT_CSS = ".r{display:flex;align-items:center;gap:8px;padding:10px 12px;border-top:1px solid rgba(255,255,255,.08)}.card>.r:first-child{border-top:0}" +
     ".r .n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.r small{color:rgba(255,255,255,.5);font-size:13px;margin-left:4px}.r.off .n{opacity:.45}" +
@@ -871,7 +911,7 @@ function editScript() {
     x.send();
 }
 function editPage(lang, token, ok) {
-    var L = EDIT_TEXT[/^fr/i.test(lang || "") ? "fr" : "en"];
+    var L = EDIT_TEXT[/^fr/i.test(lang || "") ? "fr" : /^pl/i.test(lang || "") ? "pl" : "en"];
     var head = "<!doctype html><html><head><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'><title>APL TV</title><style>" + phoneCss() + EDIT_CSS + "</style></head><body>";
     if (!ok) return head + "<div class=done><div class=big>\u231B</div><h2>" + L.expired + "</h2><p>" + L.expiredHow + "</p></div></body></html>";
     return head + "<div id=app></div><script>var K=" + JSON.stringify(token).replace(/</g, "\\u003c") + ",L=" + JSON.stringify(L).replace(/</g, "\\u003c") + ";(" + editScript.toString() + ")();</" + "script></body></html>";

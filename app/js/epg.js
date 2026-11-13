@@ -195,7 +195,7 @@
         kenya: "ke", uganda: "ug", somalia: "so", congo: "cd", mali: "ml", benin: "bj", togo: "tg", gabon: "ga", morocco: "ma", maroc: "ma", algeria: "dz", algerie: "dz",
         tunisia: "tn", tunisie: "tn", egypt: "eg", ethiopia: "et", tanzania: "tz", rwanda: "rw", angola: "ao", mozambique: "mz", zambia: "zm", zimbabwe: "zw" };
     var EPGPW = { fr: 1, gb: 1, us: 1, de: 1, es: 1, br: 1, ca: 1, ru: 1, au: 1, "in": 1, jp: 1, kr: 1, cn: 1 };
-    var LANG_COUNTRY = { fr: "fr", en: "gb" };
+    var LANG_COUNTRY = { fr: "fr", en: "gb", pl: "pl" };
     function compact(s) {
         s = String(s || "").toLowerCase();
         try { s = s.normalize("NFD").replace(/[\u0300-\u036f]/g, ""); } catch (e) {}

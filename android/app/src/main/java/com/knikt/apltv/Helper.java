@@ -615,9 +615,13 @@ final class Helper {
     private void editWrongCode() {
         synchronized (lock) { if (editToken != null && ++editWrong >= 20) { log("too many wrong editor codes: closed"); editToken = null; editData = null; editSaved = null; } }
     }
+    /** The language of the phone's pages (tools/make-android.py makes them in English, French and Polish). */
+    private static String pageLang(String lang) {
+        String l = lang == null ? "" : lang.toLowerCase(Locale.US);
+        return l.startsWith("fr") ? "fr" : l.startsWith("pl") ? "pl" : "en";
+    }
     private String editPage(String lang, String token) {
-        boolean fr = lang != null && lang.toLowerCase(Locale.US).startsWith("fr");
-        String name = (token != null ? "edit-" : "edit-expired-") + (fr ? "fr" : "en") + ".html";
+        String name = (token != null ? "edit-" : "edit-expired-") + pageLang(lang) + ".html";
         try (InputStream in = ctx.getAssets().open("helper/" + name)) {
             String html = new String(readAll(in), StandardCharsets.UTF_8);
             return token != null ? html.replace("\"__APLTV_TOKEN__\"", JSONObject.quote(token)) : html;
@@ -633,8 +637,7 @@ final class Helper {
         return s.toString();
     }
     private String phonePage(String lang, String token) {
-        boolean fr = lang != null && lang.toLowerCase(Locale.US).startsWith("fr");
-        String name = (token != null ? "phone-" : "expired-") + (fr ? "fr" : "en") + ".html";
+        String name = (token != null ? "phone-" : "expired-") + pageLang(lang) + ".html";
         try (InputStream in = ctx.getAssets().open("helper/" + name)) {
             String html = new String(readAll(in), StandardCharsets.UTF_8);
             return token != null ? html.replace("\"__APLTV_TOKEN__\"", JSONObject.quote(token)) : html;
