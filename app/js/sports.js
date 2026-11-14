@@ -640,8 +640,38 @@
     // The official broadcasters of a match where you live
     function tvOf(m) { return m.tv || (rights().cc === "US" ? m.bc : []) || []; }
     var tvSoon = TV.debounce(function () { refreshShown(); findSoon(300); }, 500);
+    /* Canada, NHL: ESPN only knows the American networks, so the Canadian ones come from the NHL's own schedule
+       (api-web.nhle.com, no key): each game has its "tvBroadcasts" by country. National networks first. */
+    var NHL_CA = { SN: "Sportsnet", SN1: "Sportsnet One", SN360: "Sportsnet 360", SNE: "Sportsnet East", SNW: "Sportsnet West", SNP: "Sportsnet Pacific", SNO: "Sportsnet Ontario",
+                   CBC: "CBC", TVAS: "TVA Sports", TVAS2: "TVA Sports 2", CITY: "Citytv", PRIME: "Prime Video" };
+    var nhlWeeks = {};
+    function nhlDay(t) { var d = new Date(t - 5 * 3600000); return d.getUTCFullYear() + "-" + pad(d.getUTCMonth() + 1) + "-" + pad(d.getUTCDate()); }
+    function nhlSchedule(day) {
+        if (!nhlWeeks[day]) nhlWeeks[day] = limited(function () { return TV.fetchJSON("https://api-web.nhle.com/v1/schedule/" + day, { timeout: 12000 }); }).then(function (j) {
+            var out = [];
+            ((j && j.gameWeek) || []).forEach(function (w) { (w.games || []).forEach(function (g) { out.push(g); }); });
+            return out;
+        }, function () { delete nhlWeeks[day]; return []; });
+        return nhlWeeks[day];
+    }
+    function nhlTeam(x) { x = x || {}; return ((x.placeName && x.placeName["default"]) || "") + " " + ((x.commonName && x.commonName["default"]) || ""); }
+    function nhlCanada(list) {
+        list.forEach(function (m) {
+            if (m.lkey !== "hockey/nhl" || m.state === "post" || m.tv || (m.nhlAsked && Date.now() - m.nhlAsked < 6 * 3600000)) return;
+            m.nhlAsked = Date.now();
+            nhlSchedule(nhlDay(m.start)).then(function (games) {
+                var g = games.filter(function (x) { return Math.abs(Date.parse(x.startTimeUTC) - m.start) < 15 * 60000 && (sameClub(nhlTeam(x.homeTeam), m.home) || sameClub(nhlTeam(x.awayTeam), m.away)); })[0];
+                var b = ((g && g.tvBroadcasts) || []).filter(function (x) { return x.countryCode === "CA" && x.network; });
+                b.sort(function (x, y) { return (x.market === "N" ? 0 : 1) - (y.market === "N" ? 0 : 1); });
+                var names = [];
+                b.forEach(function (x) { var n = NHL_CA[x.network] || x.network; if (names.indexOf(n) < 0) names.push(n); });
+                if (names.length) { m.tv = names; tvSoon(); }
+            });
+        });
+    }
     function officialTv(list) {
         var cc = rights().cc;
+        if (cc === "CA") nhlCanada(list);
         if (cc !== "FR" && cc !== "MC") return;
         list.forEach(function (m) {
             if (!LFP_CHAMP[m.lkey] || m.state !== "pre" || m.tvAsked) return;
