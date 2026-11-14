@@ -308,7 +308,9 @@
     }
     Grid.prototype.set = function (items, index) {
         this.items = items || []; this.index = TV.clamp(index || 0, 0, Math.max(0, this.items.length - 1));
-        this.scroll = 0; this.inner.innerHTML = ""; this.cards = {};
+        this.scroll = 0; this.marked = -1;
+        for (var k in this.cards) this.inner.removeChild(this.cards[k]);
+        this.cards = {};
         this.inner.style.height = Math.ceil(this.items.length / this.cols) * this.ch + "px";
         this.draw();
     };
