@@ -67,7 +67,8 @@
         { id: "handball", label: "Handball", leagues: [["s365:6182", "Liqui Moly Starligue"], ["s365:542", "EHF Champions League"], ["s365:536", "Liga Asobal"],
             ["s365:6334", "EHF Euro", "i"], ["s365:644", "World Championship", "i"], ["s365:531", "International Matches", "i"]] },
         { id: "volleyball", label: "Volleyball", leagues: [["s365:5712", "Ligue A"], ["s365:5723", "SuperLega"], ["s365:5706", "CEV Champions League"], ["s365:5715", "Ligue A Women", "w"]] },
-        { id: "football", label: US ? "Football" : "American Football", leagues: [["nfl", "NFL"]] },
+        // college football: ESPN's FBS games (about 60 on a Saturday of the season)
+        { id: "football", label: US ? "Football" : "American Football", leagues: [["nfl", "NFL"], ["college-football", "College Football"]] },
         { id: "hockey", label: "Hockey", leagues: [["nhl", "NHL"], ["s365:636", "KHL"], ["s365:373", "SHL"], ["s365:370", "Liiga"], ["s365:379", "DEL"],
             ["s365:381", "National League"], ["s365:6180", "Champions Hockey League"]] }
     ];
@@ -637,49 +638,53 @@
         var a = strip(name).split(" "), b = (" " + strip(t.name + " " + (t.short || "") + " " + (t.loc || "")) + " ");
         return a.some(function (w) { return w.length >= 3 && !GENERIC[w] && b.indexOf(" " + w + " ") >= 0; });
     }
-    // The official broadcasters of a match where you live
-    function tvOf(m) { return m.tv || (rights().cc === "US" ? m.bc : []) || []; }
-    var tvSoon = TV.debounce(function () { refreshShown(); findSoon(300); }, 500);
-    /* Canada, NHL: ESPN only knows the American networks, so the Canadian ones come from the NHL's own schedule
-       (api-web.nhle.com, no key): each game has its "tvBroadcasts" by country. National networks first. */
-    var NHL_CA = { SN: "Sportsnet", SN1: "Sportsnet One", SN360: "Sportsnet 360", SNE: "Sportsnet East", SNW: "Sportsnet West", SNP: "Sportsnet Pacific", SNO: "Sportsnet Ontario",
-                   CBC: "CBC", TVAS: "TVA Sports", TVAS2: "TVA Sports 2", CITY: "Citytv", PRIME: "Prime Video" };
-    var nhlWeeks = {};
-    function nhlDay(t) { var d = new Date(t - 5 * 3600000); return d.getUTCFullYear() + "-" + pad(d.getUTCMonth() + 1) + "-" + pad(d.getUTCDate()); }
-    function nhlSchedule(day) {
-        if (!nhlWeeks[day]) nhlWeeks[day] = limited(function () { return TV.fetchJSON("https://api-web.nhle.com/v1/schedule/" + day, { timeout: 12000 }); }).then(function (j) {
+    /* ---------- Canada: the NHL's own schedule ----------
+       ESPN's scoreboard names only the US networks of an NHL game. api-web.nhle.com (the NHL's site API, no key)
+       gives each game's broadcasters per country: national ones first, then the home and away teams' regional ones.
+       Seven days in one request, from the date asked. */
+    var NHL = "https://api-web.nhle.com/v1/schedule/", nhlWeeks = [];
+    var NHL_CA = { SN: "Sportsnet", SN1: "Sportsnet One", "SN+": "Sportsnet+", SN360: "Sportsnet 360", SNE: "Sportsnet East", SNO: "Sportsnet Ontario",
+                   SNP: "Sportsnet Pacific", SNW: "Sportsnet West", TVAS: "TVA Sports", TVAS2: "TVA Sports 2", TSN: "TSN", TSN1: "TSN1", TSN2: "TSN2",
+                   TSN3: "TSN3", TSN4: "TSN4", TSN5: "TSN5", RDS: "RDS", RDS2: "RDS 2", CBC: "CBC", CITY: "Citytv", Prime: "Prime Video" };
+    function nhlDay(t) { return new Date(t - 10 * 3600000).toISOString().slice(0, 10); }    // the game's date in the east (a 19:00 game is 00:00 UTC)
+    function nhlWeek(day) {
+        for (var i = 0; i < nhlWeeks.length; i++) if (day >= nhlWeeks[i].from && day <= nhlWeeks[i].to) return nhlWeeks[i].p;
+        var w = { from: day, to: nhlDay(Date.parse(day + "T10:00:00Z") + 6 * 86400000) };
+        w.p = limited(function () { return TV.fetchJSON(NHL + day, { timeout: 12000 }); }).then(function (j) {
             var out = [];
-            ((j && j.gameWeek) || []).forEach(function (w) { (w.games || []).forEach(function (g) { out.push(g); }); });
-            return out;
-        }, function () { delete nhlWeeks[day]; return []; });
-        return nhlWeeks[day];
-    }
-    function nhlTeam(x) { x = x || {}; return ((x.placeName && x.placeName["default"]) || "") + " " + ((x.commonName && x.commonName["default"]) || ""); }
-    function nhlCanada(list) {
-        list.forEach(function (m) {
-            if (m.lkey !== "hockey/nhl" || m.state === "post" || m.tv || (m.nhlAsked && Date.now() - m.nhlAsked < 6 * 3600000)) return;
-            m.nhlAsked = Date.now();
-            nhlSchedule(nhlDay(m.start)).then(function (games) {
-                var g = games.filter(function (x) { return Math.abs(Date.parse(x.startTimeUTC) - m.start) < 15 * 60000 && (sameClub(nhlTeam(x.homeTeam), m.home) || sameClub(nhlTeam(x.awayTeam), m.away)); })[0];
-                var b = ((g && g.tvBroadcasts) || []).filter(function (x) { return x.countryCode === "CA" && x.network; });
-                b.sort(function (x, y) { return (x.market === "N" ? 0 : 1) - (y.market === "N" ? 0 : 1); });
-                var names = [];
-                b.forEach(function (x) { var n = NHL_CA[x.network] || x.network; if (names.indexOf(n) < 0) names.push(n); });
-                if (names.length) { m.tv = names; tvSoon(); }
+            ((j && j.gameWeek) || []).forEach(function (d) {
+                (d.games || []).forEach(function (g) {
+                    var tv = (g.tvBroadcasts || []).filter(function (b) { return b.countryCode === "CA"; }).sort(function (a, b) {
+                        return (a.market === "N" ? 0 : 1) - (b.market === "N" ? 0 : 1) || (a.sequenceNumber || 0) - (b.sequenceNumber || 0);
+                    }).map(function (b) { var n = String(b.network || "").trim(); return NHL_CA[n] || n; });
+                    function side(x) { return x ? ((x.placeName && x.placeName["default"]) || "") + " " + ((x.commonName && x.commonName["default"]) || "") : ""; }
+                    out.push({ t: Date.parse(g.startTimeUTC), h: side(g.homeTeam), a: side(g.awayTeam), tv: tv.filter(function (n, k) { return n && tv.indexOf(n) === k; }) });
+                });
             });
-        });
+            return out.filter(function (x) { return x.t; });
+        }, function (e) { nhlWeeks.splice(nhlWeeks.indexOf(w), 1); TV.log("sports: NHL schedule " + day + ": " + e.message); return []; });
+        nhlWeeks.push(w);
+        return w.p;
     }
+
+    // The official broadcasters of a match where you live
+    function tvOf(m) { var cc = rights().cc; return (m.tv && m.tvCc === cc ? m.tv : null) || (cc === "US" ? m.bc : []) || []; }   // another region in Settings: not the last one's
+    var tvSoon = TV.debounce(function () { refreshShown(); findSoon(300); }, 500);
     function officialTv(list) {
         var cc = rights().cc;
-        if (cc === "CA") nhlCanada(list);
-        if (cc !== "FR" && cc !== "MC") return;
+        function take(m, l) {
+            var hit = l.filter(function (x) { return Math.abs(x.t - m.start) < 15 * 60000 && (sameClub(x.h, m.home) || sameClub(x.a, m.away)); })[0];
+            if (hit && hit.tv.length) { m.tv = hit.tv.slice(0, 4); m.tvCc = cc; tvSoon(); }
+        }
         list.forEach(function (m) {
-            if (!LFP_CHAMP[m.lkey] || m.state !== "pre" || m.tvAsked) return;
-            m.tvAsked = 1;
-            lfpFind(LFP_CHAMP[m.lkey], m.start, 0, 0).then(function (l) {
-                var hit = l.filter(function (x) { return Math.abs(x.t - m.start) < 15 * 60000 && (sameClub(x.h, m.home) || sameClub(x.a, m.away)); })[0];
-                if (hit && hit.tv.length) { m.tv = hit.tv; tvSoon(); }
-            });
+            if (m.tvAsked === cc) return;
+            if ((cc === "FR" || cc === "MC") && LFP_CHAMP[m.lkey] && m.state === "pre") {
+                m.tvAsked = cc;
+                lfpFind(LFP_CHAMP[m.lkey], m.start, 0, 0).then(function (l) { take(m, l); });
+            } else if (cc === "CA" && m.lkey === "hockey/nhl" && m.state !== "post") {
+                m.tvAsked = cc;
+                nhlWeek(nhlDay(m.start)).then(function (l) { take(m, l); });
+            }
         });
     }
     // A channel's name for the comparison: no quality, no spaces ("LIGUE1+ 2 FHD" = "Ligue 1+ 2")
@@ -701,6 +706,8 @@
         IT: [["Sky Sport", "SKY SPORT*", TV_UCL + " eng.1 ger.1 ita.1"], ["DAZN", "DAZN*", "ita.1 esp.1"]],
         DE: [["DAZN", "DAZN*", TV_UCL + " esp.1 ita.1 fra.1"], ["Sky Sport", "SKY SPORT*", "ger.1 ger.2 eng.1"]],
         US: [["NBC / Peacock", "NBC*|USA NETWORK|PEACOCK*", "eng.1"], ["CBS / Paramount+", "CBS*|PARAMOUNT*", TV_UCL + " ita.1"], ["ESPN", "ESPN*", "esp.1 ger.1"]],
+        // Canada: the NHL's national networks (each game's own come from the NHL, see nhlWeek)
+        CA: [["Sportsnet / TVA Sports", "SPORTSNET*|TVA SPORTS*", "hockey/nhl"]],
         // Poland: the rights confirmed for 2026-27 (satkurier.pl's list, October 2026)
         PL: [["CANAL+", "CANAL+ SPORT*|CANAL+ PREMIUM|CANAL+ EXTRA*", "uefa.champions eng.1 esp.1 s365:153"], ["Eleven Sports", "ELEVEN SPORTS*", "ger.1 ger.2 ita.1 fra.1"],
              ["Polsat Sport", "POLSAT SPORT*", "uefa.europa uefa.europa.conf ned.1 sco.1 ita.coppa_italia ksa.1 conmebol.libertadores conmebol.sudamericana"],
@@ -1180,17 +1187,60 @@
         clearTimeout(this.aheadTimer);
         this.aheadTimer = setTimeout(function () {
             if (!visible || zone > 0 || strips[0] !== self) return;
-            var keep = self.index;
+            if (Date.now() - TV.keyAt < 900) { self.ahead(); return; }     // not while you move: a moment later
             for (var i = 0; i < self.items.length; i++) {
                 var m = self.items[i];
-                if (self.slides[m.id] || i === keep) continue;
-                // made the same way as when shown, then the shown one put back on top
-                self.index = i; self.draw(); self.index = keep; self.draw();
-                return;                                                     // the next one a moment later (ahead() again)
+                if (self.slides[m.id] || i === self.index) continue;
+                // only its picture layer: the text and the buttons on screen stay as they are
+                self.slideFor(m);
+                self.near();
+                self.ahead();                                               // the next one a moment later
+                return;
             }
         }, 1200);
     };
-    Hero.prototype.setActive = function (on) { this.active = on; if (on) this.nav.refocus(); else this.nav.blur(); };
+    Hero.prototype.setActive = function (on) { this.active = on; if (on) this.nav.refocus(); else this.nav.blur(); this.near(); };
+    /* A match's picture layer, made (or made again when its photo or score changed) without touching the text */
+    Hero.prototype.slideFor = function (m) {
+        var self = this, two = sides(m), score = m.state !== "pre" && !/CANCEL|POSTPONED/.test(m.status), ph = photoNow(m);
+        if (ph === undefined) photoOf(m).then(function (p) { if (p && self.items[self.index] === m) self.draw(); });
+        if (!this.slidesEl) {
+            this.root.innerHTML = "<div class='sh__slides'></div><div class='sh__fg'></div>";
+            this.slidesEl = this.root.firstChild; this.fgEl = this.root.lastChild; this.slides = {};
+        }
+        var sk = m.id + "|" + (ph ? ph.u : "") + "|" + (score ? (two[0].score || "") + "-" + (two[1].score || "") : ""), sl = this.slides[m.id];
+        if (!sl || sl._k !== sk) {
+            var cs = colours(two[0], two[1]);
+            var fresh = el("div", "sh__slide" + (ph ? " has-photo" : ""), (ph ? "<div class='sh__photo' style='background-image:" + esc(TV.cssUrl(ph.u)) + "'></div>"
+                    : "<div class='sh__bg'><i style='background:" + esc(shade(cs[0], 0.82)) + "'></i><i class='sh__c2' style='background:" + esc(shade(cs[1], 0.82)) + "'></i></div><div class='sh__tex'></div>") +
+                "<div class='sh__scrim'></div>" +
+                (ph ? "" : "<div class='sh__board'><i class='sh__crest' style='background-image:" + esc(crestBg(crest(two[0], m.sport), 300)) + "'></i>" +
+                      (score ? "<div class='sh__score'>" + esc(two[0].score || "0") + "<i>–</i>" + esc(two[1].score || "0") + "</div>" : "<div class='sh__vs'>" + esc(TV.hhmm(m.start)) + "</div>") +
+                      "<i class='sh__crest' style='background-image:" + esc(crestBg(crest(two[1], m.sport), 300)) + "'></i></div>"));
+            fresh._k = sk;
+            if (sl) { var old = sl; old.classList.remove("is-on"); setTimeout(function () { if (old.parentNode) old.parentNode.removeChild(old); }, 600); }
+            this.slidesEl.appendChild(fresh);
+            this.slides[m.id] = sl = fresh;
+            void fresh.offsetWidth;                                         // so it fades in, not appears
+        }
+        return sl;
+    };
+    /* The match shown, and the ones that can come next. The graphics chip blends each of the six almost transparent
+       pictures at every frame (7 of the 12 million pixels a frame drawn on Sports), too much for an LG G5: on LG only
+       the next one (and the one before, while you are on the banner) stays ready, the others are not drawn (tv.css,
+       .is-webos). The next one is made ready once the fade is over, never during a move. */
+    Hero.prototype.near = function () {
+        var self = this, n = this.items.length, cur = this.items[this.index];
+        if (!cur || !this.slides) return;
+        for (var sid in this.slides) if (Object.prototype.hasOwnProperty.call(this.slides, sid)) this.slides[sid].classList.toggle("is-on", sid === String(cur.id));
+        clearTimeout(this.nearTimer);
+        this.nearTimer = setTimeout(function () {
+            var at = self.items[self.index], nx = n > 1 ? self.items[(self.index + 1) % n] : null, pv = n > 2 && self.active ? self.items[(self.index - 1 + n) % n] : null;
+            if (!at || at !== cur) return;
+            for (var id in self.slides) if (Object.prototype.hasOwnProperty.call(self.slides, id))
+                self.slides[id].classList.toggle("is-near", !!(nx && id === String(nx.id)) || !!(pv && id === String(pv.id)));
+        }, 650);
+    };
     Hero.prototype.move = function (d) { this.nav.move(d < 0 ? "left" : "right"); return true; };
     Hero.prototype.draw = function () {
         var m = this.items[this.index], self = this;
@@ -1208,8 +1258,7 @@
         /* Apple TV's hero: the whole width, under the menu and the tabs; the two clubs' colours on a slant with the
            jersey's mesh, the crests and the score or the time on the right, the text at the bottom left, one white
            capsule and a round glass button, the dots in the middle at the bottom. */
-        var cs = colours(two[0], two[1]), ph = photoNow(m);
-        if (ph === undefined) photoOf(m).then(function (p) { if (p && self.items[self.index] === m) self.draw(); });
+        var ph = photoNow(m);
         var pill = "<span class='sh__pill" + (isLive(m) ? " is-live" : "") + "'>" + esc(isLive(m) || st.done ? st.text : TV.hhmm(m.start)) + "</span>";
         var line = function (t) {
             return "<div class='sh__team'><i style='background-image:" + esc(crestBg(crest(t, m.sport), 120)) + "'></i><span>" + esc(shown(t, false)) + "</span>" +
@@ -1222,35 +1271,24 @@
         /* Each match of the banner has its picture on a layer of its own, painted once: turning to another one fades
            layers (redrawing the whole banner at each ◀ ▶ cost the M8 about 150 ms a press). The text above is
            written again, a small part of the screen. */
-        if (!this.slidesEl) {
-            this.root.innerHTML = "<div class='sh__slides'></div><div class='sh__fg'></div>";
-            this.slidesEl = this.root.firstChild; this.fgEl = this.root.lastChild; this.slides = {};
-        }
-        var sk = m.id + "|" + (ph ? ph.u : "") + "|" + (score ? (two[0].score || "") + "-" + (two[1].score || "") : ""), sl = this.slides[m.id];
-        if (!sl || sl._k !== sk) {
-            var fresh = el("div", "sh__slide" + (ph ? " has-photo" : ""), (ph ? "<div class='sh__photo' style='background-image:" + esc(TV.cssUrl(ph.u)) + "'></div>"
-                    : "<div class='sh__bg'><i style='background:" + esc(shade(cs[0], 0.82)) + "'></i><i class='sh__c2' style='background:" + esc(shade(cs[1], 0.82)) + "'></i></div><div class='sh__tex'></div>") +
-                "<div class='sh__scrim'></div>" +
-                (ph ? "" : "<div class='sh__board'><i class='sh__crest' style='background-image:" + esc(crestBg(crest(two[0], m.sport), 300)) + "'></i>" +
-                      (score ? "<div class='sh__score'>" + esc(two[0].score || "0") + "<i>–</i>" + esc(two[1].score || "0") + "</div>" : "<div class='sh__vs'>" + esc(TV.hhmm(m.start)) + "</div>") +
-                      "<i class='sh__crest' style='background-image:" + esc(crestBg(crest(two[1], m.sport), 300)) + "'></i></div>"));
-            fresh._k = sk;
-            if (sl) { var old = sl; old.classList.remove("is-on"); setTimeout(function () { if (old.parentNode) old.parentNode.removeChild(old); }, 600); }
-            this.slidesEl.appendChild(fresh);
-            this.slides[m.id] = sl = fresh;
-            void fresh.offsetWidth;                                         // so it fades in, not appears
-        }
-        for (var sid in this.slides) if (Object.prototype.hasOwnProperty.call(this.slides, sid)) this.slides[sid].classList.toggle("is-on", sid === String(m.id));
-        this.fgEl.innerHTML = "<div class='sh__txt'><div class='sh__cap'>" + pill + leagueLogo(m, 64) + "<span>" + esc(T(m.league[1]) + (m.note ? " · " + m.note : "")) + "</span>" +
+        this.slideFor(m);
+        this.near();
+        var fg = "<div class='sh__txt'><div class='sh__cap'>" + pill + leagueLogo(m, 64) + "<span>" + esc(T(m.league[1]) + (m.note ? " · " + m.note : "")) + "</span>" +
                 (this.ours ? "<span class='sh__ours'>" + TV.icon("star", 22) + esc(T("My Teams")) + "</span>" : "") + "</div>" +
             line(two[0]) + line(two[1]) +
             (meta ? "<div class='sh__meta'>" + esc(meta) + "</div>" : "") +
             "<div class='sh__tv'>" + (w && w.n ? TV.icon("tv", 26) : "") + "<span>" + esc(tv) + "</span></div>" +
             "<div class='sh__btns'></div></div>" +
             (this.items.length > 1 ? "<div class='sh__dots'>" + this.items.map(function (x, i) { return "<i" + (i === self.index ? " class='is-on'" : "") + "></i>"; }).join("") + "</div>" : "");
-        var box = this.fgEl.querySelector(".sh__btns"), tiles = [];
         // the other matches' layers made ahead, one at a time while you stay at the top of the page
         this.ahead();
+        /* The scores' refresh every 30 s drew the banner again even when nothing in it had changed: its text
+           (1920x800) and its buttons were painted again each time (an LG G5's graphics chip: 13 ms, and the buttons) */
+        var sig = fg + "|" + m.id + "|" + (list.length && soon ? list.map(function (x) { return x.ch.id; }).join(",") : "");
+        if (sig === this._sig && this.nav.tiles.length) return;
+        this._sig = sig;
+        this.fgEl.innerHTML = fg;
+        var box = this.fgEl.querySelector(".sh__btns"), tiles = [];
         this.acts = [];
         function btn(html, run, cls) { var b = el("div", "btn " + cls, html); box.appendChild(b); tiles.push(b); self.acts.push(run); }
         // one capsule (watch it, else its page) and, next to "Watch", a round glass button for the page
@@ -1282,6 +1320,7 @@
         setInterval(function () {
             var h = strips[0];
             if (!visible || !h || !h.isHero || zone !== -1 || h.items.length < 2 || TV.topNav() !== TV.shell.screen) return;
+            if (Date.now() - TV.keyAt < 2500) return;                   // you are moving along the chips: not now
             var next = (h.index + 1) % h.items.length, ph = photoNow(h.items[next]);
             var go = function () { if (zone === -1 && strips[0] === h && visible) { h.index = next; h.draw(); } };
             if (ph) seen(ph.u, go); else go();
@@ -1525,9 +1564,14 @@
             r.mine.forEach(function (m, i) { var tw = twins[i]; if (tw) m = tw; if (!mid[m.id]) { mid[m.id] = 1; mine.push(tw ? keep(m) : keepSoft(m)); } });
             officialTv(matches.concat(mine));
             if (!visible && !sheet.open) return;
-            var changed = fresh || sigNow() !== shownSig;
-            if (changed) { drawBar(); drawRows(); } else refreshShown();
-            if (changed || !findDone) findSoon(fresh ? 300 : 1500);
+            var show = function () {
+                if (!visible && !sheet.open) return;
+                var changed = fresh || sigNow() !== shownSig;
+                if (changed) { drawBar(); drawRows(); } else refreshShown();
+                if (changed || !findDone) findSoon(fresh ? 300 : 1500);
+            };
+            // a refresh (not a day you chose): drawn once the remote rests, never in the middle of a move
+            if (fresh) show(); else TV.calm(show, 500);
         });
     }
     function tick() {
@@ -1555,8 +1599,10 @@
         if (!jobs.length) return;
         Promise.all(jobs).then(function (lists) {
             lists.forEach(function (l) { (l || []).forEach(function (m) { if (store[m.id]) keep(m); }); });
-            if (!visible && !sheet.open) return;
-            if (sigNow() !== shownSig) { drawBar(); drawRows(); findSoon(1500); } else refreshShown();
+            TV.calm(function () {                                       // once the remote rests
+                if (!visible && !sheet.open) return;
+                if (sigNow() !== shownSig) { drawBar(); drawRows(); findSoon(1500); } else refreshShown();
+            }, 500);
         });
     }
 
@@ -1739,7 +1785,7 @@
     YT_RIGHTS.IE = YT_RIGHTS.GB; YT_RIGHTS.AT = YT_RIGHTS.DE; YT_RIGHTS.LU = YT_RIGHTS.BE; YT_RIGHTS.MC = YT_RIGHTS.FR;
     // The competitions' own channels (their summaries go where no broadcaster has them)
     var YT_OWN = ["UEFA", "FIFA", "LALIGA EA SPORTS", "Serie A", "Bundesliga", "Premier League", "Ligue 1 McDonald's", "Liga Portugal Betclic", "Eredivisie", "Major League Soccer",
-                  "Saudi Pro League", "CONMEBOL Libertadores", "Scottish Professional Football League", "Pro League", "Ekstraklasa TV", "NBA", "WNBA", "NFL", "NHL", "World Rugby", "Six Nations Rugby",
+                  "Saudi Pro League", "CONMEBOL Libertadores", "ESPN College Football", "Scottish Professional Football League", "Pro League", "Ekstraklasa TV", "NBA", "WNBA", "NFL", "NHL", "World Rugby", "Six Nations Rugby",
                   "TOP 14 - Officiel", "EPCR", "Gallagher Prem Rugby", "United Rugby Championship", "Super Rugby Pacific", "The FA", "EuroLeague", "EuroLeague Basketball",
                   "LNB", "Betclic ELITE", "EHF Champions League", "EHF", "Liqui Moly Starligue", "LNH", "CEV", "Champions Hockey League", "KHL", "IIHF"];
     /* Never a talk show (reactions, a debrief, the players' marks) nor the match live or in full; a word that says
@@ -2435,7 +2481,7 @@
     function draftOf() {
         var f = chosen();
         if (f) return JSON.parse(JSON.stringify(f));
-        var want = SUGGEST.concat(SUGGEST_LANG[TV.lang] || []), leagues = [];
+        var want = SUGGEST.concat(SUGGEST_LANG[TV.lang] || []).concat(US ? ["college-football"] : []), leagues = [];
         SPORTS.forEach(function (sp) { sp.leagues.forEach(function (lg) { if (want.indexOf(lg[0]) >= 0) leagues.push(sp.id + "/" + lg[0]); }); });
         return { sports: ["soccer", "rugby", "basketball"].concat(US ? ["football", "hockey"] : []), types: { men: 1, women: 0, friendly: 1 }, leagues: leagues, teams: [] };
     }

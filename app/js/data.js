@@ -137,7 +137,7 @@
                 if (!m || S.isSeparator(m.name)) return;
                 var t = S.title(m.name);
                 out.movies.items.push({
-                    id: src.id + "|m" + m.stream_id, src: src.id, sid: m.stream_id, kind: "movie", name: m.name, title: t.title !== m.name ? t.title : undefined, year: t.year || 0,
+                    id: src.id + "|m" + m.stream_id, src: src.id, sid: m.stream_id, kind: "movie", name: m.name, title: t.title !== m.name ? t.title : undefined, year: t.year || yearOf(m.year || m.releaseDate || m.release_date),
                     poster: m.stream_icon || "", cat: src.id + ":" + m.category_id, rating: parseFloat(m.rating) || 0, added: parseInt(m.added, 10) || 0, ext: m.container_extension || "mp4"
                 });
             });
@@ -284,11 +284,15 @@
         list.forEach(function (src) {
             var c = cats[src.id];
             if (!c) return;
+            var media = src.type === "jellyfin" || src.type === "plex";
             ["live", "movies", "series"].forEach(function (k) {
                 var part = c[k], counts = {};
                 (k === "live" ? part.chans : part.items).forEach(function (x) { counts[x.cat] = (counts[x.cat] || 0) + 1; });
                 part.cats.forEach(function (ct) {
-                    if (ct.raw) { var info = S.category(ct.raw); ct.name = info.name; ct.tag = info.tag; ct.lang = info.lang; ct.adult = info.adult; ct.group = info.group; }
+                    /* A media server's libraries are yours: their own group, named after the server, and their names as
+                       they are. Hiding a country or Other Categories of an IPTV playlist left a Jellyfin tab empty (#21). */
+                    if (media) { ct.media = src.id; ct.name = ct.raw || ct.name; ct.tag = ""; ct.lang = ""; ct.adult = false; ct.group = "srv:" + src.id; }
+                    else if (ct.raw) { var info = S.category(ct.raw); ct.name = info.name; ct.tag = info.tag; ct.lang = info.lang; ct.adult = info.adult; ct.group = info.group; }
                     ct.ctag = ct.tag;                                  // the country, for the guides, whatever is shown
                     if (!tidyNames && ct.raw) { ct.name = ct.raw; ct.tag = ""; }
                     ct.count = counts[ct.id] || 0;
@@ -323,7 +327,7 @@
         });
         merged = m;
         applyOff();
-        groupCache = {}; idxCache = {}; topLists = {}; genreLists = {}; trendLists = {};
+        groupCache = {}; idxCache = {}; topLists = {}; genreLists = {}; trendLists = {}; oldMovies = null;
         fire("catalog");
     }
 
@@ -487,6 +491,8 @@
         else if (String(catId).indexOf("grp:") === 0) { var cg = chanGroupOf(catId); src = cg ? cg.ids.map(channel).filter(Boolean) : []; }
         else if (catId === "all") src = merged ? merged.live.chans.filter(function (c) { var ct = catOf(c); return (TV.pref("showAdult") || !ct.adult) && !ct.off; }) : [];
         else src = merged && !catOf({ cat: catId }).off && merged.live.byCat[catId] || [];
+        // a channel you hid: out of every list but your favorites and your own groups (you put it there)
+        if (catId !== "fav" && String(catId).indexOf("grp:") !== 0 && chanHiddenIds()) { var hc = chanHiddenIds(); src = src.filter(function (c) { return !hc[c.id]; }); }
         var out = src;
         if (TV.pref("mergeQuality") && catId !== "fav" && catId !== "recent" && String(catId).indexOf("grp:") !== 0) {
             var seen = {};
@@ -514,8 +520,14 @@
                 return copy;
             });
         }
+        // A to Z (Settings > Channel Order, issue #18): by the name you see, "Canal+ 2" before "Canal+ 10"; Recent stays by time
+        if (TV.pref("chanOrder") === "az" && catId !== "recent") out = byName(out);
         if (catId !== "fav" && catId !== "recent") groupCache[catId] = out;
         return out;
+    }
+    function byName(list) {
+        return list.map(function (c) { return { c: c, k: S.fold(c.name || "").replace(/\d+/g, function (n) { return ("0000000000" + n).slice(-10); }) }; })
+            .sort(function (a, b) { return a.k < b.k ? -1 : a.k > b.k ? 1 : 0; }).map(function (x) { return x.c; });
     }
     function catOf(ch) {
         if (!merged) return {};
@@ -595,14 +607,42 @@
         return i === -1;
     }
 
+    /* Channels hidden by you (OK held on a channel > Hide This Channel): every quality of it, out of the channel lists,
+       the guide, Home, Recent and search. Your favorites and your own groups keep it. Settings > Hidden Channels. */
+    var chanIdsMemo = null;
+    function hiddenChans() { return TV.load("hiddenChans", {}) || {}; }
+    function chanHiddenIds() {
+        if (chanIdsMemo === null) {
+            var h = hiddenChans(), ids = {}, n = 0;
+            Object.keys(h).forEach(function (k) { (h[k].ids || [k]).forEach(function (id) { ids[id] = 1; n++; }); });
+            chanIdsMemo = n ? ids : false;
+        }
+        return chanIdsMemo;
+    }
+    function isChanHidden(ch) {
+        var ids = ch && chanHiddenIds();
+        return !!ids && (!!ids[ch.id] || !!(ch.variants && ch.variants.some(function (v) { return ids[v.id]; })));
+    }
+    function setChanHidden(ch, on) {
+        var h = hiddenChans(), ids = ch.variants ? ch.variants.map(function (v) { return v.id; }) : [ch.id];
+        Object.keys(h).forEach(function (k) { if ((h[k].ids || [k]).some(function (id) { return ids.indexOf(id) >= 0; })) delete h[k]; });
+        if (on) h[ch.id] = { t: ch.name, at: Date.now(), ids: ids };
+        TV.save("hiddenChans", h);
+        chanIdsMemo = null; groupCache = {};
+        fire("hidden");
+    }
+    function hiddenChanList() { var h = hiddenChans(); return Object.keys(h).map(function (k) { return { key: k, t: h[k].t, at: h[k].at }; }).sort(function (a, b) { return b.at - a.at; }); }
+    function unhideChan(key) { var h = hiddenChans(); delete h[key]; TV.save("hiddenChans", h); chanIdsMemo = null; groupCache = {}; fire("hidden"); }
+
     /* Titles hidden by you: every version of the title (same name and year) disappears everywhere */
     function hiddenMap() { return TV.load("hidden", {}) || {}; }
     function hideKey(x) { if (!x._hk) x._hk = (x.kind === "series" ? "s:" : "m:") + versionKey(x); return x._hk; }
     function anyTitleHidden() { if (themeCount || themesOn().length) return true; for (var k in hiddenMap()) return true; return false; }
-    function anyHidden() { return offCount > 0 || anyTitleHidden(); }
+    function anyHidden() { return offCount > 0 || anyTitleHidden() || !!chanHiddenIds(); }
     function isHidden(x) {
         if (!x) return false;
         if (offCount && catOf(x).off) return true;
+        if (!x.kind && chanHiddenIds() && chanHiddenIds()[x.id]) return true;      // a channel you hid
         if (!anyTitleHidden()) return false;
         var k = hideKey(x); return !!(hiddenMap()[k] || themeKeys[k] || catHidden(x));
     }
@@ -621,13 +661,19 @@
         ["live", "movies", "series"].forEach(function (k) { merged[k].cats.forEach(function (c) { all.push(c); n[c.group || ""] = (n[c.group || ""] || 0) + 1; }); });
         all.forEach(function (c) {
             // a code APL TV does not know, seen on a single category ("TNT| Sport"), is not a country: Other Categories
-            c.grp = c.group && (S.groupName(c.group) !== c.group || n[c.group] > 1) ? c.group : "";
+            c.grp = c.media ? c.group : c.group && (S.groupName(c.group) !== c.group || n[c.group] > 1) ? c.group : "";
             var key = catKey(c);
             c.off = key in one ? one[key] === 1 : groups.indexOf(c.grp) >= 0;
             if (c.off) offCount++;
         });
     }
     function offChanged() { applyOff(); groupCache = {}; fire("hidden"); }
+    /* A group's name in Settings and in the category lists: a country, Other Categories, or a media server */
+    function groupLabel(g) {
+        if (!g) return T("Other Categories");
+        if (g.indexOf("srv:") === 0) { var s = sourceOf({ src: g.slice(4) }); return s ? s.name || (s.type === "plex" ? "Plex" : s.kind === "emby" ? "Emby" : "Jellyfin") : g.slice(4); }
+        return S.groupName(g);
+    }
     function setCatOff(c, on) {
         var one = TV.pref("hiddenCats") || {}, copy = {}, k;
         for (k in one) copy[k] = one[k];
@@ -654,7 +700,7 @@
             merged[k[0]].cats.forEach(function (c) {
                 if (c.adult && !adult) return;
                 var g = by[c.grp];
-                if (!g) { g = by[c.grp] = { id: c.grp, name: c.grp ? S.groupName(c.grp) : T("Other Categories"), cats: [], off: 0, items: 0 }; list.push(g); }
+                if (!g) { g = by[c.grp] = { id: c.grp, name: groupLabel(c.grp), cats: [], off: 0, items: 0 }; list.push(g); }
                 g.cats.push(c); g.items += c.count || 0; if (c.off) g.off++;
             });
         });
@@ -666,7 +712,7 @@
        What the phone gets: the categories of each kind in their order (hidden or not), your groups, your favorites
        and the channels' names to find them. What comes back: the same, changed. */
     function editData() {
-        var out = { v: 1, kinds: {}, groups: chanGroups(), favs: favIds(), chans: [], names: TV.pref("chanNames") || {} };
+        var out = { v: 1, kinds: {}, groups: chanGroups(), favs: favIds(), chans: [], names: TV.pref("chanNames") || {}, hidden: Object.keys(chanHiddenIds() || {}) };
         if (!merged) return out;
         var adult = TV.pref("showAdult");
         ["live", "movies", "series"].forEach(function (k) {
@@ -712,6 +758,17 @@
         }
         if (Array.isArray(d.favs)) { TV.save("favs", d.favs.map(String).slice(0, 2000)); fire("favs"); }
         if (d.names && typeof d.names === "object") TV.setPref("chanNames", cleanNames(d.names));
+        // the channels hidden on the phone (each quality is its own line there): the TV's list follows it
+        if (Array.isArray(d.hidden)) {
+            var want = {}, h = hiddenChans(), kept = {};
+            d.hidden.slice(0, 20000).forEach(function (id) { want[String(id)] = 1; });
+            Object.keys(h).forEach(function (key) {
+                var ids = (h[key].ids || [key]).filter(function (id) { return want[id]; });
+                if (ids.length) { kept[key] = { t: h[key].t, at: h[key].at, ids: ids }; ids.forEach(function (id) { delete want[id]; }); }
+            });
+            Object.keys(want).forEach(function (id) { var c = channel(id); kept[id] = { t: c ? c.name + (c.q ? " " + c.q : "") : id, at: Date.now(), ids: [id] }; });
+            TV.save("hiddenChans", kept); chanIdsMemo = null;
+        }
         rebuild();
         return true;
     }
@@ -1057,6 +1114,25 @@
         return genreLoading[k];
     }
 
+    /* Classic Movies: EVERY movie of your catalog from 1975 or before (the year in its name, or the one the provider
+       gives). The best-known ones first (TMDB's classics found in your catalog, which also brings the ones whose
+       name has no year), then all the others, newest first. */
+    var CLASSIC_UNTIL = 1975, oldMovies = null;
+    function yearOf(v) { var y = parseInt(String(v || "").slice(0, 4), 10); return y > 1880 && y <= new Date().getFullYear() + 1 ? y : 0; }
+    function classicMovies(part, ok) {
+        var famous = genreLists["movies:x:classic"], seen = {}, out = [];
+        if (!famous) genreItems("movies", "x:classic");
+        (famous || []).forEach(function (x) {
+            if (!ok(x)) return;
+            out.push(x);
+            (x.versions || [x]).forEach(function (v) { seen[v.id] = 1; });
+        });
+        if (!oldMovies) oldMovies = part.items.filter(function (x) { return x.year > 0 && x.year <= CLASSIC_UNTIL; });
+        var rest = groupVersions(oldMovies.filter(function (x) { return !seen[x.id] && ok(x); }));
+        rest.sort(function (a, b) { return (b.year - a.year) || (b.added - a.added); });
+        return out.concat(rest);
+    }
+
     /* "Top Rated": weighted by the number of votes (meta.js), found in your catalog */
     var topLists = {}, topLoading = {};
     function topRatedItems(kind) {
@@ -1117,6 +1193,7 @@
             var tr = trendingItems(kind);
             return tr ? tr.filter(ok) : [];
         }
+        if (catId === "g:x:classic" && kind === "movies") return classicMovies(part, ok);
         if (String(catId).indexOf("g:") === 0) {
             var gl = genreLists[kind + ":" + catId.slice(2)];
             if (gl) return gl.filter(ok);
@@ -1228,7 +1305,7 @@
         myList: myList, inMyList: inMyList, toggleMyList: toggleMyList,
         setResume: setResume, resumeOf: resumeOf, continueWatching: continueWatching, isDone: isDone, watched: watched, markWatched: markWatched, recentlyWatched: recentlyWatched,
         forget: forget, resumeChanged: resumeChanged, syncResumes: syncResumes, serverHas: serverHas,
-        isHidden: isHidden, setHidden: setHidden, preferVersion: preferVersion, setCatOff: setCatOff, setGroupOff: setGroupOff, editData: editData, renameChannel: renameChannel, applyPhoneEdit: applyPhoneEdit, offGroups: offGroups, offCats: offCats, hiddenList: hiddenList, unhide: unhide, versionKey: versionKey,
+        isHidden: isHidden, setHidden: setHidden, preferVersion: preferVersion, setCatOff: setCatOff, setGroupOff: setGroupOff, groupLabel: groupLabel, editData: editData, renameChannel: renameChannel, applyPhoneEdit: applyPhoneEdit, offGroups: offGroups, offCats: offCats, hiddenList: hiddenList, unhide: unhide, isChanHidden: isChanHidden, setChanHidden: setChanHidden, hiddenChanList: hiddenChanList, unhideChan: unhideChan, versionKey: versionKey,
         buildThemes: buildThemes, checkTheme: checkTheme, themesOn: themesOn, catNameHidden: catNameHidden,
         itemsIn: itemsIn, vodUrl: vodUrl, vodInfo: vodInfo, seriesInfo: seriesInfo, search: search,
         xApi: xApi, parseM3U: parseM3U, pack: pack, unpack: unpack, findTitles: findTitles, titleIndex: titleIndex, genreItems: genreItems,

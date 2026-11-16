@@ -170,7 +170,17 @@ public class MainActivity extends Activity {
         int code = KEYS.get(e.getKeyCode(), 0);
         if (code == 0 || web == null) return super.dispatchKeyEvent(e);
         // Typing: the keyboard and the text field have the keys (Back closes the keyboard)
-        if (editing && code != 10009) return super.dispatchKeyEvent(e);
+        if (editing && code != 10009) {
+            /* An open keyboard takes the arrows before the app does (Android hands keys to the keyboard first). An
+               arrow that reaches the app means no keyboard is on screen any more (Back closed it, or it never opened,
+               as on some Fire TV): the typing ends there, like Done, instead of the remote doing nothing (#17) */
+            int k = e.getKeyCode();
+            if (e.getAction() == KeyEvent.ACTION_DOWN && (k == KeyEvent.KEYCODE_DPAD_UP || k == KeyEvent.KEYCODE_DPAD_DOWN || k == KeyEvent.KEYCODE_DPAD_LEFT || k == KeyEvent.KEYCODE_DPAD_RIGHT)) {
+                editing = false; sendKey("keydown", 10009, false); sendKey("keyup", 10009, false);
+                return true;
+            }
+            return super.dispatchKeyEvent(e);
+        }
         if (e.getAction() == KeyEvent.ACTION_DOWN) sendKey("keydown", code, e.getRepeatCount() > 0);
         else if (e.getAction() == KeyEvent.ACTION_UP) sendKey("keyup", code, false);
         return true;

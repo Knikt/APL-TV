@@ -308,7 +308,7 @@
     }
     Grid.prototype.set = function (items, index) {
         this.items = items || []; this.index = TV.clamp(index || 0, 0, Math.max(0, this.items.length - 1));
-        this.scroll = 0; this.inner.innerHTML = ""; this.cards = {};
+        this.scroll = 0; this.inner.innerHTML = ""; this.cards = {}; this.marked = -1;     // as VList and HList do (#4)
         this.inner.style.height = Math.ceil(this.items.length / this.cols) * this.ch + "px";
         this.draw();
     };
@@ -576,6 +576,21 @@
         } });
         TV.menu(name, items);
     };
+    /* OK held on a channel: hide it (out of the lists, the guide, Home and search; favorites and groups keep it), or show it
+       again where it still is (Favorites, a group of yours) */
+    TV.channelHideItem = function (ch, after) {
+        var D = TV.data;
+        function done() { if (after) after(); }
+        if (D.isChanHidden(ch)) return { label: T("Show This Channel Again"), icon: "eyeCheck", run: function () {
+            D.setChanHidden(ch, false); TV.toast(T("“{name}” is back", { name: ch.name })); done();
+        } };
+        return { label: T("Hide This Channel"), icon: "eyeOff", run: function () {
+            TV.alert({ title: T("Hide “{name}”?", { name: ch.name }), message: T("It will no longer appear in your channel lists, the guide, Home or search. Your favorites and groups keep it. You can bring it back in Settings, Hidden Channels."), buttons: [
+                { label: T("Cancel") },
+                { label: T("Hide"), run: function () { D.setChanHidden(ch, true); TV.toast(T("“{name}” is hidden", { name: ch.name })); done(); } }
+            ] });
+        } };
+    };
     /* OK held on a category of the playlist (Live TV, Movies, Series): hide it, or everything from its country */
     TV.categoryMenu = function (c, after) {
         if (!c || !c.kind) return;
@@ -588,7 +603,7 @@
             ] });
         } }];
         if (c.grp) {
-            var g = D.offGroups().filter(function (x) { return x.id === c.grp; })[0], country = TV.smart.groupName(c.grp);
+            var g = D.offGroups().filter(function (x) { return x.id === c.grp; })[0], country = D.groupLabel ? D.groupLabel(c.grp) : TV.smart.groupName(c.grp);
             items.push({ label: T("Hide Everything from {name}", { name: country }), icon: "eyeOff", run: function () {
                 TV.alert({ title: T("Hide everything from {name}?", { name: country }), message: T("Its {n} categories will no longer appear anywhere in APL TV, nor the ones it adds later. You can bring them back in Settings, Countries and Categories.", { n: g ? g.cats.length : 1 }), buttons: [
                     { label: T("Cancel") },
@@ -660,7 +675,9 @@
         var inp = TV.$("ime"), before = o.value || "";
         inp.type = o.secret ? "password" : (o.url ? "url" : "text");
         inp.value = before;
-        var blocker = { key: function () {} };          // nothing else moves while typing
+        /* Nothing else moves while typing, but Back always ends it (#17): a keyboard that opens in full screen
+           (Fire TV's) can take the field's focus before its blur is listened to, and Back then reached nothing. */
+        var blocker = { key: function (code) { if (TV.isBack(code) || code === TV.KEY.CANCEL) finish(code !== TV.KEY.CANCEL && code !== 27); return true; } };
         TV.pushNav(blocker);
         var finished = false;
         function finish(keep) {
@@ -749,6 +766,8 @@
     global.addEventListener("offline", readNet);
 
     /* ---------- clock ---------- */
-    function tick() { var c = TV.$("clock"); if (c) c.textContent = TV.hhmm(new Date()); readNet(); }
+    /* Written only when the minute changes: written again every 10 s, the same time made the whole bar at the top
+       be painted again (40 ms of an LG G5's graphics chip each time) */
+    function tick() { var c = TV.$("clock"), t = TV.hhmm(new Date()); if (c && c.textContent !== t) c.textContent = t; readNet(); }
     tick(); setInterval(tick, 10000);
 })(window);

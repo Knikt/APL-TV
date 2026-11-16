@@ -1,8 +1,8 @@
 {
- "version": "1.1.1",
+ "version": "1.2.0",
  "loader": 1,
  "reinstall": "1.0.1",
- "notes": "Your playlists sorted by themselves: countries and languages recognised in every category, the provider's separators and codes taken off. Also Polish football in Sports, tables for basketball, hockey and handball, and a frozen picture on Fire TV caught.",
+ "notes": "Subtitles that sync themselves (made for your file, the speed fixed, Sync to a Line), smooth on LG, Classic Movies and the streaming platforms for movies, hide a channel, channels A to Z, college football and the NHL's Canadian broadcasters.",
  "platforms": {
   "tizen": {
    "reinstall": "1.0.1"

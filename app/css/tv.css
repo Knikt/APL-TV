@@ -96,6 +96,7 @@ body.is-preview { cursor: default; }
 .tab.is-focused { background: var(--focus-bg); color: var(--focus-fg); transform: scale(1.08); box-shadow: 0 12px 30px rgba(0,0,0,0.35); z-index: 1; }
 .status { position: absolute; top: 50px; right: 42px; height: 60px; padding: 0 24px; border-radius: 30px; display: flex; align-items: center; }
 .status__clock { font-size: 26px; font-weight: 500; }
+.is-webos .status { will-change: transform; }                       /* LG: the minute changing paints only the clock, not the bar */
 .status__net { display: flex; align-items: center; margin-right: 14px; opacity: .85; }
 .status__net.is-off { color: #ff453a; opacity: 1; }
 
@@ -156,6 +157,11 @@ body.is-preview { cursor: default; }
 
 .rows { padding-bottom: 300px; }
 .row { position: relative; margin-bottom: 26px; }
+/* LG: the Home Screen's 26 rows are one tall layer that slides; each ▲ ▼ to a new part of it made the TV paint again
+   every row near it (46 to 72 ms on an LG G5, the move missed several frames). Only the rows near the screen are
+   painted now (3 to 20 ms a move). The 40 px below each row keep the focused card's growth and shadow, which the row
+   would otherwise cut, the rows staying where they were. */
+.is-webos #v-home .row { content-visibility: auto; contain-intrinsic-size: auto 494px; padding-bottom: 40px; margin-bottom: -14px; }
 .row__title { padding-left: 96px; height: 54px; font-size: 31px; font-weight: 700; letter-spacing: -0.2px; display: flex; align-items: center; gap: 14px; }
 .row__title small { font-size: 23px; font-weight: 500; color: var(--faint); }
 .row__clip { position: relative; height: var(--row-h, 300px); overflow: visible; }
@@ -609,6 +615,10 @@ body.is-preview { cursor: default; }
 .sports__bar .chip { background: var(--glass), rgba(30, 32, 41, 0.8); }
 .sports__bar .chip.is-current { background: var(--glass), rgba(86, 89, 100, 0.9); color: #fff; }
 .sports__bar .chip.is-focused { background: var(--focus-bg); color: var(--focus-fg); }
+/* LG: each chip of the bar keeps a layer of its own. Lifted only while focused, a chip went back into the layer under
+   it once the remote rested, and that was the banner's text (1920x800): it was painted again after the moves on the
+   chips (120 ms of an LG G5's graphics chip for six presses), now only the two chips are */
+.is-webos .sports__bar .chip { will-change: transform; }
 .sports__rows { padding-top: 22px; }
 .sports__msg { top: 430px; font-size: 32px; font-weight: 500; color: var(--dim); }
 /* A match's page */
@@ -804,6 +814,12 @@ body.is-preview { cursor: default; }
 /* each match's picture on its layer, kept painted (almost transparent rather than hidden, or it would be thrown away) */
 .sh__slide { opacity: 0.004; transition: opacity 450ms ease; will-change: opacity; }
 .sh__slide.is-on { opacity: 1; }
+/* LG: the graphics chip blends each almost transparent picture at every frame (six of them: 7 of the 12 million pixels
+   drawn a frame on Sports, counted with the same layers in the PC preview). There only the next one stays ready (and
+   the one before while you are on the banner), the others are not drawn at all (Hero.near in sports.js) */
+.is-webos .sh__slide { opacity: 0; }
+.is-webos .sh__slide.is-near { opacity: 0.004; }
+.is-webos .sh__slide.is-on { opacity: 1; }
 .sh__photo { position: absolute; top: 0; right: 0; bottom: 0; left: 0; background: center 35% / cover no-repeat; }
 .sh__slide.has-photo .sh__scrim { background:
         linear-gradient(0deg, rgba(6,7,11,1) 0%, rgba(6,7,11,0.7) 24%, rgba(6,7,11,0) 55%),

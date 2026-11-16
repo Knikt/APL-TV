@@ -221,6 +221,65 @@
 
     /* ---------- OpenSubtitles (through Stremio's public OpenSubtitles service: no account) ---------- */
     var OS = "https://opensubtitles-v3.strem.io/subtitles/";
+    /* The subtitles made from this very file. OpenSubtitles knows a video by its fingerprint: its size, and the 64 KB
+       at its start and at its end added up as 64-bit numbers. Asked with it, it says which subtitles were timed on
+       this exact file (in time from the first line to the last). Only two small pieces of the file are read. */
+    function rangeBytes(url, from, to) {
+        return new Promise(function (ok, ko) {
+            var x = new XMLHttpRequest(), done = false, timer = setTimeout(function () { fail("timeout"); }, 7000);
+            function fail(m) { if (done) return; done = true; clearTimeout(timer); try { x.abort(); } catch (e) {} ko(new Error(m)); }
+            try {
+                x.open("GET", url, true);
+                x.responseType = "arraybuffer";
+                x.setRequestHeader("Range", "bytes=" + from + "-" + to);
+                x.onreadystatechange = function () {
+                    if (done) return;
+                    // a server that sends the whole movie instead of the piece asked: stopped at once
+                    if (x.readyState >= 2 && x.status !== 206) { fail("no range (" + x.status + ")"); return; }
+                    if (x.readyState !== 4) return;
+                    done = true; clearTimeout(timer);
+                    ok({ buf: x.response, total: +(String(x.getResponseHeader("Content-Range") || "").split("/")[1] || 0) });
+                };
+                x.onprogress = function (e) { if (e.loaded > to - from + 4097) fail("too much"); };
+                x.send();
+            } catch (e) { fail(e.message); }
+        });
+    }
+    function fileHash(url) {
+        return rangeBytes(url, 0, 65535).then(function (a) {
+            var size = a.total;
+            if (!(size > 131072) || !a.buf || a.buf.byteLength < 65536) throw new Error("no size");
+            return rangeBytes(url, size - 65536, size - 1).then(function (b) {
+                if (!b.buf || b.buf.byteLength < 65536) throw new Error("no end");
+                return { hash: TV.subtitles.hash(size, a.buf, b.buf), size: size };
+            });
+        });
+    }
+    /* OpenSubtitles' sum: the size plus every 8 bytes of both pieces as 64-bit numbers, in four 16-bit parts (older
+       TVs have no BigInt) */
+    function osSum(size, head, tail) {
+        var p = [size % 65536, Math.floor(size / 65536) % 65536, Math.floor(size / 4294967296) % 65536, Math.floor(size / 281474976710656) % 65536];
+        [head, tail].forEach(function (buf) {
+            var v = new DataView(buf, 0, 65536);
+            for (var i = 0; i < 65536; i += 8) {
+                p[0] += v.getUint16(i, true); p[1] += v.getUint16(i + 2, true) + (p[0] >>> 16); p[0] &= 65535;
+                p[2] += v.getUint16(i + 4, true) + (p[1] >>> 16); p[1] &= 65535;
+                p[3] = (p[3] + v.getUint16(i + 6, true) + (p[2] >>> 16)) & 65535; p[2] &= 65535;
+            }
+        });
+        var hex = function (n) { return ("000" + n.toString(16)).slice(-4); };
+        return hex(p[3]) + hex(p[2]) + hex(p[1]) + hex(p[0]);
+    }
+    /* Reading the file a second time while it plays is a second connection: never with an account for one screen
+       (the provider could stop the movie for it), nor with a server that asks for a player's name */
+    function canReadFile() {
+        var it = vod && vod.item, url = vod && vod.url;
+        if (!it || !url || !/^https?:/i.test(url) || /\.m3u8|\/hls\//i.test(url) || TV.uaFor(url)) return false;
+        var s = D.sources().filter(function (x) { return x.id === it.src; })[0];
+        if (!s) return false;
+        if (s.type === "jellyfin" || s.type === "plex") return true;
+        return s.type === "xtream" && !!s.account && +s.account.max >= 2;
+    }
     function osTarget() {
         return TV.meta.lookup(vod.item).then(function (m) {
             if (!m || !m.imdbId) return null;
@@ -235,15 +294,22 @@
         var my = vod;
         osTarget().then(function (url) {
             if (!url) throw new Error("no IMDb id");
-            return TV.fetchJSON(url, { timeout: 15000 });
+            var ask = function (u) { return TV.fetchJSON(u, { timeout: 15000 }); };
+            if (!canReadFile()) return ask(url);
+            return fileHash(my.url).then(function (h) {
+                TV.log("opensubtitles: this file's fingerprint " + h.hash + " (" + h.size + " bytes)");
+                return ask(url.replace(/\.json$/, "/videoHash=" + h.hash + "&videoSize=" + h.size + ".json"));
+            }, function (e) { TV.log("opensubtitles: no fingerprint (" + e.message + ")"); return ask(url); });
         }).then(function (j) {
             if (vod !== my) return;
             var order = [wantLang(TV.pref("subLang") === "off" ? "auto" : TV.pref("subLang")), TV.pref("subLang2"), TV.lang, "en"];
             var list = (j && j.subtitles || []).map(function (s, i) {
                 var l = norm(s.lang), rank = order.indexOf(l);
                 var rel = String(s.movieReleaseName || s.subtitleFileName || "").replace(/\.(srt|sub|ass)$/i, "").replace(/[._]+/g, " ").trim();
-                return { id: s.id, url: s.url, lang: l, name: LANG_NAMES[l] || String(s.lang).toUpperCase(), release: rel.length > 52 ? rel.slice(0, 50) + "…" : rel, rank: rank < 0 ? 9 : rank, i: i };
-            }).filter(function (s) { return s.url; }).sort(function (a, b) { return a.rank - b.rank || a.i - b.i; });
+                return { id: s.id, url: s.url, lang: l, name: LANG_NAMES[l] || String(s.lang).toUpperCase(), release: rel.length > 52 ? rel.slice(0, 50) + "…" : rel, rank: rank < 0 ? 9 : rank, i: i,
+                         exact: s.m === "h", fps: +s.fpsMilli > 0 ? +s.fpsMilli / 1000 : 0 };
+            }).filter(function (s) { return s.url; }).sort(function (a, b) { return a.rank - b.rank || (b.exact ? 1 : 0) - (a.exact ? 1 : 0) || a.i - b.i; });
+            if (list.some(function (s) { return s.exact; })) TV.log("opensubtitles: " + list.filter(function (s) { return s.exact; }).length + " made for this file");
             os = { state: list.length ? "ready" : "none", list: list };
             TV.log("opensubtitles: " + list.length + " found");
             refreshPop();
@@ -276,11 +342,31 @@
             os.loadingId = null;
             if (!cues.length) { TV.toast(T("These subtitles could not be read.")); refreshPop(); return; }
             TV.player.subtitlesOff(true); subsOn = false;
+            var k = o.exact ? 1 : speedOf(o, cues);
+            if (k !== 1) cues.forEach(function (c) { c.s = Math.round(c.s * k); c.e = Math.round(c.e * k); });
             ext = { id: o.id, cues: cues, name: o.name, at: 0 };
             startExt();
-            TV.toast(T("Subtitles: {name}", { name: o.name + " · OpenSubtitles" }));
+            TV.toast(T("Subtitles: {name}", { name: o.name + " · OpenSubtitles" }) + (o.exact ? " · " + T("made for this file") : k !== 1 ? " · " + T("set to this video's speed") : ""));
             closePop();
         }).catch(function (e) { os.loadingId = null; TV.log("opensubtitles download: " + e.message); TV.toast(T("These subtitles could not be downloaded.")); refreshPop(); });
+    }
+    /* Subtitles timed on a copy at another speed drift a little more each minute: a European copy runs at 25 images
+       a second, 4 % faster than the film's 23.976 or 24. OpenSubtitles says the speed each one was timed for and the
+       screen knows the video's: the times are stretched (or shrunk) to match. Without the speeds, the last line
+       ending well after the video does tell it. Never when the result would end after the video. */
+    function speedOf(o, cues) {
+        var st = TV.player.stats() || {}, vf = +st.fps || 0, dur = (TV.player.duration() || 0) * 1000, last = cues[cues.length - 1].e;
+        return TV.subtitles.speed(+o.fps || 0, vf, dur, last);
+    }
+    function speedFactor(sf, vf, dur, last) {
+        var k = 1;
+        if (vf > 1000) vf = vf / 1000;
+        var pal = function (f) { return Math.abs(f - 25) < 0.06; }, film = function (f) { return Math.abs(f - 23.976) < 0.06 || Math.abs(f - 24) < 0.06; };
+        if (sf && vf) { if (pal(sf) && film(vf)) k = 25 / vf; else if (film(sf) && pal(vf)) k = sf / 25; }
+        else if (dur > 1200000 && last > dur * 1.025) k = 24 / 25;
+        if (k !== 1 && dur > 600000 && last * k > dur + 60000) k = 1;
+        if (k !== 1) TV.log("subtitles: timed for " + (sf || "?") + " fps, this video " + (vf || "?") + " fps: times x" + k.toFixed(4));
+        return k;
     }
     /* The picture's time between the player's own reports (a few per second) */
     function nowMs() {
@@ -328,13 +414,14 @@
                 // your languages first (8 at most); the others behind "Other Languages"
                 var mine = os.list.filter(function (o) { return o.rank < 9; }), others = os.list.length - Math.min(mine.length, 8);
                 (os.expanded ? os.list.slice(0, 80) : mine.slice(0, 8)).forEach(function (o) {
-                    items.push({ label: o.name, sub: os.loadingId === o.id ? T("Downloading…") : o.release, check: ext && ext.id === o.id, keep: true, run: function () { useOS(o); } });
+                    items.push({ label: o.name, sub: os.loadingId === o.id ? T("Downloading…") : o.exact ? T("Made for this file") + (o.release ? " · " + o.release : "") : o.release, check: ext && ext.id === o.id, keep: true, run: function () { useOS(o); } });
                 });
                 if (!os.expanded && others > 0) items.push({ label: T("Other Languages ({n})", { n: others }), keep: true, run: function () { os.expanded = true; } });
             }
         }
         items.push({ head: T("Settings") });
         items.push({ label: T("Delay"), value: fmtDelay(), keep: true, run: function () { openPop("sync"); } });
+        if (ext && ext.cues.length) items.push({ label: T("Sync to a Line"), sub: T("OK the moment you hear it"), keep: true, run: function () { openPop("line"); } });
         items.push({ label: T("Subtitle Style"), run: function () { closePop(); styleMenu(); } });
         return items;
     }
@@ -498,9 +585,35 @@
     function itemsFor(kind) { return kind === "subs" ? subsItems() : kind === "picture" ? pictureItems() : kind === "quality" ? qualityItems() : kind === "info" ? infoItems() : audioItems(); }
     var POP_TITLE = { subs: "Subtitles", picture: "Picture Size", quality: "Quality", info: "Stream Info", audio: "Audio" };
     var BTN_ICON = { subs: "cc", audio: "speaker", quality: "quality", picture: "aspect", info: "info" };
+    /* Sync to a line: the next words of the subtitles are shown, OK the moment you hear them said, and the delay is
+       set from that (a quarter of a second taken off for the time the thumb takes). ◀ ▶ another line. */
+    function lineFrom(t) {
+        var c = ext ? ext.cues : [], i = 0;
+        while (i < c.length && (c[i].s + delayMs < t || !c[i].h)) i++;
+        return Math.min(i, Math.max(0, c.length - 1));
+    }
+    function lineStep(d) {
+        var c = ext ? ext.cues : [], i = pop.line + d;
+        while (i >= 0 && i < c.length && !c[i].h) i += d;
+        if (i < 0 || i >= c.length) { TV.sound.edge(); return; }
+        pop.line = i; TV.sound.tick(); refreshPop();
+    }
+    function lineHeard() {
+        var c = ext && ext.cues[pop.line];
+        if (!c) return;
+        setDelay(Math.round((nowMs() - c.s - 250) / 50) * 50);
+        TV.toast(T("Subtitles synced ({d})", { d: fmtDelay() }));
+        openPop("subs");
+    }
+    var lineTimer = null;
     function openPop(kind) {
+        clearInterval(lineTimer);
         pop = { kind: kind, index: 0 };
-        if (kind !== "sync") {
+        if (kind === "line") {
+            if (!ext || !ext.cues.length) { pop.kind = "subs"; kind = "subs"; }
+            else { pop.line = lineFrom(nowMs() + 4000); lineTimer = setInterval(function () { if (pop && pop.kind === "line") refreshPop(); else clearInterval(lineTimer); }, 500); }
+        }
+        if (kind !== "sync" && kind !== "line") {
             var items = itemsFor(kind);
             for (var i = 0; i < items.length; i++) if (items[i].check) { pop.index = i; break; }
             if (items[pop.index] && items[pop.index].head) pop.index++;
@@ -509,6 +622,7 @@
         show(0);
     }
     function closePop(silent) {
+        clearInterval(lineTimer);
         pop = null;
         if (popEl) { popEl.classList.remove("is-on"); popEl.innerHTML = ""; }
         if (!silent && open) { drawBar(); show(); }
@@ -519,6 +633,14 @@
             popEl.innerHTML = "<div class='osd__pophead'>" + esc(T("Subtitle Delay")) + "</div><div class='osd__sync'><span>◀</span><b>" + esc(fmtDelay()) + "</b><span>▶</span></div>" +
                 "<div class='osd__pophint'>" + esc(T("◀ ▶ 0.25 s (hold: faster) · a later subtitle: ▶ · OK: done")) + "</div>";
             popEl.className = "osd__pop is-on is-sync";
+            return;
+        }
+        if (pop.kind === "line") {
+            var cue = ext && ext.cues[pop.line], inS = cue ? Math.round((cue.s + delayMs - nowMs()) / 1000) : 0;
+            popEl.innerHTML = "<div class='osd__pophead'>" + esc(T("Sync to a Line")) + "</div><div class='osd__line'><span>◀</span><b>" + (cue ? cue.h : "") + "</b><span>▶</span></div>" +
+                "<div class='osd__pophint'>" + esc(T("OK the moment you hear these words")) + "<br>" +
+                esc(inS > 0 ? T("Shown in {n} s with the delay of now", { n: inS }) : inS < 0 ? T("Shown {n} s ago with the delay of now", { n: -inS }) : T("Shown now")) + " · " + esc(T("◀ ▶ another line")) + "</div>";
+            popEl.className = "osd__pop is-on is-sync is-line";
             return;
         }
         var items = pop.items = itemsFor(pop.kind);
@@ -536,6 +658,11 @@
         if (f && listBox) listBox.scrollTop = Math.max(0, f.offsetTop - listBox.clientHeight / 2 + f.offsetHeight / 2);
     }
     function popKey(code) {
+        if (pop.kind === "line") {
+            if (code === K.LEFT || code === K.RIGHT) { lineStep(code === K.RIGHT ? 1 : -1); return; }
+            if (TV.isBack(code) || code === K.UP || code === K.DOWN) { openPop("subs"); return; }
+            return;
+        }
         if (pop.kind === "sync") {
             if (code === K.LEFT || code === K.RIGHT) { var step = TV.isHeld() ? 1000 : 250; setDelay(delayMs + (code === K.RIGHT ? step : -step)); TV.sound.tick(); return; }
             if (TV.isBack(code) || code === K.UP || code === K.DOWN) { openPop("subs"); return; }
@@ -551,6 +678,7 @@
         if (TV.isBack(code) || code === K.LEFT || code === K.RIGHT) { closePop(); return; }
     }
     function popOk() {
+        if (pop.kind === "line") { lineHeard(); return; }
         if (pop.kind === "sync") { openPop("subs"); return; }
         var it = pop.items && pop.items[pop.index];
         if (it && it.run) it.run();
@@ -657,7 +785,8 @@
         var fav = D.isFav(ch.id);
         var items = [
             { label: fav ? T("Remove from Favorites") : T("Add to Favorites"), icon: fav ? "starLine" : "star", run: function () { var on = D.toggleFav(ch.id); TV.toast(on ? T("“{name}” added to Favorites", { name: ch.name }) : T("“{name}” removed from Favorites", { name: ch.name })); drawLive(); } },
-            { label: T("Watch in Multiview"), icon: "grid", run: function () { var c = ch; finish(); TV.multiview.open([c]); } }
+            { label: T("Watch in Multiview"), icon: "grid", run: function () { var c = ch; finish(); TV.multiview.open([c]); } },
+            TV.channelHideItem(ch)            // the one you are watching keeps playing; it leaves the lists
         ];
         if (liveIcons().indexOf("subs") >= 0) items.push({ label: T("Subtitles"), icon: "cc", run: function () { openPop("subs"); } });
         items.push({ label: T("Audio"), icon: "speaker", run: function () { openPop("audio"); } });
@@ -1250,6 +1379,6 @@
         live: live, vod: vodPlay, isOpen: function () { return open; }, buffering: buffering, error: error, number: number,
         close: function () { if (open) finish(); }, current: function () { return ch; }, voice: voice
     };
-    TV.subtitles = { options: SUB, apply: applySubStyle, sample: sampleSub };
+    TV.subtitles = { options: SUB, apply: applySubStyle, sample: sampleSub, hash: osSum, speed: speedFactor, parse: parseSubs };
     TV.langs = { name: function (c) { return LANG_NAMES[c] || c; }, list: ["fr", "en", "es", "de", "it", "pt", "ar", "tr", "nl", "ru", "ja", "ko", "zh", "hi", "pl"] };
 })(window);

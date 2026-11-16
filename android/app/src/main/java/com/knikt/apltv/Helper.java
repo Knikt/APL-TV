@@ -266,7 +266,10 @@ final class Helper {
             item.put("name", cut(b.optString("name"), 80));
             item.put("epg", cut(b.optString("epg"), 2000));
             if (m3u) item.put("url", cut(b.optString("url"), 4000));
-            else if (stalker) { item.put("portal", cut(b.optString("portal"), 400)); item.put("mac", cut(b.optString("mac"), 40)); }
+            else if (stalker) {
+                item.put("portal", cut(b.optString("portal"), 400)); item.put("mac", cut(b.optString("mac"), 40));
+                for (String k : new String[] { "sn", "id1", "id2" }) if (!b.optString(k).isEmpty()) item.put(k, cut(b.optString(k), 200));   // a MAG box's serial and device IDs (#19)
+            }
             else { item.put("server", cut(b.optString("server"), 400)); item.put("user", cut(b.optString("user"), 200)); item.put("pass", cut(b.optString("pass"), 200)); }
             synchronized (lock) { pending.add(item); while (pending.size() > 5) pending.remove(0); }
             log("phone sent a " + item.getString("type") + " source");

@@ -40,6 +40,11 @@
             page.appendChild(heroEl); page.appendChild(rowsEl);
             root.appendChild(page);
         }
+        /* libraries of its hidden in Settings > Countries and Categories: said so, instead of "nothing yet" */
+        function hiddenLibs() {
+            var cat = D.catalog();
+            return !!cat && ["movies", "series"].some(function (k) { return cat[k].cats.some(function (c) { return c.id.indexOf(srcId + ":") === 0 && c.off && c.count; }); });
+        }
         /* its libraries, as they are in Movies and Series (hidden titles and categories left out) */
         function libs() {
             var cat = D.catalog(), out = [];
@@ -128,7 +133,7 @@
                 var e = el("div", "empty");
                 e.style.top = "300px";
                 e.innerHTML = "<div class='empty__title'>" + esc(s ? label(s) : "") + "</div><div class='empty__text'>" +
-                    esc(s && s.error ? s.error : (s && !s.at ? T("Loading…") : T("Nothing in this server's libraries yet."))) + "</div>";
+                    esc(s && s.error ? s.error : (s && !s.at ? T("Loading…") : hiddenLibs() ? T("This server's libraries are hidden: Settings > Countries and Categories.") : T("Nothing in this server's libraries yet."))) + "</div>";
                 page.appendChild(e);
                 return;
             }

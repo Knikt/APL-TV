@@ -160,7 +160,8 @@
             if (!it) return;
             if (s.kindOf === "channel") {
                 var fav = D.isFav(it.id);
-                TV.menu(it.name, [{ label: fav ? T("Remove from Favorites") : T("Add to Favorites"), icon: fav ? "starLine" : "star", run: function () { D.toggleFav(it.id); } }]);
+                TV.menu(it.name, [{ label: fav ? T("Remove from Favorites") : T("Add to Favorites"), icon: fav ? "starLine" : "star", run: function () { D.toggleFav(it.id); } },
+                    TV.channelHideItem(it, function () { run(); paint(); })]);
             } else TV.titleMenu(it, function () { run(); paint(); });
         }
     };

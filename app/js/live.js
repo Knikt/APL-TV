@@ -71,7 +71,7 @@
         var groups = [], by = {}, curGroup = null;
         all.forEach(function (c) {
             var g = c.grp || "";
-            if (!by[g]) { by[g] = { id: g, name: g && S && S.groupName ? S.groupName(g) : T("Other Categories"), cats: [] }; groups.push(by[g]); }
+            if (!by[g]) { by[g] = { id: g, name: D.groupLabel ? D.groupLabel(g) : g && S && S.groupName ? S.groupName(g) : T("Other Categories"), cats: [] }; groups.push(by[g]); }
             by[g].cats.push(c);
             if (c.id === currentId) curGroup = g;
         });
@@ -274,7 +274,8 @@
                                   } });
                               } });
         if (ch.orig) items.splice(4, 0, { label: T("Provider's Name: {name}", { name: ch.orig }), icon: "restart", run: function () { renamed(ch, ""); } });
-        if (inFav && fav) {
+        var az = TV.pref("chanOrder") === "az";            // A to Z: no order of yours to change
+        if (inFav && fav && !az) {
             items.push({ label: T("Move Up"), icon: "chevron", run: function () { if (D.moveFav(ch.id, -1)) loadCategory(ch.id); } });
             items.push({ label: T("Move Down"), icon: "chevron", run: function () { if (D.moveFav(ch.id, 1)) loadCategory(ch.id); } });
         }
@@ -282,9 +283,17 @@
         if (curCat && curCat.mine) {
             var gid = curCat.id.replace(/^grp:/, "");
             items.push({ label: T("Remove from “{group}”", { group: curCat.name }), icon: "trash", run: function () { D.toggleChanGroup(gid, ch.id); afterGroups(); } });
-            items.push({ label: T("Move Up"), icon: "chevron", run: function () { if (D.moveInChanGroup(gid, ch.id, -1)) loadCategory(ch.id); } });
-            items.push({ label: T("Move Down"), icon: "chevron", run: function () { if (D.moveInChanGroup(gid, ch.id, 1)) loadCategory(ch.id); } });
+            if (!az) {
+                items.push({ label: T("Move Up"), icon: "chevron", run: function () { if (D.moveInChanGroup(gid, ch.id, -1)) loadCategory(ch.id); } });
+                items.push({ label: T("Move Down"), icon: "chevron", run: function () { if (D.moveInChanGroup(gid, ch.id, 1)) loadCategory(ch.id); } });
+            }
         }
+        // hidden: the card goes, the next one takes its place (in Favorites or a group of yours it stays, with Show Again)
+        items.push(TV.channelHideItem(ch, function () {
+            var list = cards.items, i = list.indexOf(ch), next = list[i + 1] || list[i - 1];
+            cats = categories(); buildChips(); paintChips();
+            loadCategory(inFav || (curCat && curCat.mine) ? ch.id : next && next.id);
+        }));
         if (ch.variants && ch.variants.length > 1) items.push({ label: T("Quality"), icon: "quality", run: function () {
             TV.menu(T("Quality"), ch.variants.map(function (v) {
                 return { label: (v.q || T("Standard")) + "  ·  " + (v.raw || v.name), check: playing && playing.id === v.id, run: function () { fullScreen(v); } };

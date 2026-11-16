@@ -51,7 +51,7 @@
                 desc: typeLabel(s) + (s.error ? "\n" + s.error : "") + (s.at ? "\n" + T("Updated {d}", { d: new Date(s.at).toLocaleString(TV.locale) }) : ""),
                 run: function () { push(sourcePage(s.id)); } });
         });
-        if (D.sources().length) rows.push({ label: T("Edit on Your Phone"), acc: "chevron", icon: "phone", desc: T("Hide and order your categories, make your groups of channels and order your favorites on your phone, then send it all to the TV."),
+        if (D.sources().length) rows.push({ label: T("Edit on Your Phone"), acc: "chevron", icon: "phone", desc: T("Hide and order your categories, make your groups of channels, order your favorites, rename or hide channels on your phone, then send it all to the TV."),
             run: function () { push(editPhonePage()); } });
         rows.push({ label: T("Add a Playlist"), acc: "chevron", icon: "plus", desc: T("Your M3U playlist, your Xtream account, a Stalker portal, or your own media server (Jellyfin, Emby, Plex)."), run: function () { push(addPage()); } });
         rows.push({ section: T("Playback") });
@@ -59,6 +59,9 @@
         rows.push(toggleRow(T("Sort the Categories"), "tidyCats", T("Your screen's language first, adult ones last. Off: the order of your playlist."), function () { D.rebuild(); }));
         rows.push(toggleRow(T("Tidy the Names"), "tidyNames", T("Country and quality tags (FR|, FHD, 4K…) taken out of the names. Off: the names of your playlist."), function () { D.rebuild(); }));
         rows.push(toggleRow(T("Group HD, FHD and 4K"), "mergeQuality", T("One line per channel, the best quality first. Hold OK on it to choose another."), function () { D.rebuild(); }));
+        rows.push({ label: T("Channel Order"), value: TV.pref("chanOrder") === "az" ? T("A to Z") : T("Playlist Order"),
+            desc: T("In Live TV, the TV Guide and your favorites. A to Z: by name. Playlist order: as your provider ordered them (and you, for your favorites and groups)."),
+            run: function () { TV.setPref("chanOrder", TV.pref("chanOrder") === "az" ? "list" : "az"); D.rebuild(); redraw(); } });
         rows.push({ label: T("Audio Language"), value: langLabel(TV.pref("audioLang")), acc: "chevron", desc: T("The language movies and series start in, when the video has it."),
             run: function () { choose(T("Audio Language"), "audioLang", [["auto", T("Screen Language")], ["orig", T("Original Version")]].concat(langChoices())); } });
         rows.push({ label: T("Second Audio Language"), value: langLabel(TV.pref("audioLang2")), acc: "chevron", desc: T("Used when the first language is not in the video."),
@@ -96,6 +99,8 @@
             desc: T("Choose themes you never want to see: the movies and series TMDB tags with them disappear everywhere."), run: function () { push(themesPage()); } });
         rows.push({ label: T("Hidden Titles"), value: String(D.hiddenList().length), acc: "chevron", icon: "eyeOff", desc: T("Movies and series you chose to hide. OK to see them and bring one back."),
             run: function () { push(hiddenPage()); } });
+        rows.push({ label: T("Hidden Channels"), value: String(D.hiddenChanList().length), acc: "chevron", icon: "eyeOff", desc: T("Channels you chose to hide. OK to see them and bring one back."),
+            run: function () { push(hiddenChansPage()); } });
         rows.push(toggleRow(T("Interface Sounds"), "sounds", T("The sounds of APL Launcher when you move and press OK.")));
         rows.push(toggleRow(T("Animations"), "motion", T("Off: everything appears at once."), applyMotion));
         if (TV.saver) {
@@ -262,6 +267,14 @@
         });
         return { title: g.name, icon: "eyeOff", desc: T("Hidden categories disappear from APL TV. Your favorite channels stay."), rows: rows, rebuild: function () { return groupPage(id); } };
     }
+    function hiddenChansPage() {
+        var rows = D.hiddenChanList().map(function (h) {
+            return { label: h.t, value: new Date(h.at).toLocaleDateString(TV.locale), desc: T("OK: show this channel again."),
+                run: function () { D.unhideChan(h.key); TV.toast(T("“{name}” is back", { name: h.t })); replaceTop(hiddenChansPage()); } };
+        });
+        if (!rows.length) rows.push({ label: T("No hidden channels"), desc: T("Hold OK on a channel, then choose Hide This Channel.") });
+        return { title: T("Hidden Channels"), icon: "eyeOff", desc: T("Hidden channels leave your lists, the guide, Home and search. Your favorites and groups keep them. OK on one brings it back."), rows: rows, rebuild: hiddenChansPage };
+    }
     function hiddenPage() {
         var rows = D.hiddenList().map(function (h) {
             return { label: h.t, value: h.kind === "series" ? T("Series") : T("Movie"), desc: T("OK: show this title again."),
@@ -289,6 +302,16 @@
         } else if (s.type === "stalker") {
             rows.push({ label: T("Portal Address"), value: String(s.portal || "").replace(/^(https?:\/\/[^\/]+).*$/, "$1/…") });
             rows.push({ label: T("MAC Address"), value: s.mac || "" });
+            // a MAG box's serial number and device IDs, for the portals that check them (issue #19)
+            [["sn", T("Serial Number")], ["id1", T("Device ID 1")], ["id2", T("Device ID 2")]].forEach(function (k) {
+                rows.push({ label: k[1], value: s[k[0]] || T("Not set"), acc: "chevron", desc: T("Only if your provider asks for it: the serial number and device IDs of the MAG box it registered."), run: function (row) {
+                    edit(row, { value: s[k[0]] || "", onDone: function (v) {
+                        var ch = {}; ch[k[0]] = String(v || "").trim(); s[k[0]] = ch[k[0]];
+                        D.updateSource(id, ch);
+                        loadWithProgress(s, function () { replaceTop(sourcePage(id)); });
+                    } });
+                } });
+            });
         } else if (s.type === "jellyfin") {
             rows.push({ label: T("Server"), value: s.server });
             rows.push({ label: T("Username"), value: s.user });
@@ -489,6 +512,10 @@
         } else if (f.type === "stalker") {
             field(T("Portal Address"), "portal", { url: true, desc: T("For example http://example.com:8080/c/") });
             field(T("MAC Address"), "mac", { desc: T("The one your provider registered, like 00:1A:79:12:34:56.") });
+            var dev = T("Only if your provider asks for it: the serial number and device IDs of the MAG box it registered.");
+            field(T("Serial Number (optional)"), "sn", { desc: dev });
+            field(T("Device ID 1 (optional)"), "id1", { desc: dev });
+            field(T("Device ID 2 (optional)"), "id2", { desc: dev });
         } else if (f.type === "jellyfin") {
             field(T("Server"), "server", { url: true, desc: T("Your server's address, for example http://192.168.1.20:8096") });
             field(T("Username"), "user");
@@ -508,6 +535,7 @@
             if (!src.server || !src.user || !src.pass) { TV.toast(T("Fill in the server, the username and the password.")); return; }
         } else if (f.type === "stalker") {
             src.portal = f.portal || ""; src.mac = f.mac || "";
+            ["sn", "id1", "id2"].forEach(function (k) { if (String(f[k] || "").trim()) src[k] = String(f[k]).trim(); });
             if (!src.portal || !TV.stalker || !TV.stalker.normMac(src.mac)) { TV.toast(T("Fill in the portal's address and a MAC address like 00:1A:79:12:34:56.")); return; }
         } else if (f.type === "jellyfin") {
             src.server = f.server || ""; src.user = f.user || ""; src.pass = f.pass || ""; delete src.epg;

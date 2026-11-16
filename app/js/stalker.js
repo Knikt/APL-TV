@@ -42,6 +42,9 @@
         var root = base.replace(/\/stalker_portal(\/.*)?$/i, "");
         if (/stalker_portal/i.test(base)) out.push(root + "/stalker_portal/server/load.php");
         out.push(root + "/portal.php", root + "/server/load.php", root + "/stalker_portal/server/load.php");
+        // a portal pasted with a folder of its own (http://host/mag/c/): the host's own paths after (issue #19)
+        var host = (/^(https?:\/\/[^\/]+)/i.exec(base) || [])[1];
+        if (host && host !== root) out.push(host + "/portal.php", host + "/server/load.php", host + "/stalker_portal/server/load.php");
         return out.filter(function (u, i) { return out.indexOf(u) === i; });
     }
     function headers(src, token) {
@@ -66,6 +69,8 @@
     }
 
     /* ---------- the session ---------- */
+    // Of the addresses tried, the error that tells the most: a MAC refused, then a portal that answered, then a 404
+    function worth(e) { return !e ? 0 : /refused this MAC/.test(e.message || "") ? 3 : e.status === 404 || /\b404\b/.test(e.message || "") ? 1 : 2; }
     function login(src, fresh) {
         var s = sessions[src.id];
         if (s && !fresh && Date.now() - s.at < 20 * 60000) return Promise.resolve(s);
@@ -78,7 +83,8 @@
                     var token = j && j.token;
                     if (!token) throw new Error(T("The portal did not answer as a Stalker portal."));
                     var prof = "type=stb&action=get_profile&hd=1&ver=" + encodeURIComponent("ImageDescription: 0.2.18-r23-250; PORTAL version: 5.6.1; API Version: JS API version: 343;") +
-                               "&num_banks=2&sn=&stb_type=MAG250&client_type=STB&image_version=218&video_out=hdmi&device_id=&device_id2=&signature=&auth_second_step=1&hw_version=1.7-BD-00&not_valid_token=0&timestamp=" + Math.floor(Date.now() / 1000) + "&api_signature=262&prehash=0";
+                               "&num_banks=2&sn=" + encodeURIComponent(src.sn || "") + "&stb_type=MAG250&client_type=STB&image_version=218&video_out=hdmi&device_id=" + encodeURIComponent(src.id1 || "") +
+                               "&device_id2=" + encodeURIComponent(src.id2 || "") + "&signature=&auth_second_step=1&hw_version=1.7-BD-00&not_valid_token=0&timestamp=" + Math.floor(Date.now() / 1000) + "&api_signature=262&prehash=0";
                     return req(src, api, prof, token, 20000).then(function (p) {
                         if (p && (p.status === 1 || p.blocked === "1") && !p.id) throw new Error(T("The portal refused this MAC address."));
                         var ses = { api: api, token: token, at: Date.now(), profile: p || {} };
@@ -86,7 +92,7 @@
                         TV.log("stalker: connected (" + api.replace(/^https?:\/\/[^\/]+/, "") + ")");
                         return ses;
                     });
-                }).catch(function (e) { lastErr = e; if (e && /new install/.test(e.message)) throw e; return null; });
+                }).catch(function (e) { if (worth(e) > worth(lastErr)) lastErr = e; if (e && /new install/.test(e.message)) throw e; return null; });
             });
         }, Promise.resolve(null)).then(function (ses) {
             if (!ses) throw lastErr || new Error(T("The portal did not answer as a Stalker portal."));
@@ -136,6 +142,14 @@
             return Promise.all(jobs);
         });
     }
+    function eachLimit(list, n, fn) {
+        var i = 0;
+        function next() { if (i >= list.length) return Promise.resolve(); var it = list[i++]; return Promise.resolve(fn(it)).then(next, next); }
+        var jobs = [];
+        for (var k = 0; k < Math.min(n, list.length); k++) jobs.push(next());
+        return Promise.all(jobs);
+    }
+    var CAT_JOBS = 2;            // categories loaded at once (each with PAGE_JOBS pages at a time)
     function load(src, progress, base) {
         var out = base;
         out.type = "stalker";
@@ -164,8 +178,8 @@
             progress(T("Loading movies…"));
             return call(src, "type=vod&action=get_categories").then(function (vc) {
                 out.movies.cats = cats(vc, src.id, "movie", "");
-                return out.movies.cats.reduce(function (p, ct) {
-                    return p.then(function () {
+                return eachLimit(out.movies.cats, CAT_JOBS, function (ct) {
+                    {
                         if (out.movies.items.length >= MAX_ITEMS) return;
                         var cid = ct.id.split(":").pop();
                         return pages(src, "type=vod&action=get_ordered_list&category=" + encodeURIComponent(cid) + "&genre=*&sortby=added&fav=0", function (d) {
@@ -180,15 +194,15 @@
                             });
                             progress(T("Loading movies…") + " " + out.movies.items.length);
                         });
-                    });
-                }, Promise.resolve());
+                    }
+                });
             }).catch(function (e) { TV.log("stalker movies: " + e.message); out.failed.movies = e.message; });
         }).then(function () {
             progress(T("Loading series…"));
             return call(src, "type=series&action=get_categories").then(function (sc) {
                 out.series.cats = cats(sc, src.id, "series", "s");
-                return out.series.cats.reduce(function (p, ct) {
-                    return p.then(function () {
+                return eachLimit(out.series.cats, CAT_JOBS, function (ct) {
+                    {
                         if (out.series.items.length >= MAX_ITEMS) return;
                         var cid = ct.id.split(":").pop().replace(/^s/, "");
                         return pages(src, "type=series&action=get_ordered_list&category=" + encodeURIComponent(cid) + "&genre=*&sortby=added&fav=0", function (d) {
@@ -203,8 +217,8 @@
                             });
                             progress(T("Loading series…") + " " + out.series.items.length);
                         });
-                    });
-                }, Promise.resolve());
+                    }
+                });
             }).catch(function (e) { TV.log("stalker series: " + e.message); out.failed.series = e.message; });
         }).then(function () {
             TV.log("stalker: " + out.live.chans.length + " channels, " + out.movies.items.length + " movies, " + out.series.items.length + " series");

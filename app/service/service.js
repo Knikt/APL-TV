@@ -22,7 +22,7 @@ var zlib = require("zlib");
 var os = require("os");
 var crypto = require("crypto");
 
-var PORT = 8765, VERSION = "1.1.1";
+var PORT = 8765, VERSION = "1.2.0";
 var IDLE_MS = 15 * 60 * 1000, SESSION_MS = 20 * 60 * 1000;
 var UA = "APL TV/" + VERSION + " (" + (global.APLTV_PLATFORM || "Tizen") + ")";
 
@@ -551,7 +551,10 @@ var PHONE_PL = {
     "Paste the link of your M3U playlist.": "Wklej link do playlisty M3U.",
     "Portal address": "Adres portalu",
     "MAC address": "Adres MAC",
-    "The portal (MAG, Ministra) and the MAC address your provider registered.": "Portal (MAG, Ministra) i adres MAC zarejestrowany przez dostawcę.",
+    "The portal (MAG, Ministra) and the MAC address your provider registered. The serial number and device IDs only if it asks for them.": "Portal (MAG, Ministra) i adres MAC zarejestrowany przez dostawcę. Numer seryjny i identyfikatory urządzenia tylko wtedy, gdy ich wymaga.",
+    "Serial number (optional)": "Numer seryjny (opcjonalnie)",
+    "Device ID 1 (optional)": "ID urządzenia 1 (opcjonalnie)",
+    "Device ID 2 (optional)": "ID urządzenia 2 (opcjonalnie)",
     "Your Jellyfin or Emby server: its address, your user name and your password.": "Twój serwer Jellyfin lub Emby: jego adres, nazwa użytkownika i hasło.",
     "Plex links with a code: tap the button below, a code appears on the TV, then type it on plex.tv/link with this phone.": "Plex łączy się za pomocą kodu: stuknij przycisk poniżej, a gdy na telewizorze pojawi się kod, wpisz go na plex.tv/link na tym telefonie.",
     "Name (optional)": "Nazwa (opcjonalnie)",
@@ -591,8 +594,11 @@ function phonePage(lang, token, ok) {
         "<div id=fm class=hide><div class=card><label>" + t("Playlist address (M3U)", "Adresse de la playlist (M3U)") + "</label><input id=url inputmode=url autocapitalize=off autocorrect=off placeholder='http://…/playlist.m3u'></div>" +
         "<p class=hint>" + t("Paste the link of your M3U playlist.", "Colle le lien de ta playlist M3U.") + "</p></div>" +
         "<div id=fs class=hide><div class=card><label>" + t("Portal address", "Adresse du portail") + "</label><input id=portal inputmode=url autocapitalize=off autocorrect=off placeholder='http://exemple.com:8080/c/'>" +
-        "<div class=row><label>" + t("MAC address", "Adresse MAC") + "</label><input id=mac autocapitalize=characters autocorrect=off placeholder='00:1A:79:12:34:56'></div></div>" +
-        "<p class=hint>" + t("The portal (MAG, Ministra) and the MAC address your provider registered.", "Le portail (MAG, Ministra) et l'adresse MAC enregistrée par ton fournisseur.") + "</p></div>" +
+        "<div class=row><label>" + t("MAC address", "Adresse MAC") + "</label><input id=mac autocapitalize=characters autocorrect=off placeholder='00:1A:79:12:34:56'></div>" +
+        "<div class=row><label>" + t("Serial number (optional)", "Numéro de série (facultatif)") + "</label><input id=sn autocapitalize=characters autocorrect=off></div>" +
+        "<div class=row><label>" + t("Device ID 1 (optional)", "ID d'appareil 1 (facultatif)") + "</label><input id=id1 autocapitalize=characters autocorrect=off></div>" +
+        "<div class=row><label>" + t("Device ID 2 (optional)", "ID d'appareil 2 (facultatif)") + "</label><input id=id2 autocapitalize=characters autocorrect=off></div></div>" +
+        "<p class=hint>" + t("The portal (MAG, Ministra) and the MAC address your provider registered. The serial number and device IDs only if it asks for them.", "Le portail (MAG, Ministra) et l'adresse MAC enregistrée par ton fournisseur. Le numéro de série et les ID d'appareil seulement s'il les demande.") + "</p></div>" +
         "<div id=fj class=hide><div class=card><label>" + t("Server", "Serveur") + "</label><input id=jserver inputmode=url autocapitalize=off autocorrect=off placeholder='http://192.168.1.20:8096'>" +
         "<div class=row><label>" + t("Username", "Nom d'utilisateur") + "</label><input id=juser autocapitalize=off autocorrect=off></div>" +
         "<div class=row><label>" + t("Password", "Mot de passe") + "</label><input id=jpass type=password autocapitalize=off autocorrect=off></div></div>" +
@@ -612,7 +618,7 @@ function phonePage(lang, token, ok) {
         "$('go').onclick=function(){var b={k:K,type:mode,name:$('name').value,epg:$('epg').value,tmdb:$('tmdb').value.trim()};" +
         "var only=function(m){if(b.tmdb){b.type='key';return true}$('msg').textContent=m;return false};" +
         "if(mode=='xtream'){b.server=$('server').value;b.user=$('user').value;b.pass=$('pass').value;if(!b.server||(!/get\\.php/i.test(b.server)&&(!b.user||!b.pass))){if(!only(" + JSON.stringify(t("Fill in the server, the username and the password.", "Remplis le serveur, l'identifiant et le mot de passe.")) + "))return}}" +
-        "else if(mode=='stalker'){b.portal=$('portal').value;b.mac=$('mac').value;if(!b.portal||b.mac.replace(/[^0-9a-f]/gi,'').length!=12){if(!only(" + JSON.stringify(t("Fill in the portal and a MAC address like 00:1A:79:12:34:56.", "Remplis le portail et une adresse MAC comme 00:1A:79:12:34:56.")) + "))return}}" +
+        "else if(mode=='stalker'){b.portal=$('portal').value;b.mac=$('mac').value;b.sn=$('sn').value.trim();b.id1=$('id1').value.trim();b.id2=$('id2').value.trim();if(!b.portal||b.mac.replace(/[^0-9a-f]/gi,'').length!=12){if(!only(" + JSON.stringify(t("Fill in the portal and a MAC address like 00:1A:79:12:34:56.", "Remplis le portail et une adresse MAC comme 00:1A:79:12:34:56.")) + "))return}}" +
         "else if(mode=='jellyfin'){b.server=$('jserver').value;b.user=$('juser').value;b.pass=$('jpass').value;b.epg='';if(!b.server||!b.user){if(!only(" + JSON.stringify(t("Fill in the server's address and your user name.", "Remplis l'adresse du serveur et ton nom d'utilisateur.")) + "))return}}" +
         "else if(mode=='plex'){b.name='';b.epg=''}" +
         "else{b.url=$('url').value;if(!b.url){if(!only(" + JSON.stringify(t("Paste the playlist's link.", "Colle le lien de la playlist.")) + "))return}}" +
@@ -631,7 +637,7 @@ var EDIT_MS = 30 * 60 * 1000;
 function editOk(k) { return !!(edit && k && k === edit.token && Date.now() - edit.at < EDIT_MS); }
 function editWrong() { if (edit && ++edit.wrong >= 20) { log("too many wrong editor codes: closed"); edit = null; } }
 var EDIT_TEXT = {
-    en: { sub: "Hide or move your categories, make your groups of channels, order your favorites. Then send it all to the TV.", cats: "Categories", groups: "Groups", favs: "Favorites",
+    en: { sub: "Hide or move your categories, make your groups of channels, order your favorites, rename or hide channels. Then send it all to the TV.", cats: "Categories", groups: "Groups", favs: "Favorites",
           live: "TV", movies: "Movies", series: "Series", catsHint: "The switch hides or shows a category everywhere on the TV; Hide all / Show all do the whole list, or just what your search finds (\u201Car\u201D, \u201Cadult\u201D\u2026). Hold \u2261 and drag to move one, or tap categories to select them, then move, hide or show them all at once.", none: "Nothing here.",
           groupsHint: "Your own lists of channels, shown in Live TV and the Guide after Favorites. Hold \u2261 and drag to move a channel.", rename: "Rename", del: "Delete", addChans: "Add channels", newGroup: "New group",
           favsHint: "Your favorite channels, in the order the TV shows them. Hold \u2261 and drag to move one.", noChans: "No channels yet.", search: "Search a channel", done: "Done", noMatch: "No channel with this name.",
@@ -641,9 +647,10 @@ var EDIT_TEXT = {
           findCat: "Search a category", noCat: "No category with this name.", sel1: "1 selected", seln: "{n} selected", toTop: "To the top", toBottom: "To the bottom",
           moveAfter: "Put after\u2026", placeHint: "Now tap the category they should come after.", cancel: "Cancel",
           hideAll: "Hide all", showAll: "Show all", hideN: "Hide these {n}", showN: "Show these {n}", hideSel: "Hide", showSel: "Show", shownOf: "{n} of {t} shown on the TV",
-          names: "Names", namesHint: "Give a channel the name you want: the TV shows it everywhere (Live TV, the guide, search, Continue) and keeps it when your playlist updates. Leave it empty to get the provider's name back.",
-          renamed: "Renamed", findChan: "Search a channel to rename", newName: "Name of the channel", was: "was {name}", reset: "Provider's name", typeMore: "Type a few letters of the channel." },
-    fr: { sub: "Masque ou d\u00E9place tes cat\u00E9gories, fais tes groupes de cha\u00EEnes, range tes favoris. Puis envoie tout \u00E0 la TV.", cats: "Cat\u00E9gories", groups: "Groupes", favs: "Favoris",
+          names: "Channels", namesHint: "Give a channel the name you want: the TV shows it everywhere (Live TV, the guide, search, Continue) and keeps it when your playlist updates. Leave it empty to get the provider's name back. Hide takes a channel out of Live TV, the guide and search; your favorites and groups keep it.",
+          hideCh: "Hide", showCh: "Show", hiddenCh: "Hidden",
+          renamed: "Renamed", findChan: "Search a channel to rename or hide", newName: "Name of the channel", was: "was {name}", reset: "Provider's name", typeMore: "Type a few letters of the channel." },
+    fr: { sub: "Masque ou d\u00E9place tes cat\u00E9gories, fais tes groupes de cha\u00EEnes, range tes favoris, renomme ou masque tes cha\u00EEnes. Puis envoie tout \u00E0 la TV.", cats: "Cat\u00E9gories", groups: "Groupes", favs: "Favoris",
           live: "TV", movies: "Films", series: "S\u00E9ries", catsHint: "L'interrupteur masque ou affiche une cat\u00E9gorie partout sur la TV ; Tout masquer / Tout afficher font toute la liste, ou seulement ce que trouve ta recherche (\u00AB ar \u00BB, \u00AB adult \u00BB\u2026). Maintiens \u2261 et fais glisser pour en d\u00E9placer une, ou touche des cat\u00E9gories pour les s\u00E9lectionner, puis les d\u00E9placer, masquer ou afficher d'un coup.", none: "Rien ici.",
           groupsHint: "Tes propres listes de cha\u00EEnes, dans la TV en direct et le Guide apr\u00E8s les Favoris. Maintiens \u2261 et fais glisser pour d\u00E9placer une cha\u00EEne.", rename: "Renommer", del: "Supprimer", addChans: "Ajouter des cha\u00EEnes", newGroup: "Nouveau groupe",
           favsHint: "Tes cha\u00EEnes favorites, dans l'ordre o\u00F9 la TV les montre. Maintiens \u2261 et fais glisser pour en d\u00E9placer une.", noChans: "Pas encore de cha\u00EEne.", search: "Chercher une cha\u00EEne", done: "OK", noMatch: "Aucune cha\u00EEne avec ce nom.",
@@ -653,9 +660,10 @@ var EDIT_TEXT = {
           findCat: "Chercher une cat\u00E9gorie", noCat: "Aucune cat\u00E9gorie avec ce nom.", sel1: "1 s\u00E9lectionn\u00E9e", seln: "{n} s\u00E9lectionn\u00E9es", toTop: "Tout en haut", toBottom: "Tout en bas",
           moveAfter: "Placer apr\u00E8s\u2026", placeHint: "Touche maintenant la cat\u00E9gorie apr\u00E8s laquelle les mettre.", cancel: "Annuler",
           hideAll: "Tout masquer", showAll: "Tout afficher", hideN: "Masquer ces {n}", showN: "Afficher ces {n}", hideSel: "Masquer", showSel: "Afficher", shownOf: "{n} sur {t} affich\u00E9es sur la TV",
-          names: "Noms", namesHint: "Donne \u00E0 une cha\u00EEne le nom que tu veux : la TV l'affiche partout (TV en direct, guide, recherche, Reprendre) et le garde quand ta playlist se met \u00E0 jour. Laisse vide pour retrouver le nom du fournisseur.",
-          renamed: "Renomm\u00E9es", findChan: "Chercher une cha\u00EEne \u00E0 renommer", newName: "Nom de la cha\u00EEne", was: "avant : {name}", reset: "Nom du fournisseur", typeMore: "Tape quelques lettres de la cha\u00EEne." },
-    pl: { sub: "Ukrywaj lub przeno\u015B kategorie, tw\u00F3rz grupy kana\u0142\u00F3w i uk\u0142adaj ulubione. Potem wy\u015Blij wszystko do telewizora.", cats: "Kategorie", groups: "Grupy", favs: "Ulubione",
+          names: "Cha\u00EEnes", namesHint: "Donne \u00E0 une cha\u00EEne le nom que tu veux : la TV l'affiche partout (TV en direct, guide, recherche, Reprendre) et le garde quand ta playlist se met \u00E0 jour. Laisse vide pour retrouver le nom du fournisseur. Masquer retire une cha\u00EEne de la TV en direct, du guide et de la recherche ; tes favoris et tes groupes la gardent.",
+          hideCh: "Masquer", showCh: "Afficher", hiddenCh: "Masqu\u00E9es",
+          renamed: "Renomm\u00E9es", findChan: "Chercher une cha\u00EEne \u00E0 renommer ou masquer", newName: "Nom de la cha\u00EEne", was: "avant : {name}", reset: "Nom du fournisseur", typeMore: "Tape quelques lettres de la cha\u00EEne." },
+    pl: { sub: "Ukrywaj lub przeno\u015B kategorie, tw\u00F3rz grupy kana\u0142\u00F3w, uk\u0142adaj ulubione, zmieniaj nazwy kana\u0142\u00F3w lub je ukrywaj. Potem wy\u015Blij wszystko do telewizora.", cats: "Kategorie", groups: "Grupy", favs: "Ulubione",
           live: "TV", movies: "Filmy", series: "Seriale", catsHint: "Prze\u0142\u0105cznik ukrywa lub pokazuje kategori\u0119 wsz\u0119dzie na telewizorze. Przytrzymaj \u2261 i przeci\u0105gnij, aby przenie\u015B\u0107 kategori\u0119, albo stuknij kategorie, aby je zaznaczy\u0107 i przenie\u015B\u0107 wszystkie naraz.", none: "Nic tu nie ma.",
           groupsHint: "Twoje w\u0142asne listy kana\u0142\u00F3w, widoczne w TV na \u017Cywo i w Przewodniku po Ulubionych. Przytrzymaj \u2261 i przeci\u0105gnij, aby przenie\u015B\u0107 kana\u0142.", rename: "Zmie\u0144 nazw\u0119", del: "Usu\u0144", addChans: "Dodaj kana\u0142y", newGroup: "Nowa grupa",
           favsHint: "Twoje ulubione kana\u0142y w kolejno\u015Bci, w jakiej pokazuje je telewizor. Przytrzymaj \u2261 i przeci\u0105gnij, aby przenie\u015B\u0107 kana\u0142.", noChans: "Brak kana\u0142\u00F3w.", search: "Szukaj kana\u0142u", done: "Gotowe", noMatch: "Brak kana\u0142u o tej nazwie.",
@@ -666,7 +674,8 @@ var EDIT_TEXT = {
           moveAfter: "Umie\u015B\u0107 za\u2026", placeHint: "Teraz stuknij kategori\u0119, za kt\u00F3r\u0105 maj\u0105 si\u0119 znale\u017A\u0107.", cancel: "Anuluj",
           hideAll: "Ukryj wszystkie", showAll: "Poka\u017C wszystkie", hideN: "Ukryj znalezione ({n})", showN: "Poka\u017C znalezione ({n})", hideSel: "Ukryj", showSel: "Poka\u017C", shownOf: "Widoczne na telewizorze: {n} z {t}",
           names: "Nazwy", namesHint: "Nadaj kana\u0142owi dowoln\u0105 nazw\u0119: telewizor poka\u017Ce j\u0105 wsz\u0119dzie (TV na \u017Cywo, przewodnik, wyszukiwanie, Kontynuuj ogl\u0105danie) i zachowa j\u0105 po aktualizacji playlisty. Zostaw pole puste, aby przywr\u00F3ci\u0107 nazw\u0119 od dostawcy.",
-          renamed: "Ze zmienion\u0105 nazw\u0105", findChan: "Wyszukaj kana\u0142, aby zmieni\u0107 nazw\u0119", newName: "Nazwa kana\u0142u", was: "wcze\u015Bniej: {name}", reset: "Nazwa od dostawcy", typeMore: "Wpisz kilka liter nazwy kana\u0142u." }
+          hideCh: "Ukryj", showCh: "Poka\u017C", hiddenCh: "Ukryte",
+          renamed: "Ze zmienion\u0105 nazw\u0105", findChan: "Wyszukaj kana\u0142, aby zmieni\u0107 nazw\u0119 lub go ukry\u0107", newName: "Nazwa kana\u0142u", was: "wcze\u015Bniej: {name}", reset: "Nazwa od dostawcy", typeMore: "Wpisz kilka liter nazwy kana\u0142u." }
 };
 var EDIT_CSS = ".r{display:flex;align-items:center;gap:8px;padding:10px 12px;border-top:1px solid rgba(255,255,255,.08)}.card>.r:first-child{border-top:0}" +
     ".r .n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.r small{color:rgba(255,255,255,.5);font-size:13px;margin-left:4px}.r.off .n{opacity:.45}" +
@@ -732,6 +741,11 @@ function editScript() {
                 return "<div class=r><span class='n n2'>" + h(D.names[id]) + " <small>" + h(L.was.replace("{name}", byId[id][3] || byId[id][1])) + "</small></span>" +
                     "<button class=sm data-a=nren data-id='" + h(id) + "'>" + h(L.rename) + "</button><button class='mv red' data-a=nreset data-id='" + h(id) + "'>\u2715</button></div>";
             }).join("") + "</div>";
+            var hid = Object.keys(D.hid).filter(function (id) { return byId[id]; });
+            if (hid.length) html += "<p class=cnt>" + h(L.hiddenCh) + "</p><div class=card>" + hid.map(function (id) {
+                return "<div class='r off'><span class='n n2'>" + h(D.names[id] || byId[id][1]) + " <small>" + h(byId[id][2]) + "</small></span>" +
+                    "<button class=sm data-a=nshow data-id='" + h(id) + "'>" + h(L.showCh) + "</button></div>";
+            }).join("") + "</div>";
             html += "<input class=find id=nfind type=search placeholder='" + h(L.findChan) + "' value='" + h(nameQ) + "' autocomplete=off autocorrect=off autocapitalize=off><div id=nres></div>";
         } else {
             html += "<p class=hint>" + h(L.favsHint) + "</p><div class=card data-list=f>" + chanRows(D.favs, "f") + "<button class=add data-a=fadd>+ " + h(L.addChans) + "</button></div>";
@@ -749,9 +763,10 @@ function editScript() {
         if (q.length < 2) { box.innerHTML = "<div class=empty>" + h(L.typeMore) + "</div>"; return; }
         for (var i = 0; i < all.length && out.length < 80; i++) if (fold(all[i][1] + " " + (all[i][3] || "")).indexOf(q) >= 0) out.push(all[i]);
         box.innerHTML = out.length ? "<div class=card>" + out.map(function (c) {
-            var mine = D.names[c[0]];
-            return "<div class=r><span class='n n2'>" + h(mine || c[1]) + " <small>" + h(mine ? L.was.replace("{name}", c[3] || c[1]) : c[2]) + "</small></span>" +
-                "<button class=sm data-a=nren data-id='" + h(c[0]) + "'>" + h(L.rename) + "</button></div>";
+            var mine = D.names[c[0]], off = !!D.hid[c[0]];
+            return "<div class='r" + (off ? " off" : "") + "'><span class='n n2'>" + h(mine || c[1]) + " <small>" + h(mine ? L.was.replace("{name}", c[3] || c[1]) : c[2]) + "</small></span>" +
+                "<button class=sm data-a=nren data-id='" + h(c[0]) + "'>" + h(L.rename) + "</button>" +
+                "<button class=sm data-a=" + (off ? "nshow" : "nhide") + " data-id='" + h(c[0]) + "'>" + h(off ? L.showCh : L.hideCh) + "</button></div>";
         }).join("") + "</div>" : "<div class=empty>" + h(L.noMatch) + "</div>";
     }
     /* The categories of one kind: tap to select (several at once), the switch hides, the handle drags (not while searching) */
@@ -885,7 +900,7 @@ function editScript() {
     }
     function closePicker() { var ov = $("ov"); if (ov) ov.parentNode.removeChild(ov); picker = null; draw(); }
     function send() {
-        var b = { k: K, data: { kinds: {}, groups: D.groups, favs: D.favs, names: D.names } };
+        var b = { k: K, data: { kinds: {}, groups: D.groups, favs: D.favs, names: D.names, hidden: Object.keys(D.hid) } };
         Object.keys(D.kinds).forEach(function (k) { b.data.kinds[k] = D.kinds[k].map(function (c) { return { key: c.key, off: !!c.off }; }); });
         $("send").disabled = true; $("msg").textContent = "";
         var x = new XMLHttpRequest();
@@ -950,6 +965,8 @@ function editScript() {
             if (!nv || (c0 && nv === (c0[3] || c0[1]))) delete D.names[id]; else D.names[id] = nv;
         }
         else if (a === "nreset" && id !== null) delete D.names[id];
+        else if (a === "nhide" && id !== null) D.hid[id] = 1;
+        else if (a === "nshow" && id !== null) delete D.hid[id];
         else if (a === "fadd") { openPicker("f"); return; }
         else if (a === "send") { send(); return; }
         else if (a !== "again") return;
@@ -963,6 +980,7 @@ function editScript() {
         try { D = JSON.parse(x.responseText); } catch (er) { D = null; }
         if (!D || !D.kinds) { app.textContent = L.error; return; }
         D.groups = D.groups || []; D.favs = D.favs || []; D.names = D.names && typeof D.names === "object" ? D.names : {};
+        D.hid = {}; (Array.isArray(D.hidden) ? D.hidden : []).forEach(function (id) { D.hid[id] = 1; });
         (D.chans || []).forEach(function (c) { byId[c[0]] = c; });
         draw();
     };
@@ -1077,7 +1095,10 @@ function handler(req, res) {
             var item = { type: b.type === "m3u" ? "m3u" : b.type === "stalker" ? "stalker" : b.type === "jellyfin" ? "jellyfin" : b.type === "plex" ? "plex" : b.type === "key" ? "key" : "xtream", name: String(b.name || "").slice(0, 80), epg: String(b.epg || "").slice(0, 2000) };
             if (b.tmdb) item.tmdb = String(b.tmdb).replace(/\s+/g, "").slice(0, 400);          // the TMDB key, with the playlist or alone
             if (item.type === "m3u") item.url = String(b.url || "").slice(0, 4000);
-            else if (item.type === "stalker") { item.portal = String(b.portal || "").slice(0, 400); item.mac = String(b.mac || "").slice(0, 40); }
+            else if (item.type === "stalker") {
+                item.portal = String(b.portal || "").slice(0, 400); item.mac = String(b.mac || "").slice(0, 40);
+                ["sn", "id1", "id2"].forEach(function (k) { if (b[k]) item[k] = String(b[k]).slice(0, 200); });     // a MAG box's serial and device IDs, when the portal checks them
+            }
             else { item.server = String(b.server || "").slice(0, 400); item.user = String(b.user || "").slice(0, 200); item.pass = String(b.pass || "").slice(0, 200); }
             pending.push(item);
             if (pending.length > 5) pending.shift();

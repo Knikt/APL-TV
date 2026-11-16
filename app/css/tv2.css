@@ -313,6 +313,10 @@
 .osd__sync { display: flex; align-items: center; justify-content: center; gap: 34px; padding: 18px 0 14px; font-size: 46px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .osd__sync span { font-size: 28px; opacity: 0.55; }
 .osd__pophint { padding: 0 30px 6px; font-size: 19px; line-height: 1.35; color: rgba(255,255,255,0.55); text-align: center; }
+/* Sync to a Line: the words to wait for, between ◀ ▶ */
+.osd__line { display: flex; align-items: center; justify-content: center; gap: 24px; padding: 18px 26px 14px; }
+.osd__line b { flex: 1; min-height: 72px; display: flex; align-items: center; justify-content: center; text-align: center; font-size: 28px; font-weight: 600; line-height: 1.3; }
+.osd__line span { flex: none; font-size: 28px; opacity: 0.55; }
 /* "next episode": the series' picture, never the episode's */
 .osd__nextcard { position: absolute; right: 96px; bottom: 330px; width: 540px; border-radius: 28px; overflow: hidden; display: none;
     background: rgba(30,32,40,0.94); box-shadow: 0 30px 70px rgba(0,0,0,0.55), inset 0 0 0 1.5px rgba(255,255,255,0.10); }
@@ -500,6 +504,8 @@
 .no-gap .osd__ts > .dot { margin-left: calc(14px + 16px); }
 .no-gap .osd__sync > * + * { margin-left: 34px; }
 .no-gap .osd__sync > .dot { margin-left: calc(14px + 34px); }
+.no-gap .osd__line > * + * { margin-left: 24px; }
+.no-gap .osd__line > .dot { margin-left: calc(14px + 24px); }
 .no-gap .osd__nextbtn > * + * { margin-left: 10px; }
 .no-gap .osd__nextbtn > .dot { margin-left: calc(14px + 10px); }
 .no-gap .age > * + * { margin-left: 6px; }

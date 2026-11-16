@@ -12,7 +12,7 @@
     var TV = global.TV, el = TV.el, esc = TV.esc, T = TV.t, D = TV.data;
     var HOME_GENRES = [{ kind: "movies", id: 28 }, { kind: "movies", id: 35 }, { kind: "series", id: 18 }, { kind: "series", id: "x:anime" }, { kind: "movies", id: 53 },
                        { kind: "movies", id: 878 }, { kind: "series", id: "x:kdrama" }, { kind: "movies", id: 16 }, { kind: "series", id: 35 }, { kind: "movies", id: 27 },
-                       { kind: "series", id: "x:netflix" }, { kind: "movies", id: "x:anime" }];
+                       { kind: "series", id: "x:netflix" }, { kind: "movies", id: "x:anime" }, { kind: "movies", id: "x:classic" }];
     var genreNames = {}, genresAsked = false;
     var root, page, heroEl, rowsEl, heroNav, strips = [], zone = -1, featured = [], heroIndex = 0, heroTimer = null, visible = false, dirty = true;
 
@@ -322,7 +322,8 @@
                 var fav = D.isFav(it.id);
                 TV.menu(it.name, [
                     { label: fav ? T("Remove from Favorites") : T("Add to Favorites"), icon: fav ? "starLine" : "star", run: function () { D.toggleFav(it.id); } },
-                    { label: T("Watch in Multiview"), icon: "grid", run: function () { TV.multiview.open([it]); } }
+                    { label: T("Watch in Multiview"), icon: "grid", run: function () { TV.multiview.open([it]); } },
+                    TV.channelHideItem(it)
                 ]);
             } else {
                 TV.titleMenu(it.item || it, function () { view.invalidate(); }, { continueRow: !!it.item });

@@ -228,7 +228,8 @@
                 { label: T("Watch"), icon: "play", run: function () { TV.live.play(ch, chans); } },
                 { label: fav ? T("Remove from Favorites") : T("Add to Favorites"), icon: fav ? "starLine" : "star", run: function () { D.toggleFav(ch.id); } },
                 { label: T("Watch in Multiview"), icon: "grid", run: function () { TV.multiview.open([ch]); } },
-                { label: T("TV Guide for This Channel"), icon: "list", run: function () { TV.live.guideMenu(ch); } }
+                { label: T("TV Guide for This Channel"), icon: "list", run: function () { TV.live.guideMenu(ch); } },
+                TV.channelHideItem(ch, function () { chans = D.channelsIn(catId); if (!chans.length && catId !== "all") { catId = "all"; chans = D.channelsIn("all"); } row = Math.max(0, Math.min(row, chans.length - 1)); drawRows(); })
             ]));
         }
     };
