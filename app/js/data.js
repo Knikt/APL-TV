@@ -160,9 +160,9 @@
     }
 
     /* ---------- Stalker portal (MAG): js/stalker.js, in the same catalog shape ---------- */
-    function loadStalker(src, progress) {
+    function loadStalker(src, progress, onFirst) {
         if (!TV.stalker) return Promise.reject(new Error("no Stalker support"));
-        return TV.stalker.load(src, progress, { id: src.id, v: CATALOG_V, at: Date.now(), type: "stalker", live: { cats: [], chans: [] }, movies: { cats: [], items: [] }, series: { cats: [], items: [] }, failed: {} });
+        return TV.stalker.load(src, progress, { id: src.id, v: CATALOG_V, at: Date.now(), type: "stalker", live: { cats: [], chans: [] }, movies: { cats: [], items: [] }, series: { cats: [], items: [] }, failed: {} }, onFirst);
     }
 
     /* ---------- media servers (Jellyfin, Emby, Plex): js/media.js, in the same catalog shape ---------- */
@@ -332,31 +332,76 @@
     }
 
     var retryTimers = {};
-    function loadSource(src, progress) {
-        return (src.type === "xtream" ? loadXtream(src, progress) : src.type === "stalker" ? loadStalker(src, progress) : isMedia(src) ? loadMedia(src, progress) : loadM3U(src, progress)).then(function (c) {
-            /* The movies or the series did not come (the provider too slow, an error): the ones from before stay,
-               instead of an empty Movies tab until the next refresh, and APL TV asks again in 10 minutes. */
-            var prev = cats[src.id], failed = c.failed || {}, missed = [];
-            delete c.failed;
-            ["movies", "series"].forEach(function (k) {
-                var had = prev && prev[k] && prev[k].items && prev[k].items.length || 0;
-                if (failed[k] || (had >= 50 && !c[k].items.length)) {
-                    missed.push(k);
-                    if (had) { c[k] = prev[k]; TV.log(k + " of " + src.name + " not received (" + (failed[k] || "empty") + "): the " + had + " from before stay"); }
-                }
+    var behind = {};             // source id -> the end of a Stalker portal's titles still coming in the background
+    function stillThere(id) { return sources().some(function (s) { return s.id === id; }); }
+    /* early: for a screen that waits (adding a playlist, Refresh, the first start). A Stalker portal gives its
+       titles 14 at a time and a big one took minutes (#19): the screen can be used once the channels and the
+       newest titles of every category are in, and the rest arrives in the background. */
+    function loadSource(src, progress, early) {
+        if (behind[src.id]) return behind[src.id];
+        if (!early || src.type !== "stalker") return loadFull(src, progress);
+        return new Promise(function (resolve, reject) {
+            var first = false, done = null;
+            var full = loadStalker(src, function (m) { if (!first) progress(m); }, function (c) {
+                try {
+                    var prev = cats[src.id], part = {};
+                    Object.keys(c).forEach(function (k) { if (k !== "failed") part[k] = c[k]; });
+                    ["movies", "series"].forEach(function (k) {
+                        var had = prev && prev[k] && prev[k].items && prev[k].items.length || 0;
+                        // a refresh: the whole list from before stays until the new one is all here
+                        part[k] = had > c[k].items.length ? prev[k] : { cats: c[k].cats.slice(), items: c[k].items.slice() };
+                    });
+                    // not saved: closed before the end, the next start loads it again
+                    cats[src.id] = part;
+                    updateSource(src.id, { error: "", at: part.at, counts: { live: part.live.chans.length, movies: part.movies.items.length, series: part.series.items.length }, account: part.account || null });
+                } catch (e) { TV.log("first part of " + src.name + ": " + e.message); return; }
+                first = true;
+                behind[src.id] = done;
+                resolve(part);
             });
-            if (missed.length) {
-                if (!retryTimers[src.id]) retryTimers[src.id] = setTimeout(function () { whenQuiet(function () { delete retryTimers[src.id]; refresh([src]); }); }, 10 * 60000);
-                if (missed.indexOf("movies") >= 0 && !c.movies.items.length) TV.toast(T("{name}: the movies did not arrive ({error}). APL TV tries again in 10 minutes.", { name: src.name, error: failed.movies || T("no list") }), true);
-                if (missed.indexOf("series") >= 0 && !c.series.items.length) TV.toast(T("{name}: the series did not arrive ({error}). APL TV tries again in 10 minutes.", { name: src.name, error: failed.series || T("no list") }), true);
-            }
-            cats[src.id] = c;
-            updateSource(src.id, { error: "", at: c.at, counts: { live: c.live.chans.length, movies: c.movies.items.length, series: c.series.items.length }, account: c.account || null });
-            return saveCatalog(c).then(function () { return c; });
-        }, function (e) {
+            done = full.then(function (c) {
+                if (!first) return took(src, c);
+                if (!stillThere(src.id)) return null;
+                return took(src, c).then(function (c2) {
+                    rebuild();
+                    TV.toast(T("“{name}”: all its movies and series are here ({movies} movies, {series} series)", { name: src.name, movies: c2.movies.items.length, series: c2.series.items.length }), true);
+                    return c2;
+                });
+            }, function (e) {
+                if (!first) { updateSource(src.id, { error: e.message }); throw e; }
+                TV.log("background " + src.name + ": " + e.message);
+                return cats[src.id] || null;
+            });
+            done.then(function (c) { delete behind[src.id]; if (!first) resolve(c); }, function (e) { delete behind[src.id]; reject(e); });
+        });
+    }
+    function loadFull(src, progress) {
+        return (src.type === "xtream" ? loadXtream(src, progress) : src.type === "stalker" ? loadStalker(src, progress) : isMedia(src) ? loadMedia(src, progress) : loadM3U(src, progress)).then(function (c) { return took(src, c); }, function (e) {
             updateSource(src.id, { error: e.message });
             throw e;
         });
+    }
+    /* A catalog that came: kept, counted and saved */
+    function took(src, c) {
+        /* The movies or the series did not come (the provider too slow, an error): the ones from before stay,
+           instead of an empty Movies tab until the next refresh, and APL TV asks again in 10 minutes. */
+        var prev = cats[src.id], failed = c.failed || {}, missed = [];
+        delete c.failed;
+        ["movies", "series"].forEach(function (k) {
+            var had = prev && prev[k] && prev[k].items && prev[k].items.length || 0;
+            if (failed[k] || (had >= 50 && !c[k].items.length)) {
+                missed.push(k);
+                if (had) { c[k] = prev[k]; TV.log(k + " of " + src.name + " not received (" + (failed[k] || "empty") + "): the " + had + " from before stay"); }
+            }
+        });
+        if (missed.length) {
+            if (!retryTimers[src.id]) retryTimers[src.id] = setTimeout(function () { whenQuiet(function () { delete retryTimers[src.id]; refresh([src]); }); }, 10 * 60000);
+            if (missed.indexOf("movies") >= 0 && !c.movies.items.length) TV.toast(T("{name}: the movies did not arrive ({error}). APL TV tries again in 10 minutes.", { name: src.name, error: failed.movies || T("no list") }), true);
+            if (missed.indexOf("series") >= 0 && !c.series.items.length) TV.toast(T("{name}: the series did not arrive ({error}). APL TV tries again in 10 minutes.", { name: src.name, error: failed.series || T("no list") }), true);
+        }
+        cats[src.id] = c;
+        updateSource(src.id, { error: "", at: c.at, counts: { live: c.live.chans.length, movies: c.movies.items.length, series: c.series.items.length }, account: c.account || null });
+        return saveCatalog(c).then(function () { return c; });
     }
 
     /* Saved in parts (channels, movies, series) and packed: rows of values instead of objects that repeat
@@ -453,7 +498,7 @@
             }, 4000);
             rebuild();
             if (!missing.length) return;
-            return sequence(missing, function (s) { return loadSource(s, progress).catch(function (e) { TV.log("load " + s.name + ": " + e.message); TV.toast(s.name + " : " + e.message, true); }); })
+            return sequence(missing, function (s) { return loadSource(s, progress, true).catch(function (e) { TV.log("load " + s.name + ": " + e.message); TV.toast(s.name + " : " + e.message, true); }); })
                 .then(rebuild);
         }).then(function () {
             var old = sources().filter(function (s) { return cats[s.id] && (Date.now() - (cats[s.id].at || 0) > MAX_AGE || (cats[s.id].v || 1) < CATALOG_V); });
@@ -1297,6 +1342,7 @@
     TV.data = {
         sources: sources, addSource: addSource, removeSource: removeSource, updateSource: updateSource, normServer: normServer, xtreamFromUrl: xtreamFromUrl,
         loadSource: loadSource, start: start, refresh: refresh, onChange: onChange, rebuild: rebuild, xAuth: xAuth, regroup: function () { groupCache = {}; },
+        stillComing: function (id) { return !!behind[id]; },
         catalog: function () { return merged; },
         channelsIn: channelsIn, channelsNamed: channelsNamed, channel: channel, streamUrl: streamUrl, catOf: catOf, sourceOf: sourceOf,
         favIds: favIds, isFav: isFav, toggleFav: toggleFav, favChannels: favChannels, moveFav: moveFav,

@@ -11,7 +11,7 @@
     "use strict";
 
     var TV = global.TV, el = TV.el, esc = TV.esc, T = TV.t, D = TV.data;
-    TV.VERSION = "1.2.0";
+    TV.VERSION = "1.3.0";
     TV.DONATE = "https://ko-fi.com/knikt";     // the Ko-fi page for donations (Settings > About, README, .github/FUNDING.yml)
     var BASE = [
         { id: "home", label: T("Home") },
@@ -30,7 +30,10 @@
     function buildTabs() {
         var media = TV.library ? TV.library.tabs() : [];
         mediaIds = media.map(function (t) { return t.id + "=" + t.label; }).join(",");
-        TABS = BASE.slice(0, 6).concat(media, BASE.slice(6));
+        // Settings > Display > Sports Tab off (#25): no Sports tab, and nothing of Sports ever loads (it loads when shown)
+        var base = BASE.filter(function (t) { return t.id !== "sports" || TV.pref("sportsTab") !== false; });
+        var after = base.map(function (t) { return t.id; }).indexOf("series") + 1;
+        TABS = base.slice(0, after).concat(media, base.slice(after));
         var nav = TV.$("tabs");
         nav.innerHTML = "";
         tabEls = TABS.map(function (t) {
@@ -119,18 +122,23 @@
         if (!TV.library || !tabEls.length) return;
         var now = TV.library.tabs().map(function (t) { return t.id + "=" + t.label; }).join(",");
         if (now === mediaIds) return;
+        retab();
+    });
+    /* The tabs drawn again (a media server, the Sports tab switched on or off); the one you were on stays focused */
+    function retab() {
         var was = TABS[tabIndex] && TABS[tabIndex].id;
         buildTabs();
         var ids = TABS.map(function (t) { return t.id; });
         if (current && ids.indexOf(current) < 0) { go("home"); return; }
         tabIndex = Math.max(0, ids.indexOf(was));
         paintTabs();
-    });
+    }
 
     TV.shell = {
         screen: screen, go: go, toTabs: toTabs, toView: toView,
         focusOn: function () { return focusOn; },
         current: function () { return current; },
+        retab: function () { if (tabEls.length) retab(); },
         refreshView: function () { if (current && TV.topNav() === screen) { var v = viewOf(current); if (v.show) v.show(); if (focusOn === "view") v.enter(); else v.blur(); paintTabs(); } }
     };
 
@@ -264,7 +272,7 @@
         D.start(function (m) { bootMsg.textContent = m; }).then(function () {
             var hasData = D.sources().length && D.catalog() && (D.catalog().live.chans.length || D.catalog().movies.items.length);
             var tab = TV.pref("startTab") || "home";
-            if (tab === "settings" || tab === "search" || !TV.views[tab]) tab = "home";
+            if (tab === "settings" || tab === "search" || !TV.views[tab] || !TABS.some(function (t) { return t.id === tab; })) tab = "home";
             go(hasData ? tab : "home", true);
             // the first start (or the first after this update): how to show the playlist, then the rest
             if (TV.pref("setupDone") !== 1 && TV.playlistSetup) setTimeout(function () { TV.playlistSetup(function () { if (hasData) setTimeout(offerResume, 800); }); }, 700);

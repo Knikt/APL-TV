@@ -938,5 +938,19 @@ window.TV_LANG_FR = {
     "Western Conference": "Conférence Ouest",
     "College Football": "Football universitaire (NCAA)",
     "Scandinavia": "Scandinavie",
-    "Eastern Conference": "Conférence Est"
+    "Eastern Conference": "Conférence Est",
+    "“{name}” is ready. Its other movies and series keep coming in the background.": "« {name} » est prête. Ses autres films et séries continuent d'arriver en arrière-plan.",
+    "“{name}”: all its movies and series are here ({movies} movies, {series} series)": "« {name} » : tous ses films et séries sont là ({movies} films, {series} séries)",
+    "HLS does not play with this provider: back to MPEG-TS": "Le HLS ne marche pas avec ce fournisseur : retour au MPEG-TS",
+    "Sports Tab": "Onglet Sports",
+    "The Sports tab in the top bar. Off: it goes away, and Sports loads nothing at all.": "L'onglet Sports dans la barre du haut. Désactivé : il disparaît, et Sports ne charge plus rien.",
+    "Your Guides": "Tes guides",
+    "Add the address of an XMLTV guide (.xml or .xml.gz): its programmes fill the channels your provider's guide misses. Matched by channel name.": "Ajoute l'adresse d'un guide XMLTV (.xml ou .xml.gz) : ses programmes complètent les chaînes qui manquent au guide de ton fournisseur. Associé par nom de chaîne.",
+    "Remove this guide?": "Retirer ce guide ?",
+    "Add a Guide": "Ajouter un guide",
+    "The address of an XMLTV guide, .xml or .xml.gz, for example from epgshare01.online.": "L'adresse d'un guide XMLTV, .xml ou .xml.gz, par exemple d'epgshare01.online.",
+    "Guide added: its programmes arrive in a moment": "Guide ajouté : ses programmes arrivent dans un instant",
+    "Your Guides First": "Tes guides en premier",
+    "On: a channel your guide has shows its programmes instead of your provider's. Off: your guides only fill the channels without programmes.": "Activé : une chaîne que ton guide connaît montre ses programmes à la place de ceux de ton fournisseur. Désactivé : tes guides complètent seulement les chaînes sans programmes.",
+    "XMLTV guides you add, for the channels your provider's guide misses.": "Les guides XMLTV que tu ajoutes, pour les chaînes qui manquent au guide de ton fournisseur."
 };

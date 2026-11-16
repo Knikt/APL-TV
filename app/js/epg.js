@@ -16,6 +16,7 @@
     var byName = {};              // "srcId|folded name" -> "srcId|epgId"
     var shortDone = {};           // channel id -> time of the last short-guide request
     var extra = {};               // channel id -> programmes from a public guide (channels the provider has none for)
+    var mine = {};                // channel id -> programmes from your own guides (Settings > TV Guide > Your Guides, #26)
     var listeners = [], loading = null, loadedAt = 0;
     var MAX_AGE = 3 * 3600 * 1000;
 
@@ -60,14 +61,20 @@
         return n || (ch.epg ? ch.src + "|" + ch.epg : null);
     }
     /* Whether a channel has programmes, without unpacking them */
+    /* A channel's programmes: your guides first when you chose so, then the provider's, the public guides, yours */
+    function pick(v) {
+        if (!v) return null;
+        var k = keyOf(v), first = TV.pref("myGuidesFirst") && mine[v.id];
+        return first || (k && progs[k]) || progs["id|" + v.id] || extra[v.id] || mine[v.id] || null;
+    }
     function has(ch) {
         if (ch) ch = viaOther(ch);
-        var k = ch && keyOf(ch), c = (k && progs[k]) || (ch && (progs["id|" + ch.id] || extra[ch.id])) || null;
+        var c = pick(ch);
         return !!c && (c.n !== undefined ? c.n > 0 : c.length > 0);
     }
     function list(ch) {
         if (ch) ch = viaOther(ch);
-        var k = ch && keyOf(ch), c = (k && progs[k]) || (ch && (progs["id|" + ch.id] || extra[ch.id])) || null;
+        var c = pick(ch);
         if (!c) return null;
         return c.n !== undefined ? (c.n ? expand(c) : null) : c;
     }
@@ -94,15 +101,20 @@
     /* Answers still on their way when the guide is switched off must not come back later: each load keeps
        the number of the guide it was started for, and clear() moves on to the next number. */
     var gen = 0, loadingGen = 0;
-    function clear() { gen++; progs = {}; extra = {}; byName = {}; guideNames = {}; shortDone = {}; queue = []; loadedAt = 0; fire(); }
+    function clear() { gen++; progs = {}; extra = {}; mine = {}; byName = {}; guideNames = {}; shortDone = {}; queue = []; loadedAt = 0; fire(); }
     function loadAll(force) {
         if (off()) return Promise.resolve();
         // Off then On while a load was running: its answers are dropped, so a new one starts right after it
         if (loading) return loadingGen === gen ? loading : loading.then(function () { return loadAll(force); });
         var g = loadingGen = gen;
         var cat = TV.data.catalog();
-        if (!cat || !cat.epg.length) return Promise.resolve();
+        if (!cat) return Promise.resolve();
         if (!force && Date.now() - loadedAt < MAX_AGE) return Promise.resolve();
+        if (!cat.epg.length) {                     // no guide from the provider: only the ones you added
+            if (!(TV.pref("myGuides") || []).length) return Promise.resolve();
+            loadedAt = Date.now();
+            return (loading = loadMine(g).then(function () { loading = null; }, function () { loading = null; }));
+        }
         loading = TV.data.sources().reduce(function (p, src) {
             return p.then(function () { if (g === gen) return loadSource(src, cat, force, g); });
         }, Promise.resolve()).then(function () {
@@ -110,7 +122,7 @@
             if (g !== gen) return;
             loadedAt = Date.now(); fire();
             TV.heap("provider guide loaded");
-            loadExtra().then(function () { TV.heap("public guides loaded"); });
+            loadMine(g).then(loadExtra).then(function () { TV.heap("public guides loaded"); });
         }, function (e) { loading = null; TV.log("guide: " + e.message); });
         return loading;
     }
@@ -263,6 +275,30 @@
         }, Promise.resolve()).then(function () { if (g === gen) TV.log("extra guides: " + found + " more channels with programmes"); });
     }
 
+    /* Your own XMLTV guides (Settings > TV Guide > Your Guides, #26): matched by channel name, like the public ones.
+       They fill the channels without programmes, or come first for every channel they have (Your Guides First). */
+    function loadMine(g) {
+        var urls = (TV.pref("myGuides") || []).filter(Boolean), cat = TV.data.catalog();
+        if (!urls.length || !cat || off()) { mine = {}; return Promise.resolve(); }
+        var first = !!TV.pref("myGuidesFirst"), next = {}, from = Date.now() - 4 * 3600 * 1000, to = Date.now() + 26 * 3600 * 1000;
+        mine = {};                                 // has() below: the provider's and the public guides only
+        return urls.reduce(function (p, url) {
+            return p.then(function () {
+                if (g !== gen) return;
+                var still = cat.live.chans.filter(function (c) { return !next[c.id] && (first || !has(c)) && !TV.data.catOf(c).adult; });
+                if (!still.length) return;
+                var names = {}, byName = {};
+                still.forEach(function (c) { var k = compact(c.cname || c.name); if (k) { names[k] = 1; (byName[k] = byName[k] || []).push(c); } });
+                return TV.helper.epgMatch(url, Object.keys(names), from, to).then(function (j) {
+                    if (g !== gen) return;
+                    var n = 0;
+                    Object.keys(j.chans || {}).forEach(function (k) { var l = slim(j.chans[k]); (byName[k] || []).forEach(function (c) { next[c.id] = l; n++; }); });
+                    TV.log("your guide " + url.split("/")[2] + ": " + n + " of " + still.length + " channels");
+                }, function (e) { TV.log("your guide " + url.split("/")[2] + ": " + e.message); });
+            });
+        }, Promise.resolve()).then(function () { if (g === gen) { mine = next; fire(); } });
+    }
+
     /* ---------- Xtream short guide, for the channels on screen ---------- */
     function b64(s) {
         try { return decodeURIComponent(escape(global.atob(s || ""))); } catch (e) { try { return global.atob(s || ""); } catch (e2) { return s || ""; } }
@@ -320,7 +356,7 @@
         var tok = ++scanTok, groups = [], out = [], i, n, g, c, found, s, e;
         for (i = 0; i < chans.length; i++) {
             var ch = chans[i], v = viaOther(ch), k = keyOf(v);
-            c = (k && progs[k]) || progs["id|" + v.id] || extra[v.id];
+            c = pick(v);
             if (!c) continue;
             if (c._scan !== tok) { c._scan = tok; c._g = groups.length; groups.push({ c: c, chans: [ch] }); }
             else groups[c._g].chans.push(ch);
@@ -344,7 +380,7 @@
         (function part1() {
             var t0 = Date.now();
             for (; i < chans.length && Date.now() - t0 < 10; i++) {
-                var ch = chans[i], v = viaOther(ch), k = keyOf(v), c = (k && progs[k]) || progs["id|" + v.id] || extra[v.id];
+                var ch = chans[i], v = viaOther(ch), c = pick(v);
                 if (!c) continue;
                 if (c._scan !== tok) { c._scan = tok; c._g = groups.length; groups.push({ c: c, chans: [ch] }); }
                 else groups[c._g].chans.push(ch);

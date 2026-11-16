@@ -209,16 +209,41 @@
         D.pushRecent(ch.id);
         TV.setPref("lastChannel", ch.id);
         more = more || {};
-        TV.player.play(url || D.streamUrl(ch), {
+        var addr = String(url || D.streamUrl(ch)), seen = false;
+        /* An Xtream channel in HLS that never started (a provider without HLS): the same channel in MPEG-TS after two
+           tries, not the player's five (20 s). When it plays, the account's channels go back to MPEG-TS, unless you
+           chose HLS yourself in Settings. */
+        function tryTs(later) {
+            var src = D.sourceOf(ch);
+            if (url || seen || !src || src.type !== "xtream" || !/\.m3u8(\?|$)/i.test(addr) || TV.pref("liveFormatMine")) return false;
+            var go = function () {
+                if (playing !== ch || seen) return;
+                TV.log("channel " + ch.name + ": HLS failed, MPEG-TS tried");
+                var back = false;
+                playChannel(ch, rect, addr.replace(/\.m3u8(\?|$)/i, ".ts$1"), { onError: more.onError, onTime: function (ms) {
+                    if (!back && TV.pref("liveFormat") === "m3u8") { TV.setPref("liveFormat", "ts"); TV.setPref("noAutoHls", 1); TV.toast(T("HLS does not play with this provider: back to MPEG-TS"), true); }
+                    back = true;
+                    if (more.onTime) more.onTime(ms);
+                } });
+            };
+            // from onReconnect: after the player has closed the stream that failed (js/player.js reconnect)
+            if (later) setTimeout(go, 0); else go();
+            return true;
+        }
+        TV.player.play(addr, {
             live: true, rect: rect || FULL, uhd: ch.q === "4K",
             onBuffering: function (b) { if (TV.osd.isOpen()) TV.osd.buffering(b); else wait.classList.toggle("is-hidden", !b); },
             onPlaying: function () { wait.classList.add("is-hidden"); if (TV.osd.isOpen()) TV.osd.buffering(false); },
             // the picture moves: no spinner left, in Live TV or full screen
-            onTime: function (ms) { if (!wait.classList.contains("is-hidden")) wait.classList.add("is-hidden"); if (TV.osd.isOpen()) TV.osd.buffering(false); if (more.onTime) more.onTime(ms); },
-            onReconnect: function () { if (TV.osd.isOpen()) TV.osd.buffering(true); else wait.classList.remove("is-hidden"); },
+            onTime: function (ms) { seen = true; if (!wait.classList.contains("is-hidden")) wait.classList.add("is-hidden"); if (TV.osd.isOpen()) TV.osd.buffering(false); if (more.onTime) more.onTime(ms); },
+            onReconnect: function (n) {
+                if (n >= 2 && tryTs(true)) return;
+                if (TV.osd.isOpen()) TV.osd.buffering(true); else wait.classList.remove("is-hidden");
+            },
             onError: function (e) {
                 TV.log("channel " + ch.name + " failed: " + e);
                 if (more.onError && more.onError(e) === true) return;
+                if (tryTs()) return;
                 wait.classList.add("is-hidden");
                 if (TV.osd.isOpen()) TV.osd.error(T("This channel is not available right now."), String(e));
                 else TV.toast(T("This channel is not available right now."));
@@ -535,19 +560,29 @@
     }
     TV.catchup = { url: catchupUrl, can: canCatchup, play: playCatchup };
 
-    /* Android: the sound goes on but the picture stays still. Seen on a Fire TV with an Xtream account's MPEG-TS
-       channels, fine in HLS: the account's channels go to HLS (Settings > Live Stream Format) and this one starts again.
-       Still frozen, or already HLS (a 4K stream a Fire TV Stick cannot keep up with): the channel's next lower quality,
-       and 4K no longer comes first on this device. */
+    /* Android: the sound goes on but the picture stays still (Player.java says it after 5 s).
+       - The first time on a channel, or just after the box woke up: the channel starts again as it is. Each standby
+         of a KickPi box froze the picture once and turned the account to HLS, which its provider does not have.
+       - Frozen again within 2 minutes, on an Xtream account's MPEG-TS: HLS for the account's channels (a Fire TV froze
+         MPEG-TS channels that were fine in HLS), unless you chose the format yourself in Settings, the account says it
+         has no HLS, or HLS already failed with this provider (js/live.js playChannel goes back to MPEG-TS then).
+       - Still frozen, or already HLS (a 4K stream a Fire TV Stick cannot keep up with): the channel's next lower
+         quality, and 4K no longer comes first on this device. */
+    var frozeAt = {};
     TV.player.onVideoStall = function (dropped) {
         var ch = playing;
         TV.log("picture frozen" + (ch ? " on " + ch.name + " " + (ch.q || "") : "") + " (" + dropped + " frames dropped)");
         if (!ch) return;
+        var cur = TV.player.current(), rect = (cur && cur.opts && cur.opts.rect) || FULL, now = Date.now();
+        var again = frozeAt[ch.id] && now - frozeAt[ch.id] < 120000;
+        frozeAt[ch.id] = now;
+        if (!again || now - TV.player.backAt() < 60000) { TV.log("picture frozen: " + ch.name + " starts again"); playChannel(ch, rect); return; }
         var src = D.sources().filter(function (s) { return s.id === ch.src; })[0];
-        if (src && src.type === "xtream" && TV.pref("liveFormat") !== "m3u8") {
+        var formats = (src && src.account && src.account.formats) || [];
+        if (src && src.type === "xtream" && TV.pref("liveFormat") !== "m3u8" && !TV.pref("liveFormatMine") && !TV.pref("noAutoHls") && (!formats.length || formats.indexOf("m3u8") >= 0)) {
             TV.setPref("liveFormat", "m3u8");
             TV.toast(T("Picture frozen: switching to {quality}", { quality: "HLS" }));
-            playChannel(ch, FULL);
+            playChannel(ch, rect);
             return;
         }
         var group = null;
@@ -557,7 +592,7 @@
         if (ch.q === "4K" && TV.noUhd) { TV.noUhd(); D.regroup(); }
         if (!next) return;
         TV.toast(T("Picture frozen: switching to {quality}", { quality: next.q || T("Standard") }));
-        playChannel(next, FULL);
+        playChannel(next, rect);
     };
     TV.live = { play: function (ch, ctx) { fullScreen(ch, ctx); }, findNumber: findNumber, playChannel: function (ch, rect, url, more) { playChannel(ch, rect, url, more); }, pickCategory: pickCategory, guideMenu: guideMenu };
 })(window);

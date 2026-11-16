@@ -75,7 +75,8 @@
         rows.push(toggleRow(T("Autoplay Next Episode"), "autoNext", T("Off: near the end of an episode, the next one is only offered (with the series' picture, never a spoiler).")));
         rows.push(toggleRow(T("Pause Live TV (Timeshift)"), "timeshift", T("Pause a channel and go back in it (◀ ▶ 10 s): APL TV keeps it from the moment you pause, up to an hour. Play/Pause or the first button of the bar pauses, Stop goes back to live.")));
         rows.push({ label: T("Live Stream Format"), value: TV.pref("liveFormat") === "m3u8" ? "HLS (m3u8)" : "MPEG-TS", desc: T("For Xtream accounts. Try HLS if channels stutter or do not start."),
-            run: function () { TV.setPref("liveFormat", TV.pref("liveFormat") === "m3u8" ? "ts" : "m3u8"); redraw(); } });
+            // your choice: APL TV no longer changes it by itself (a frozen picture, HLS refused; js/live.js)
+            run: function () { TV.setPref("liveFormat", TV.pref("liveFormat") === "m3u8" ? "ts" : "m3u8"); TV.setPref("liveFormatMine", 1); redraw(); } });
         rows.push({ label: T("Picture Size"), value: { fit: T("Fit to Screen"), fill: T("Fill the Screen"), auto: T("Original Shape") }[TV.pref("pictureMode")] || T("Fit to Screen"), acc: "chevron", icon: "aspect",
             desc: T("How movies, series and channels fill the screen. Also in the player, third button at the top right."),
             run: function () { choose(T("Picture Size"), "pictureMode", [["fit", T("Fit to Screen")], ["fill", T("Fill the Screen")], ["auto", T("Original Shape")]]); } });
@@ -84,6 +85,7 @@
             desc: T("When the sound and the picture don't match: later if you hear the words before the lips move, earlier if after. Applies at once, even while watching."),
             run: function () { choose(T("Sound Delay (AV Sync)"), "audioDelay", delaySteps().map(function (n) { return [n, delayLabel(n)]; })); } });
         rows.push({ section: T("Display") });
+        rows.push(toggleRow(T("Sports Tab"), "sportsTab", T("The Sports tab in the top bar. Off: it goes away, and Sports loads nothing at all."), function () { TV.shell.retab(); }));
         rows.push({ label: T("Adult Content"), value: TV.pref("showAdult") ? T("Shown") : T("Hidden"), desc: T("Categories and channels for adults are hidden everywhere."),
             run: function () {
                 if (TV.pref("showAdult")) { TV.setPref("showAdult", false); D.rebuild(); redraw(); return; }
@@ -133,6 +135,8 @@
             TV.toast(T("Updating the TV guide…"));
             TV.epg.loadAll(true).then(function () { TV.toast(T("TV guide updated")); });
         } });
+        if (TV.pref("tvGuide")) rows.push({ label: T("Your Guides"), value: (TV.pref("myGuides") || []).length ? String((TV.pref("myGuides") || []).length) : T("None"), acc: "chevron", icon: "plus",
+            desc: T("Add the address of an XMLTV guide (.xml or .xml.gz): its programmes fill the channels your provider's guide misses. Matched by channel name."), run: function () { push(guidesPage()); } });
         rows.push({ section: T("Movie and Series Information") });
         var src = TV.meta.keySource();
         rows.push({ label: T("TMDB Key"), value: src === "setup" ? T("From APL Launcher Setup") : (src ? "••••••••" : T("Not set")), acc: src === "setup" ? undefined : "chevron",
@@ -234,6 +238,34 @@
                 } };
         });
         return { title: T("Hidden Themes"), icon: "eyeOff", desc: T("Themes you hide disappear from APL TV."), rows: rows, rebuild: themesPage };
+    }
+    /* Your own XMLTV guides (#26): an address typed with the remote; OK on one removes it */
+    function guidesPage() {
+        var list = TV.pref("myGuides") || [];
+        var rows = list.map(function (u) {
+            return { label: u.split("/")[2] || u, desc: u, run: function () {
+                TV.alert({ title: T("Remove this guide?"), message: u, buttons: [{ label: T("Cancel") }, { label: T("Remove"), run: function () {
+                    TV.setPref("myGuides", (TV.pref("myGuides") || []).filter(function (x) { return x !== u; }));
+                    TV.epg.loadAll(true);
+                    replaceTop(guidesPage());
+                } }] });
+            } };
+        });
+        rows.push({ label: T("Add a Guide"), acc: "chevron", icon: "plus", desc: T("The address of an XMLTV guide, .xml or .xml.gz, for example from epgshare01.online."), run: function () {
+            TV.editText({ value: "https://", url: true, onDone: function (t) {
+                t = String(t || "").trim();
+                if (!/^https?:\/\/\S+\.\S+/i.test(t)) { TV.toast(T("The address must start with http:// or https://")); return; }
+                var l = (TV.pref("myGuides") || []).slice();
+                if (l.indexOf(t) < 0) l.push(t);
+                TV.setPref("myGuides", l);
+                TV.toast(T("Guide added: its programmes arrive in a moment"));
+                TV.epg.loadAll(true);
+                replaceTop(guidesPage());
+            } });
+        } });
+        rows.push(toggleRow(T("Your Guides First"), "myGuidesFirst", T("On: a channel your guide has shows its programmes instead of your provider's. Off: your guides only fill the channels without programmes."),
+            function () { TV.epg.loadAll(true); }));
+        return { title: T("Your Guides"), desc: T("XMLTV guides you add, for the channels your provider's guide misses."), rows: rows, rebuild: guidesPage };
     }
     /* Countries and Categories: the countries and regions of your playlists, most channels and titles first */
     function countriesPage() {
@@ -552,7 +584,7 @@
             if (!ok) { pages = [mainPage(), sourcePage(added.id)]; redraw(); return; }
             pages = [mainPage()];
             redraw();
-            TV.toast(T("“{name}” is ready", { name: added.name }), true);
+            TV.toast(D.stillComing(added.id) ? T("“{name}” is ready. Its other movies and series keep coming in the background.", { name: added.name }) : T("“{name}” is ready", { name: added.name }), true);
             TV.epg.loadAll(true);
             TV.shell.go("home");
         });
@@ -636,7 +668,7 @@
         var blocker = { key: function () {} };
         TV.pushNav(blocker);
         var msg = box.querySelector(".alert__msg");
-        D.loadSource(src, function (m) { msg.textContent = m; }).then(function () {
+        D.loadSource(src, function (m) { msg.textContent = m; }, true).then(function () {
             rootA.classList.remove("is-open"); TV.popNav(blocker);
             D.rebuild();
             done(true);

@@ -19,6 +19,13 @@ Created by **Knikt** (Gero Corp.), the maker of [APL Launcher](https://github.co
 
 > **APL TV is only a player.** It comes with no channels, no playlists and no provider: you add your own. Only use it with content you have the right to watch.
 
+## New in 1.3
+
+- **Stalker portals ready in seconds.** The channels and the newest titles of every category come first, and the rest of the movies and series keep arriving in the background while you use the app. A big portal used to take minutes.
+- **Your own TV guides.** Settings › TV Guide › Your Guides: add the address of an XMLTV guide (.xml or .xml.gz). Its programmes fill the channels your provider's guide misses, or replace it for the channels it has.
+- **Hide Sports.** Settings › Display › Sports Tab: off, the tab leaves the top bar and Sports loads nothing.
+- **Android: the stream format stays yours.** After a standby, Live TV no longer switches to HLS on its own.
+
 ## New in 1.2
 
 - **Subtitles that sync themselves.** OpenSubtitles' subtitles made from your very file come first, marked "Made for this file", in time from the first line to the last. Subtitles timed on a copy at another speed (a European 25 fps copy) are stretched to your video. And Sync to a Line: OK the moment you hear the line shown, and the delay is set.

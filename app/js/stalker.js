@@ -21,7 +21,8 @@
     var TV = global.TV, T = TV.t, S = TV.smart;
     var UA = "Mozilla/5.0 (QtEmbedded; U; Linux; C) AppleWebKit/533.3 (KHTML, like Gecko) MAG200 stbapp ver: 2 rev: 250 Safari/533.3";
     var sessions = {};            // source id -> { api, token, at }
-    var MAX_PAGES = 60, PAGE_JOBS = 4, MAX_ITEMS = 40000;
+    var logins = {};              // source id -> the connection being made (one at a time: a new token can end the others)
+    var MAX_PAGES = 60, JOBS = 8, MAX_ITEMS = 40000;
 
     /* "00:1a:79:12:34:56", "001A79123456" -> "00:1A:79:12:34:56" */
     function normMac(m) {
@@ -74,6 +75,14 @@
     function login(src, fresh) {
         var s = sessions[src.id];
         if (s && !fresh && Date.now() - s.at < 20 * 60000) return Promise.resolve(s);
+        /* Eight requests at a time: when the token runs out they all ask again. One handshake for all of them,
+           or each new token could end the one just given to the others. */
+        if (logins[src.id]) return logins[src.id];
+        var p = connect(src, s).then(function (ses) { delete logins[src.id]; return ses; }, function (e) { delete logins[src.id]; throw e; });
+        logins[src.id] = p;
+        return p;
+    }
+    function connect(src, s) {
         if (!normMac(src.mac)) return Promise.reject(new Error(T("The MAC address must look like 00:1A:79:12:34:56.")));
         var apis = s && s.api ? [s.api] : apiCandidates(src.portal), lastErr = null;
         return apis.reduce(function (p, api) {
@@ -99,15 +108,25 @@
             return ses;
         });
     }
-    /* One request with the session; a token the portal no longer knows: connected again, once */
+    /* One request with the session, asked once more when it fails:
+       - a token the portal no longer knows: connected again (one handshake for all the requests under way,
+         or the token another request just got, see login());
+       - the portal's own error or no answer: the same token again. A new handshake there ended the token of
+         the other requests under way: 28 errors from a busy portal made 29 handshakes and 182 refused requests. */
+    function tokenOk(j) { return !(j === null || j === undefined || j === false || (typeof j === "string" && /auth/i.test(j))); }
+    function tokenTrouble(e) { return !e || e.message === "token" || /refused this MAC|did not answer as a Stalker/.test(e.message || "") || e.status === 401 || e.status === 403; }
     function call(src, params, timeout) {
         return login(src).then(function (s) {
             return req(src, s.api, params, s.token, timeout).then(function (j) {
-                if (j === null || j === undefined || j === false || (typeof j === "string" && /auth/i.test(j))) throw new Error("token");
+                if (!tokenOk(j)) throw new Error("token");
                 return j;
             }).catch(function (e) {
-                if (e && /new install|refused this MAC/.test(e.message)) throw e;
-                return login(src, true).then(function (s2) { return req(src, s2.api, params, s2.token, timeout); });
+                if (e && /new install/.test(e.message)) throw e;
+                var cur = sessions[src.id];
+                var next = !tokenTrouble(e) ? s : cur && cur.token !== s.token ? cur : null;
+                return (next ? Promise.resolve(next) : login(src, true)).then(function (s2) {
+                    return req(src, s2.api, params, s2.token, timeout).then(function (j) { if (!tokenOk(j)) throw new Error("token"); return j; });
+                });
             });
         });
     }
@@ -126,22 +145,11 @@
         var root = normPortal(src.portal).replace(/\/(c|portal\.php|server\/load\.php)$/i, "").replace(/\/stalker_portal.*$/i, "");
         return root + (u.charAt(0) === "/" ? "" : "/") + u;
     }
-    /* Every page of a list (a portal gives 14 or so per page): a few pages at a time */
-    function pages(src, params, onItems) {
-        return call(src, params + "&p=1", 60000).then(function (first) {
-            var data = (first && first.data) || [], total = parseInt(first && first.total_items, 10) || data.length, per = parseInt(first && first.max_page_items, 10) || data.length || 14;
-            onItems(data);
-            var count = Math.min(MAX_PAGES, Math.ceil(total / Math.max(1, per))), next = 2, got = data.length;
-            function worker() {
-                if (next > count || got >= MAX_ITEMS) return Promise.resolve();
-                var p = next++;
-                return call(src, params + "&p=" + p, 60000).then(function (j) { var d = (j && j.data) || []; got += d.length; onItems(d); }, function () {}).then(worker);
-            }
-            var jobs = [];
-            for (var k = 0; k < PAGE_JOBS; k++) jobs.push(worker());
-            return Promise.all(jobs);
-        });
-    }
+    /* A portal gives its lists 14 titles or so per page: a big one is hundreds of requests, JOBS at a time
+       over every category (no category waiting for another's last pages; the screen's browser lets 6 go to
+       the helper at once). A page that fails is asked once more by call(): a page lost was 14 titles missing
+       until the next refresh. */
+    function page(src, params, p) { return call(src, params + "&p=" + p, 60000); }
     function eachLimit(list, n, fn) {
         var i = 0;
         function next() { if (i >= list.length) return Promise.resolve(); var it = list[i++]; return Promise.resolve(fn(it)).then(next, next); }
@@ -149,10 +157,57 @@
         for (var k = 0; k < Math.min(n, list.length); k++) jobs.push(next());
         return Promise.all(jobs);
     }
-    var CAT_JOBS = 2;            // categories loaded at once (each with PAGE_JOBS pages at a time)
-    function load(src, progress, base) {
+    /* The first page of every category (its newest titles); the pages left come back as a list */
+    function firstPages(src, list, paramsOf, add) {
+        var rest = [];
+        return eachLimit(list, JOBS, function (ct) {
+            var params = paramsOf(ct);
+            return page(src, params, 1).then(function (j) {
+                var d = (j && j.data) || [], total = parseInt(j && j.total_items, 10) || d.length, per = parseInt(j && j.max_page_items, 10) || d.length || 14;
+                add(d, ct);
+                var count = Math.min(MAX_PAGES, Math.ceil(total / Math.max(1, per)));
+                for (var n = 2; n <= count; n++) rest.push({ ct: ct, params: params, p: n });
+            }, function (e) { TV.log("stalker: " + ct.name + ": " + e.message); });
+        }).then(function () { return rest; });
+    }
+    function restPages(src, rest, add, full) {
+        return eachLimit(rest, JOBS, function (r) {
+            if (full()) return;
+            return page(src, r.params, r.p).then(function (j) { add((j && j.data) || [], r.ct); }, function (e) { TV.log("stalker: " + r.ct.name + " page " + r.p + ": " + e.message); });
+        });
+    }
+    /* The catalog. onFirst(out), when given, is called once the channels and the first page of every category
+       are in: the screen can be used while the other pages come (#19: a big portal took minutes). */
+    function load(src, progress, base, onFirst) {
         var out = base;
         out.type = "stalker";
+        function addMovies(d, ct) {
+            d.forEach(function (m) {
+                if (!m || !m.cmd || m.is_series == 1 || out.movies.items.length >= MAX_ITEMS) return;
+                var name = m.name || m.o_name || "", t = S.title(name);
+                out.movies.items.push({
+                    id: src.id + "|m" + m.id, src: src.id, sid: m.id, url: addr(src, "vod", m.cmd), kind: "movie", name: name, title: t.title !== name ? t.title : undefined,
+                    year: t.year || parseInt(m.year, 10) || 0, poster: img(src, m.screenshot_uri || m.cover_big), cat: ct.id, rating: parseFloat(m.rating_imdb || m.rating_kinopoisk) || 0,
+                    added: Date.parse(String(m.added || "").replace(" ", "T")) / 1000 || 0, ext: "mp4"
+                });
+            });
+            progress(T("Loading movies…") + " " + out.movies.items.length);
+        }
+        function addSeries(d, ct) {
+            d.forEach(function (s) {
+                if (!s || out.series.items.length >= MAX_ITEMS) return;
+                var name = s.name || s.o_name || "", t = S.title(name);
+                out.series.items.push({
+                    id: src.id + "|s" + s.id, src: src.id, seriesId: s.id, kind: "series", name: name, title: t.title !== name ? t.title : undefined,
+                    year: t.year || parseInt(s.year, 10) || 0, poster: img(src, s.screenshot_uri || s.cover_big), cat: ct.id, rating: parseFloat(s.rating_imdb) || 0,
+                    added: Date.parse(String(s.added || "").replace(" ", "T")) / 1000 || 0
+                });
+            });
+            progress(T("Loading series…") + " " + out.series.items.length);
+        }
+        function movieParams(ct) { return "type=vod&action=get_ordered_list&category=" + encodeURIComponent(ct.id.split(":").pop()) + "&genre=*&sortby=added&fav=0"; }
+        function seriesParams(ct) { return "type=series&action=get_ordered_list&category=" + encodeURIComponent(ct.id.split(":").pop().replace(/^s/, "")) + "&genre=*&sortby=added&fav=0"; }
+        var restM = [], restS = [];
         progress(T("Connecting to {name}…", { name: src.name }));
         return login(src, true).then(function (ses) {
             return call(src, "type=account_info&action=get_main_info").then(function (a) {
@@ -178,48 +233,20 @@
             progress(T("Loading movies…"));
             return call(src, "type=vod&action=get_categories").then(function (vc) {
                 out.movies.cats = cats(vc, src.id, "movie", "");
-                return eachLimit(out.movies.cats, CAT_JOBS, function (ct) {
-                    {
-                        if (out.movies.items.length >= MAX_ITEMS) return;
-                        var cid = ct.id.split(":").pop();
-                        return pages(src, "type=vod&action=get_ordered_list&category=" + encodeURIComponent(cid) + "&genre=*&sortby=added&fav=0", function (d) {
-                            d.forEach(function (m) {
-                                if (!m || !m.cmd || m.is_series == 1) return;
-                                var name = m.name || m.o_name || "", t = S.title(name);
-                                out.movies.items.push({
-                                    id: src.id + "|m" + m.id, src: src.id, sid: m.id, url: addr(src, "vod", m.cmd), kind: "movie", name: name, title: t.title !== name ? t.title : undefined,
-                                    year: t.year || parseInt(m.year, 10) || 0, poster: img(src, m.screenshot_uri || m.cover_big), cat: ct.id, rating: parseFloat(m.rating_imdb || m.rating_kinopoisk) || 0,
-                                    added: Date.parse(String(m.added || "").replace(" ", "T")) / 1000 || 0, ext: "mp4"
-                                });
-                            });
-                            progress(T("Loading movies…") + " " + out.movies.items.length);
-                        });
-                    }
-                });
+                return firstPages(src, out.movies.cats, movieParams, addMovies).then(function (r) { restM = r; });
             }).catch(function (e) { TV.log("stalker movies: " + e.message); out.failed.movies = e.message; });
         }).then(function () {
             progress(T("Loading series…"));
             return call(src, "type=series&action=get_categories").then(function (sc) {
                 out.series.cats = cats(sc, src.id, "series", "s");
-                return eachLimit(out.series.cats, CAT_JOBS, function (ct) {
-                    {
-                        if (out.series.items.length >= MAX_ITEMS) return;
-                        var cid = ct.id.split(":").pop().replace(/^s/, "");
-                        return pages(src, "type=series&action=get_ordered_list&category=" + encodeURIComponent(cid) + "&genre=*&sortby=added&fav=0", function (d) {
-                            d.forEach(function (s) {
-                                if (!s) return;
-                                var name = s.name || s.o_name || "", t = S.title(name);
-                                out.series.items.push({
-                                    id: src.id + "|s" + s.id, src: src.id, seriesId: s.id, kind: "series", name: name, title: t.title !== name ? t.title : undefined,
-                                    year: t.year || parseInt(s.year, 10) || 0, poster: img(src, s.screenshot_uri || s.cover_big), cat: ct.id, rating: parseFloat(s.rating_imdb) || 0,
-                                    added: Date.parse(String(s.added || "").replace(" ", "T")) / 1000 || 0
-                                });
-                            });
-                            progress(T("Loading series…") + " " + out.series.items.length);
-                        });
-                    }
-                });
+                return firstPages(src, out.series.cats, seriesParams, addSeries).then(function (r) { restS = r; });
             }).catch(function (e) { TV.log("stalker series: " + e.message); out.failed.series = e.message; });
+        }).then(function () {
+            TV.log("stalker: " + out.live.chans.length + " channels, first pages: " + out.movies.items.length + " movies, " + out.series.items.length + " series; " + (restM.length + restS.length) + " pages left");
+            if (onFirst && restM.length + restS.length) onFirst(out);
+            return restPages(src, restM, addMovies, function () { return out.movies.items.length >= MAX_ITEMS; });
+        }).then(function () {
+            return restPages(src, restS, addSeries, function () { return out.series.items.length >= MAX_ITEMS; });
         }).then(function () {
             TV.log("stalker: " + out.live.chans.length + " channels, " + out.movies.items.length + " movies, " + out.series.items.length + " series");
             return out;

@@ -961,5 +961,19 @@ window.TV_LANG_PL = {
     "Western Conference": "Konferencja Zachodnia",
     "College Football": "Futbol akademicki (NCAA)",
     "Scandinavia": "Skandynawia",
-    "Eastern Conference": "Konferencja Wschodnia"
+    "Eastern Conference": "Konferencja Wschodnia",
+    "“{name}” is ready. Its other movies and series keep coming in the background.": "Playlista „{name}” jest gotowa. Pozostałe filmy i seriale wczytują się w tle.",
+    "“{name}”: all its movies and series are here ({movies} movies, {series} series)": "„{name}”: wszystkie filmy i seriale są już wczytane (filmy: {movies}, seriale: {series})",
+    "HLS does not play with this provider: back to MPEG-TS": "HLS nie działa u tego dostawcy: powrót do MPEG-TS",
+    "Sports Tab": "Karta Sport",
+    "The Sports tab in the top bar. Off: it goes away, and Sports loads nothing at all.": "Karta Sport na górnym pasku. Wyłączona: znika, a Sport niczego nie wczytuje.",
+    "Your Guides": "Twoje przewodniki",
+    "Add the address of an XMLTV guide (.xml or .xml.gz): its programmes fill the channels your provider's guide misses. Matched by channel name.": "Dodaj adres przewodnika XMLTV (.xml lub .xml.gz): jego programy uzupełnią kanały, których brakuje w przewodniku dostawcy. Dopasowanie po nazwie kanału.",
+    "Remove this guide?": "Usunąć ten przewodnik?",
+    "Add a Guide": "Dodaj przewodnik",
+    "The address of an XMLTV guide, .xml or .xml.gz, for example from epgshare01.online.": "Adres przewodnika XMLTV, .xml lub .xml.gz, na przykład z epgshare01.online.",
+    "Guide added: its programmes arrive in a moment": "Przewodnik dodany: jego programy pojawią się za chwilę",
+    "Your Guides First": "Najpierw twoje przewodniki",
+    "On: a channel your guide has shows its programmes instead of your provider's. Off: your guides only fill the channels without programmes.": "Włączone: kanał, który zna twój przewodnik, pokazuje jego programy zamiast programów dostawcy. Wyłączone: twoje przewodniki uzupełniają tylko kanały bez programów.",
+    "XMLTV guides you add, for the channels your provider's guide misses.": "Przewodniki XMLTV, które dodajesz, dla kanałów, których brakuje w przewodniku dostawcy."
 };

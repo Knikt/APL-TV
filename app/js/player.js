@@ -144,7 +144,8 @@
     function watchStall() {
         clearInterval(stallTimer);
         stallTimer = setInterval(function () {
-            if (!cur || !started) return;
+            // hidden (another app, standby): the player is paused, no picture is expected (it reopened the channel in the background)
+            if (!cur || !started || document.hidden) return;
             if (useAv) { var st = "NONE"; try { st = av.getState(); } catch (e) {} if (st !== "PLAYING") return; }
             else if (!video || video.paused || video.ended || video.seeking) return;
             var limit = cur.opts.live ? 10000 : 20000;
@@ -608,13 +609,34 @@
     /* The video plane under the page: setting the window does not restart the stream */
     function setRect(r) { if (cur) cur.opts.rect = r; place(r); }
 
+    /* Android: a live channel back from standby, or from another app after a while, starts again live. The stream
+       paused for minutes or hours came back as a still picture, and the frozen picture made APL TV take HLS for the
+       whole account (a KickPi box on Android TV 14, whose provider has no HLS). */
+    var hiddenAt = 0, aliveAt = Date.now(), backAt = 0;
+    function backLive(gap) {
+        backAt = Date.now();
+        if (!TV.ANDROID || !cur || !cur.opts.live || cur.opts.onHide) return false;
+        TV.log("back after " + Math.round(gap / 1000) + " s: the channel starts again live");
+        open(cur.url, cur.opts, true);
+        return true;
+    }
+    // the page's timers stop while the box sleeps: a gap between two ticks is the box waking up
+    if (TV.ANDROID) setInterval(function () {
+        var now = Date.now(), gap = now - aliveAt;
+        aliveAt = now;
+        if (gap > 30000 && !document.hidden && now - backAt > 10000) backLive(gap);
+    }, 5000);
+
     document.addEventListener("visibilitychange", function () {
+        var now = Date.now();
+        if (document.hidden) hiddenAt = now;
+        else tickAt = now;                  // the picture is given time to come back before "no picture" counts
         if (document.hidden && cur) {
             if (cur.opts.onHide) emit("onHide");
             else if (useAv) { try { av.suspend(); } catch (e) {} }
             else if (video && TV.WEBOS) { try { video.pause(); } catch (e) {} }
         } else if (!document.hidden && cur && useAv) {
-            try { av.restore(); } catch (e) {}
+            if (!(hiddenAt && now - hiddenAt > 30000 && now - backAt > 10000 && backLive(now - hiddenAt))) { try { av.restore(); } catch (e) {} }
         } else if (!document.hidden && cur && video && TV.WEBOS) {
             // Back in front on LG: a channel starts again live, a movie goes on where it was
             if (cur.opts.live) open(cur.url, cur.opts, true);
@@ -626,6 +648,7 @@
         play: play, stop: stop, state: state, pause: pause, resume: resume, toggle: toggle, position: position, duration: duration, seekTo: seekTo,
         tracks: tracks, currentTrack: currentTrack, selectTrack: selectTrack, subtitlesOff: subtitlesOff, subtitleDelay: subtitleDelay, setRect: setRect, setPicture: setPicture,
         current: function () { return cur; }, isBuffering: function () { return buffering; }, FULL: FULL, native: useAv,
+        backAt: function () { return backAt; },
         streamInfo: function () { return useAv && cur ? streamInfo() : null; },
         stats: stats, qualities: qualities, setQuality: setQuality
     };
