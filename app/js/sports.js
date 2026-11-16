@@ -70,7 +70,9 @@
         // college football: ESPN's FBS games (about 60 on a Saturday of the season)
         { id: "football", label: US ? "Football" : "American Football", leagues: [["nfl", "NFL"], ["college-football", "College Football"]] },
         { id: "hockey", label: "Hockey", leagues: [["nhl", "NHL"], ["s365:636", "KHL"], ["s365:373", "SHL"], ["s365:370", "Liiga"], ["s365:379", "DEL"],
-            ["s365:381", "National League"], ["s365:6180", "Champions Hockey League"]] }
+            ["s365:381", "National League"], ["s365:6180", "Champions Hockey League"]] },
+        // MMA: ESPN's UFC events. An event is a card of fights: its main event is the tile, the whole card is on its page (readCard)
+        { id: "mma", label: "MMA", leagues: [["ufc", "UFC"]] }
     ];
     function kind(lg, k) { return String(lg[2] || "").indexOf(k) >= 0; }
     function sportOf(id) { for (var i = 0; i < SPORTS.length; i++) if (SPORTS[i].id === id) return SPORTS[i]; return null; }
@@ -149,6 +151,7 @@
         return lg;
     }
     function readEvent(e, sp, lg) {
+        if (sp.id === "mma") return readCard(e, sp, lg || sp.leagues[0]);
         if (!lg) lg = leagueOf(e, sp);
         var c = e.competitions && e.competitions[0];
         if (!c || !c.competitors || c.competitors.length !== 2) return null;
@@ -161,6 +164,50 @@
         return { id: sp.id + ":" + e.id, sport: sp.id, lkey: sp.id + "/" + lg[0], league: lg, start: start, state: ty.state || "pre", status: ty.name || "",
                  clock: st.displayClock || "", period: st.period || 0, home: team(home), away: team(away), venue: (c.venue && c.venue.fullName) || "", city: (c.venue && c.venue.address && c.venue.address.city) || "",
                  bc: bc.slice(0, 4), note: (c.notes && c.notes[0] && c.notes[0].headline) || "" };
+    }
+    /* ---------- MMA: a UFC event is a card of fights (ESPN's "competitions"), from the first preliminary to the
+       main event. Its tile is the main event, the red corner (ESPN's first) against the blue; its page has the card,
+       and how each fight ended comes from ESPN's core API once it is over (cardOf). ---------- */
+    var CORE = "https://sports.core.api.espn.com/v2/sports/", CORNERS = ["d20a11", "1f5fd6"];
+    function fighter(x, k) {
+        var a = x.athlete || {}, id = a.id || x.id || "", rec = x.records && x.records[0];
+        return { id: "mma-" + id, name: a.displayName || a.fullName || "", short: a.shortName || a.displayName || "", nick: "", loc: "",
+                 logo: id ? "https://a.espncdn.com/i/headshots/mma/players/full/" + id + ".png" : "", flag: (a.flag && a.flag.href) || "",
+                 color: CORNERS[k], alt: CORNERS[k], score: "", winner: !!x.winner, record: (rec && rec.summary) || "" };
+    }
+    function readCard(e, sp, lg) {
+        var start = Date.parse(e.date), card = [], last = null;
+        (e.competitions || []).forEach(function (c) {
+            var two = (c.competitors || []).slice().sort(function (a, b) { return (a.order || 0) - (b.order || 0); }), st = c.status || {};
+            if (two.length !== 2) return;
+            last = c;
+            card.push({ id: String(c.id), at: Date.parse(c.startDate || c.date) || start, cls: (c.type && c.type.abbreviation) || "", a: fighter(two[0], 0), b: fighter(two[1], 1),
+                        state: (st.type && st.type.state) || "pre", round: st.period || 0, clock: st.displayClock || "", main: !!st.featured });
+        });
+        if (!card.length || !start) return null;
+        var main = card.filter(function (f) { return f.main; })[0] || card[card.length - 1], ty = (e.status && e.status.type) || {}, bc = [], v = last.venue || {};
+        main.main = true;                                                    // ESPN marks it ("featured") only once the event is on
+        (last.broadcasts || []).forEach(function (b) { (b.names || []).forEach(function (n) { if (n && bc.indexOf(n) < 0) bc.push(n); }); });
+        return { id: sp.id + ":" + e.id, sport: sp.id, lkey: sp.id + "/" + lg[0], league: lg, start: start, state: ty.state || "pre", status: ty.name || "",
+                 clock: "", period: 0, home: main.a, away: main.b, venue: v.fullName || "", city: (v.address && v.address.city) || "", bc: bc.slice(0, 4),
+                 note: String(e.shortName || ""), event: String(e.id), card: card };
+    }
+    // How a fight ended, from ESPN's result names ("kotko", "decision---unanimous"…), kept once known
+    var ENDS = { "tko---doctors-stoppage": "TKO (Doctor's Stoppage)", submission: "Submission", "decision---unanimous": "Unanimous Decision", "decision---split": "Split Decision",
+                 "decision---majority": "Majority Decision", draw: "Draw", "no-contest": "No Contest", disqualification: "Disqualification" }, fightEnd = {};
+    function cardOf(m) {
+        var ask = m.card.filter(function (f) { return f.state === "post" && !fightEnd[f.id]; });
+        return Promise.all(ask.map(function (f) {
+            return limited(function () { return TV.fetchJSON(CORE + m.sport + "/leagues/" + m.league[0] + "/events/" + m.event + "/competitions/" + f.id + "/status", { timeout: 12000 }); })
+                .then(function (j) { var r = j && j.result; if (r && (r.name || r.displayName)) fightEnd[f.id] = r; }, function (e) { TV.log("sports: fight " + f.id + ": " + e.message); });
+        })).then(function () { return { events: [], stats: [], lineups: [], form: [], table: null, scorers: { h: [], a: [] }, photo: "", card: true }; });
+    }
+    // "KO/TKO · Round 1, 3:20", "Unanimous Decision" (a decision lasts the whole fight: no round)
+    function endOf(f) {
+        var r = fightEnd[f.id], k = r ? String(r.name || "") : "";
+        if (!r) return "";
+        var how = /^(kotko|ko|tko)$/.test(k) ? "KO/TKO" : ENDS[k] ? T(ENDS[k]) : r.displayName || "";
+        return /^(decision|draw)/.test(k) ? how : how + " · " + T("Round {n}, {time}", { n: f.round || 1, time: f.clock || "" });
     }
     /* ---------- 365Scores: what ESPN doesn't have ----------
        webws.365scores.com (its site's own API, no key): a competition's games over a span in one request, the
@@ -280,6 +327,8 @@
     function keepSoft(m) { return store[m.id] || keep(m); }
     function byTime(a, b) { return a.start - b.start || (a.home.name < b.home.name ? -1 : 1); }
     function isLive(m) { return m.state === "in"; }
+    // A score to show: from the start, neither for a cancelled match nor for a UFC card (fights, no score)
+    function scored(m) { return !m.card && m.state !== "pre" && !/CANCEL|POSTPONED/.test(m.status); }
     // still "to come" six hours after its start, neither postponed nor cancelled: ESPN never updated it
     function stale(m) { return m.state === "pre" && m.start < Date.now() - 6 * 3600000 && !/POSTPONED|CANCEL|DELAY|SUSPEND/.test(m.status || ""); }
     // A competition's place in the page's order (sports, then leagues as listed)
@@ -408,6 +457,11 @@
         if (/CANCEL|ABANDON/.test(n)) return { text: T("Cancelled"), done: true };
         if (m.state === "pre") return { text: TV.hhmm(m.start) };
         if (m.src === "365") return m.state === "in" ? { text: live365(m), live: true } : { text: T("Final"), done: true };
+        if (m.card) {
+            var over = m.card.filter(function (f) { return f.state === "post"; }).length, won = m.home.winner ? m.home : m.away.winner ? m.away : null;
+            if (m.state === "in") return { text: T("Fight {n} of {total}", { n: Math.min(over + 1, m.card.length), total: m.card.length }), live: true };
+            return { text: won ? T("{name} wins", { name: lastName(won.name) }) : T("Final"), done: true };
+        }
         if (m.state === "in") {
             if (/HALFTIME/.test(n)) return { text: T("Half-time"), live: true };
             if (/SHOOTOUT/.test(n)) return { text: T("Penalties"), live: true };
@@ -528,6 +582,7 @@
         function add(s) { s = S.fold(s); if (s && s.length >= 2 && !GENERIC[s] && out.indexOf(s) < 0) out.push(s); }
         [t.name, t.short, t.loc].forEach(function (s) { add(s); add(strip(s)); });
         if (t.nick && t.nick !== t.loc && sport !== "soccer") add(t.nick);        // "Raptors", "Giants"
+        if (sport === "mma") add(lastName(t.name));                               // "Gane", as guides write a fight
         // a club from 365Scores comes with its full name only ("Rakow Czestochowa"): its first word too, as titles write it ("Raków - Pogoń")
         if (sport === "soccer" && String(t.id).indexOf("365-") === 0) { var first = strip(t.name).split(" ")[0]; if (first.length >= 4) add(first); }
         var more = CLUBS[key] || CLUBS[S.fold(t.short)];
@@ -710,7 +765,7 @@
         CA: [["Sportsnet / TVA Sports", "SPORTSNET*|TVA SPORTS*", "hockey/nhl"]],
         // Poland: the rights confirmed for 2026-27 (satkurier.pl's list, October 2026)
         PL: [["CANAL+", "CANAL+ SPORT*|CANAL+ PREMIUM|CANAL+ EXTRA*", "uefa.champions eng.1 esp.1 s365:153"], ["Eleven Sports", "ELEVEN SPORTS*", "ger.1 ger.2 ita.1 fra.1"],
-             ["Polsat Sport", "POLSAT SPORT*", "uefa.europa uefa.europa.conf ned.1 sco.1 ita.coppa_italia ksa.1 conmebol.libertadores conmebol.sudamericana"],
+             ["Polsat Sport", "POLSAT SPORT*", "uefa.europa uefa.europa.conf ned.1 sco.1 ita.coppa_italia ksa.1 conmebol.libertadores conmebol.sudamericana mma/ufc"],
              ["TVP", "TVP SPORT|TVP 1|TVP 2", "eng.fa eng.league_cup eng.2 eng.3 por.taca.portugal s365:157"]]
     };
     var TV_NATIONAL = { FR: [["TF1", "TF1|M6", "france"], ["L'Équipe / beIN SPORTS", "L'EQUIPE|BEIN SPORTS*", ""]], PL: [["TVP", "TVP 1|TVP SPORT|TVP 2", "poland"]] };
@@ -1042,6 +1097,7 @@
         if (m.state === "pre" && !/CANCEL|POSTPONED/.test(m.status) && (dated || (dayOff !== "next" && onAnotherDay(m)))) st.text = dayLabel(m.start) + " · " + TV.hhmm(m.start);
         return "<span class='mc__badge" + (st.live ? " is-live" : st.done ? " is-done" : "") + "'>" + esc(st.text) + "</span>";
     }
+    function caption(m) { var l = T(m.league[1]); return !m.note ? l : m.note.indexOf(l) === 0 ? m.note : l + " · " + m.note; }   // "UFC 334", not "UFC · UFC 334"
     function leagueLogo(m, size) { var u = logos[m.lkey]; return u ? "<i class='mc__lg' style='background-image:" + esc(crestBg(u, size || 48)) + "'></i>" : ""; }
     function makeCard(m, withLeague, dated) {
         var c = el("div", "card mc"), art = el("div", "card__art mc__art"), cap = el("div", "mc__cap"), sub = el("div", "mc__sub");
@@ -1051,7 +1107,7 @@
            the crests in their halves and the time in a dark capsule; in play and after, Apple's scoreboard across
            the tile (crest, score, the clock or "Final", score, crest), the loser's score dimmed, LIVE in its capsule. */
         c._update = function () {
-            var st = statusOf(m), two = sides(m), w = where[m.id], bits = [], board = m.state !== "pre" && !/CANCEL|POSTPONED/.test(m.status);
+            var st = statusOf(m), two = sides(m), w = where[m.id], bits = [], board = scored(m);
             var cr = function (t, cls) { return "<i class='mc__crest" + cls + "' style='background-image:" + esc(crestBg(crest(t, m.sport), 160)) + "'></i>"; };
             /* the capsule between the scores: a short word as it is; the period and the clock on two lines ("QT2", "06:52");
                a long word smaller, on two lines if it must ("Terminé (t.a.b.)") */
@@ -1202,7 +1258,7 @@
     Hero.prototype.setActive = function (on) { this.active = on; if (on) this.nav.refocus(); else this.nav.blur(); this.near(); };
     /* A match's picture layer, made (or made again when its photo or score changed) without touching the text */
     Hero.prototype.slideFor = function (m) {
-        var self = this, two = sides(m), score = m.state !== "pre" && !/CANCEL|POSTPONED/.test(m.status), ph = photoNow(m);
+        var self = this, two = sides(m), score = scored(m), ph = photoNow(m);
         if (ph === undefined) photoOf(m).then(function (p) { if (p && self.items[self.index] === m) self.draw(); });
         if (!this.slidesEl) {
             this.root.innerHTML = "<div class='sh__slides'></div><div class='sh__fg'></div>";
@@ -1254,7 +1310,7 @@
                : w.n ? list.slice(0, 3).map(function (x) { return x.ch.name; }).join(", ") + (list.length > 3 ? " +" + (list.length - 3) : "") + " · " + langName(w.order[0]) +
                                  (w.order.length > 1 ? " · " + T("Also in {langs}", { langs: w.order.slice(1, 4).map(langName).join(", ") }) : "")
                            : w.net ? T("On {net} where you live", { net: w.net }) : farAhead(m) ? T("The channel comes with your TV guide, the day before.") : T("Not in your lists");
-        var score = m.state !== "pre" && !/CANCEL|POSTPONED/.test(m.status);
+        var score = scored(m);
         /* Apple TV's hero: the whole width, under the menu and the tabs; the two clubs' colours on a slant with the
            jersey's mesh, the crests and the score or the time on the right, the text at the bottom left, one white
            capsule and a round glass button, the dots in the middle at the bottom. */
@@ -1273,7 +1329,7 @@
            written again, a small part of the screen. */
         this.slideFor(m);
         this.near();
-        var fg = "<div class='sh__txt'><div class='sh__cap'>" + pill + leagueLogo(m, 64) + "<span>" + esc(T(m.league[1]) + (m.note ? " · " + m.note : "")) + "</span>" +
+        var fg = "<div class='sh__txt'><div class='sh__cap'>" + pill + leagueLogo(m, 64) + "<span>" + esc(caption(m)) + "</span>" +
                 (this.ours ? "<span class='sh__ours'>" + TV.icon("star", 22) + esc(T("My Teams")) + "</span>" : "") + "</div>" +
             line(two[0]) + line(two[1]) +
             (meta ? "<div class='sh__meta'>" + esc(meta) + "</div>" : "") +
@@ -1617,8 +1673,8 @@
         var c = details[m.id];
         if (c && c.p) return c.p;
         if (c && Date.now() - c.at < (isLive(m) ? 30000 : 10 * 60000)) return Promise.resolve(c.d);
-        // a 365Scores competition's match: no ESPN summary, but its table (table365)
-        var p = (m.src === "365" ? table365(m) : limited(function () { return TV.fetchJSON(API + m.sport + "/" + m.league[0] + "/summary?event=" + eventId(m), { timeout: 15000 }); })
+        // a 365Scores competition's match: no ESPN summary, but its table (table365); a UFC card: its fights (cardOf)
+        var p = (m.card ? cardOf(m) : m.src === "365" ? table365(m) : limited(function () { return TV.fetchJSON(API + m.sport + "/" + m.league[0] + "/summary?event=" + eventId(m), { timeout: 15000 }); })
             .then(function (j) { return readSummary(j, m); })).then(function (d) {
             details[m.id] = { at: Date.now(), d: d };
             return details[m.id].d;
@@ -1879,6 +1935,7 @@
     }
     function queryName(t) { return QUERY_NAME[S.fold(t.name)] || shown(t, true); }
     function findVideo(m) {
+        if (m.card) return Promise.resolve(null);                        // UFC: no broadcaster posts its fights on YouTube
         if (videos[m.id]) return videos[m.id];
         // asked like you would ask YouTube yourself: the two teams, nothing else ("Italie France")
         var q = queryName(m.home) + " " + queryName(m.away), mine = rights().byKey[m.lkey] || [], n = 0, tq = Date.now();
@@ -2123,8 +2180,8 @@
         r.appendChild(bg);
         var inn = el("div", "match__in");
         r.appendChild(inn);
-        inn.appendChild(el("div", "match__kicker", leagueLogo(m, 64) + "<span>" + esc([T(m.league[1]), m.note].filter(Boolean).join(" · ")) + "</span>"));
-        var score = m.state !== "pre" && !/CANCEL|POSTPONED/.test(m.status);
+        inn.appendChild(el("div", "match__kicker", leagueLogo(m, 64) + "<span>" + esc(caption(m)) + "</span>"));
+        var score = scored(m);
         var board = el("div", "match__board");
         function side(t, k) {
             var goals = d ? d.scorers[t === m.home ? "h" : "a"] : [];
@@ -2135,12 +2192,12 @@
         var day = dayStart(0), when = m.start >= day + 86400000 && m.start < day + 2 * 86400000 ? T("Tomorrow") : m.start >= day - 86400000 && m.start < day ? T("Yesterday") : m.start >= day && m.start < day + 86400000 ? T("Today") : longDay(m.start);
         board.innerHTML = side(two[0]) +
             "<div class='match__mid'>" + (score ? "<div class='match__score'>" + esc(two[0].score || "0") + "<span>–</span>" + esc(two[1].score || "0") + "</div>"
-                                                : "<div class='match__time'>" + esc(TV.hhmm(m.start)) + "</div>") +
+                                                : "<div class='match__time'>" + esc(m.card && m.state !== "pre" ? "vs" : TV.hhmm(m.start)) + "</div>") +
             "<div class='match__st" + (st.live ? " is-live" : "") + "'>" + esc(st.live || st.done ? st.text : when) + "</div></div>" + side(two[1]);
         inn.appendChild(board);
         // the same in one line, for reading a tab on the whole screen
         r.appendChild(el("div", "match__mini", "<i style='background-image:" + esc(crestBg(crest(two[0], m.sport), 100)) + "'></i><span>" + esc(shown(two[0], true)) + "</span><b>" +
-            esc(score ? (two[0].score || "0") + " – " + (two[1].score || "0") : TV.hhmm(m.start)) + "</b><span>" + esc(shown(two[1], true)) + "</span><i style='background-image:" +
+            esc(score ? (two[0].score || "0") + " – " + (two[1].score || "0") : m.card && m.state !== "pre" ? "vs" : TV.hhmm(m.start)) + "</b><span>" + esc(shown(two[1], true)) + "</span><i style='background-image:" +
             esc(crestBg(crest(two[1], m.sport), 100)) + "'></i>"));
         // the broadcasters where you live
         var bc = tvOf(m);
@@ -2164,6 +2221,7 @@
         // the tabs, then what the tab shows
         var tabs = [];
         if (!st.done && !/CANCEL|POSTPONED/.test(m.status)) tabs.push(["where", T("Where to Watch")]);
+        if (d && d.card) tabs.push(["card", T("Fight Card")]);
         if (d && d.events.length) tabs.push(["summary", T("Summary")]);
         if (d && d.stats.some(function (x) { return x.hv || x.av; })) tabs.push(["stats", T("Stats")]);      // not a page of zeros before the start
         if (d && d.lineups.length) tabs.push(["lineups", T("Lineups")]);
@@ -2290,6 +2348,25 @@
                     }).join("") + "</div>";
             };
             h = "<div class='mfo'>" + fcol(two[0]) + fcol(two[1]) + "</div>";
+        } else if (t === "card") {
+            /* one line a fight, the main event first: the red corner on the left, the blue on the right, the weight and
+               how it ended between them; the main card (the fights from the main event's start), then the preliminaries */
+            var mainAt = m.card[m.card.length - 1].at;
+            var who = function (f, b) {
+                var res = b.state === "post" && (b.a.winner || b.b.winner) ? (f.winner ? " is-win" : " is-lose") : "";
+                return (f.flag ? "<i class='mev__flag' style='background-image:" + esc(TV.cssUrl(f.flag)) + "'></i>" : "") +
+                       "<b class='mev__who" + res + "'>" + esc(f.name) + "</b>" + (f.record ? "<small>" + esc(f.record) + "</small>" : "");
+            };
+            var fight = function (f) {
+                var how = f.state === "in" ? T("Live") + " · " + T("Round {n}, {time}", { n: f.round || 1, time: f.clock || "" })
+                        : f.state === "post" ? endOf(f) || T("Final") : f.main ? T("Main Event") : "";
+                return "<div class='mev__row" + (f.state === "in" ? " is-live" : f.main ? " is-goal" : "") + "'><div class='mev__l'>" + who(f.a, f) + "</div>" +
+                       "<div class='mev__min'>" + esc(f.cls ? T(f.cls) : "") + (how ? "<small>" + esc(how) + "</small>" : "") + "</div><div class='mev__r'>" + who(f.b, f) + "</div></div>";
+            };
+            var top = m.card.filter(function (f) { return f.at >= mainAt; }).reverse(), pre = m.card.filter(function (f) { return f.at < mainAt; }).reverse();
+            var sep = function (txt, at) { return "<div class='mev__sep'>" + esc(txt) + (at ? " · " + esc(TV.hhmm(at)) : "") + "</div>"; };
+            h = "<div class='mev mev--card'>" + sep(T("Main Card"), pre.length ? mainAt : 0) + top.map(fight).join("") +
+                (pre.length ? sep(T("Prelims"), pre[pre.length - 1].at) + pre.map(fight).join("") : "") + "</div>";
         } else if (t === "load") h = "<div class='match__note is-spin'>" + TV.spinner(64) + "</div>";
         body.innerHTML = h ? "<div class='match__scroll'>" + h + "</div>" : "";
     }
@@ -2492,7 +2569,8 @@
         football: '<ellipse cx="12" cy="12" rx="9.5" ry="5.2" transform="rotate(-38 12 12)"/><path d="M5.5 15.8l2.4 2.4M16.1 5.8l2.4 2.4M10 14l4-4M10.6 11.4l1.4 1.4M12 10l1.4 1.4"/>',
         hockey: '<path d="M7 3l6.2 13.2h5.3"/><path d="M3.5 20h8"/><ellipse cx="17.5" cy="19.5" rx="3" ry="1.5"/>',
         handball: '<circle cx="12" cy="12" r="9"/><path d="M12 3c-2.4 3-2.4 15 0 18M3.6 9.2c4.6 1.6 12.2 1.6 16.8 0M3.6 14.8c4.6-1.6 12.2-1.6 16.8 0"/>',
-        volleyball: '<circle cx="12" cy="12" r="9"/><path d="M12 12c0-4 2-7.4 5.2-8.2M12 12c-3.5 2-7.4 2-9.6-.4M12 12c3.5 2 5.6 5.5 4.8 8.6M7.4 4.3c1.5 3.6 1 8.1-1.6 11.4"/>'
+        volleyball: '<circle cx="12" cy="12" r="9"/><path d="M12 12c0-4 2-7.4 5.2-8.2M12 12c-3.5 2-7.4 2-9.6-.4M12 12c3.5 2 5.6 5.5 4.8 8.6M7.4 4.3c1.5 3.6 1 8.1-1.6 11.4"/>',
+        mma: '<path d="M8.3 3h7.4L21 8.3v7.4L15.7 21H8.3L3 15.7V8.3z"/><path d="M10 7.5h4l2.5 2.5v4L14 16.5h-4L7.5 14v-4z"/>'
     };
     function sportIcon(id) { return '<svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">' + (SPORT_ICONS[id] || SPORT_ICONS.soccer) + "</svg>"; }
 

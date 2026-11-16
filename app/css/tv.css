@@ -889,6 +889,13 @@ body.is-preview { cursor: default; }
 .mev__sub { font-size: 26px; font-style: normal; color: #30d158; }
 .mev__goal { display: flex; font-style: normal; color: #fff; }
 .mev__sep { padding: 14px 0; text-align: center; font-size: 21px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: rgba(255,255,255,0.5); }
+/* a UFC card (sports.js "card"): the weight and how the fight ended between the two fighters, their flags and records */
+.mev--card .mev__row { height: 86px; }
+.mev--card .mev__min { width: 380px; font-size: 22px; line-height: 1.25; color: rgba(255,255,255,0.75); }
+.mev--card .mev__min small { display: block; font-size: 20px; font-weight: 600; white-space: nowrap; }
+.mev--card .mev__row.is-live .mev__min small { color: #ff453a; }
+.mev__flag { display: block; flex: none; width: 36px; height: 24px; border-radius: 3px; background-size: cover; background-position: center; }
+.mev__who.is-lose { color: rgba(255,255,255,0.45); font-weight: 600; }
 .mst { padding: 0 60px 40px; }
 .mst__head { display: flex; align-items: center; justify-content: space-between; height: 64px; }
 .mst__head i { width: 52px; height: 52px; background: center / contain no-repeat; }
