@@ -63,10 +63,12 @@
         ] },
         // "s365:…": the competitions ESPN doesn't have, from 365Scores (Europe's basketball, handball, volleyball, hockey)
         { id: "basketball", label: "Basketball", leagues: [["nba", "NBA"], ["s365:569", "EuroLeague"], ["s365:329", "EuroCup"], ["s365:38", "Betclic Élite"],
-            ["s365:5835", "Pro B"], ["s365:14", "Liga ACB"], ["s365:19", "Lega Basket"], ["s365:27", "BBL"], ["s365:6391", "Basketball Champions League"], ["wnba", "WNBA", "w"]] },
+            ["s365:5835", "Pro B"], ["s365:14", "Liga ACB"], ["s365:19", "Lega Basket"], ["s365:27", "BBL"], ["s365:392", "PGE Basket Liga"],
+            ["s365:6391", "Basketball Champions League"], ["wnba", "WNBA", "w"]] },
         { id: "handball", label: "Handball", leagues: [["s365:6182", "Liqui Moly Starligue"], ["s365:542", "EHF Champions League"], ["s365:536", "Liga Asobal"],
             ["s365:6334", "EHF Euro", "i"], ["s365:644", "World Championship", "i"], ["s365:531", "International Matches", "i"]] },
-        { id: "volleyball", label: "Volleyball", leagues: [["s365:5712", "Ligue A"], ["s365:5723", "SuperLega"], ["s365:5706", "CEV Champions League"], ["s365:5715", "Ligue A Women", "w"]] },
+        { id: "volleyball", label: "Volleyball", leagues: [["s365:5712", "Ligue A"], ["s365:5723", "SuperLega"], ["s365:5772", "Tauron Liga"], ["s365:5706", "CEV Champions League"],
+            ["s365:5715", "Ligue A Women", "w"], ["s365:8093", "Tauron Liga Women", "w"]] },
         // college football: ESPN's FBS games (about 60 on a Saturday of the season)
         { id: "football", label: US ? "Football" : "American Football", leagues: [["nfl", "NFL"], ["college-football", "College Football"]] },
         { id: "hockey", label: "Hockey", leagues: [["nhl", "NHL"], ["s365:636", "KHL"], ["s365:373", "SHL"], ["s365:370", "Liiga"], ["s365:379", "DEL"],
@@ -400,6 +402,7 @@
         if ((p = /^P(\d)$/.exec(s))) s = T("P{n}", { n: p[1] });
         else if ((p = /^Q(\d)$/.exec(s))) s = T("Q{n}", { n: p[1] });
         else if (/^OT\d*$/i.test(s)) s = T("OT");
+        else if (m.sport === "volleyball" && (p = /^S(\d)$/.exec(s))) s = T("Set {n}", { n: p[1] });
         return c ? s + " · " + c : s || T("Live");
     }
     function statusOf(m) {
@@ -528,8 +531,9 @@
         function add(s) { s = S.fold(s); if (s && s.length >= 2 && !GENERIC[s] && out.indexOf(s) < 0) out.push(s); }
         [t.name, t.short, t.loc].forEach(function (s) { add(s); add(strip(s)); });
         if (t.nick && t.nick !== t.loc && sport !== "soccer") add(t.nick);        // "Raptors", "Giants"
-        // a club from 365Scores comes with its full name only ("Rakow Czestochowa"): its first word too, as titles write it ("Raków - Pogoń")
-        if (sport === "soccer" && String(t.id).indexOf("365-") === 0) { var first = strip(t.name).split(" ")[0]; if (first.length >= 4) add(first); }
+        // a club from 365Scores comes with its full name only ("Rakow Czestochowa"): its first word too, as titles write it ("Raków - Pogoń",
+        // "ŚLEPSK MALOW SUWAŁKI" for Slepsk Suwalki)
+        if ((sport === "soccer" || sport === "volleyball") && String(t.id).indexOf("365-") === 0) { var first = strip(t.name).split(" ")[0]; if (first.length >= 4) add(first); }
         var more = CLUBS[key] || CLUBS[S.fold(t.short)];
         if (more) more.split("|").forEach(add);
         if (sport === "rugby" && RUGBY[key]) RUGBY[key].split("|").forEach(add);
@@ -710,7 +714,7 @@
         CA: [["Sportsnet / TVA Sports", "SPORTSNET*|TVA SPORTS*", "hockey/nhl"]],
         // Poland: the rights confirmed for 2026-27 (satkurier.pl's list, October 2026)
         PL: [["CANAL+", "CANAL+ SPORT*|CANAL+ PREMIUM|CANAL+ EXTRA*", "uefa.champions eng.1 esp.1 s365:153"], ["Eleven Sports", "ELEVEN SPORTS*", "ger.1 ger.2 ita.1 fra.1"],
-             ["Polsat Sport", "POLSAT SPORT*", "uefa.europa uefa.europa.conf ned.1 sco.1 ita.coppa_italia ksa.1 conmebol.libertadores conmebol.sudamericana"],
+             ["Polsat Sport", "POLSAT SPORT*", "uefa.europa uefa.europa.conf ned.1 sco.1 ita.coppa_italia ksa.1 conmebol.libertadores conmebol.sudamericana volleyball/s365:5772 volleyball/s365:8093"],
              ["TVP", "TVP SPORT|TVP 1|TVP 2", "eng.fa eng.league_cup eng.2 eng.3 por.taca.portugal s365:157"]]
     };
     var TV_NATIONAL = { FR: [["TF1", "TF1|M6", "france"], ["L'Équipe / beIN SPORTS", "L'EQUIPE|BEIN SPORTS*", ""]], PL: [["TVP", "TVP 1|TVP SPORT|TVP 2", "poland"]] };
@@ -1779,7 +1783,7 @@
         TR: [["beIN SPORTS Türkiye|beIN SPORTS Haber", "tur.1"], ["TRT Spor|tv8", UCL + " " + NATIONAL]],
         // Poland: the channels as YouTube's Polish results show them (November 2026)
         PL: [["CANAL+ SPORT", "uefa.champions eng.1 esp.1 s365:153"], ["ELEVEN SPORTS PL", "ger.1 ger.2 ita.1 fra.1"],
-             ["Polsat Sport", "uefa.europa uefa.europa.conf ita.1 ned.1 sco.1 ita.coppa_italia"],
+             ["Polsat Sport", "uefa.europa uefa.europa.conf ita.1 ned.1 sco.1 ita.coppa_italia volleyball/s365:5772"],
              ["TVP Sport", "uefa.champions s365:153 s365:157 eng.fa eng.league_cup eng.2 eng.3 por.taca.portugal ger.dfb_pokal " + NATIONAL]]
     };
     YT_RIGHTS.IE = YT_RIGHTS.GB; YT_RIGHTS.AT = YT_RIGHTS.DE; YT_RIGHTS.LU = YT_RIGHTS.BE; YT_RIGHTS.MC = YT_RIGHTS.FR;
@@ -2477,7 +2481,7 @@
     var SUGGEST = ["uefa.champions", "uefa.europa", "uefa.europa.conf", "fifa.world", "uefa.euro", "uefa.nations", "fifa.worldq.uefa", "uefa.euroq", "fifa.friendly",
                    "eng.1", "esp.1", "ita.1", "ger.1", "nba", "nfl", "nhl", "180659", "164205", "17567", "289234"];
     var SUGGEST_LANG = { fr: ["fra.1", "fra.2", "fra.coupe_de_france", "270559", "271937", "fra.w.1", "s365:569", "s365:38", "s365:6182", "s365:542", "s365:5712"], en: ["eng.fa", "eng.league_cup", "267979", "sco.1", "eng.w.1"],
-        es: ["esp.copa_del_rey", "esp.w.1"], pt: ["por.1"], it: ["ita.coppa_italia"], de: ["ger.dfb_pokal"], nl: ["ned.1"], tr: ["tur.1"], ar: ["ksa.1", "caf.nations"], pl: ["s365:153", "s365:157"] };
+        es: ["esp.copa_del_rey", "esp.w.1"], pt: ["por.1"], it: ["ita.coppa_italia"], de: ["ger.dfb_pokal"], nl: ["ned.1"], tr: ["tur.1"], ar: ["ksa.1", "caf.nations"], pl: ["s365:153", "s365:157", "s365:5772", "s365:392"] };
     function draftOf() {
         var f = chosen();
         if (f) return JSON.parse(JSON.stringify(f));
