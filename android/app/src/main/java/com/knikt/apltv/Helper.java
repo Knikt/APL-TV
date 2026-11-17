@@ -627,10 +627,10 @@ final class Helper {
     private void editWrongCode() {
         synchronized (lock) { if (editToken != null && ++editWrong >= 20) { log("too many wrong editor codes: closed"); editToken = null; editData = null; editSaved = null; } }
     }
-    /** The language of the phone's pages (tools/make-android.py makes them in English, French and Polish). */
+    /** The language of the phone's pages (tools/make-android.py makes them in English, French, Polish and Italian). */
     private static String pageLang(String lang) {
         String l = lang == null ? "" : lang.toLowerCase(Locale.US);
-        return l.startsWith("fr") ? "fr" : l.startsWith("pl") ? "pl" : "en";
+        return l.startsWith("fr") ? "fr" : l.startsWith("pl") ? "pl" : l.startsWith("it") ? "it" : "en";
     }
     private String editPage(String lang, String token) {
         String name = (token != null ? "edit-" : "edit-expired-") + pageLang(lang) + ".html";

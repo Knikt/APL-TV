@@ -575,9 +575,47 @@ var PHONE_PL = {
     "For posters, summaries and ratings: your free key from themoviedb.org (Settings › API). You can send it alone.": "Do plakatów, opisów i ocen: Twój darmowy klucz z themoviedb.org (Ustawienia › API). Możesz wysłać sam klucz.",
     "Look at your screen: APL TV is checking your TMDB key.": "Spójrz na ekran: APL TV sprawdza Twój klucz TMDB."
 };
+/* The phone page in Italian, keyed by its English texts */
+var PHONE_IT = {
+    "This code has expired": "Questo codice è scaduto",
+    "On the screen, open APL TV › Settings › Add a playlist › From your phone, then scan the new code.": "Sullo schermo, apri APL TV › Impostazioni › Aggiungi una playlist › Dal telefono, poi inquadra il nuovo codice.",
+    "Send your playlist to the screen. It goes straight to it on your Wi-Fi, through no other website.": "Invia la tua playlist allo schermo. Arriva direttamente attraverso il tuo Wi-Fi, senza passare da nessun altro sito.",
+    "Server": "Server",
+    "Username": "Nome utente",
+    "Password": "Password",
+    "The three details your provider gave you. A get.php link pasted in Server works too.": "I tre dati che ti ha dato il fornitore. Funziona anche un link get.php incollato in Server.",
+    "Playlist address (M3U)": "Indirizzo della playlist (M3U)",
+    "Paste the link of your M3U playlist.": "Incolla il link della tua playlist M3U.",
+    "Portal address": "Indirizzo del portale",
+    "MAC address": "Indirizzo MAC",
+    "The portal (MAG, Ministra) and the MAC address your provider registered.": "Il portale (MAG, Ministra) e l'indirizzo MAC registrato dal fornitore.",
+    "Your Jellyfin or Emby server: its address, your user name and your password.": "Il tuo server Jellyfin o Emby: il suo indirizzo, il tuo nome utente e la tua password.",
+    "Plex links with a code: tap the button below, a code appears on the TV, then type it on plex.tv/link with this phone.": "Plex si collega con un codice: tocca il pulsante qui sotto, sulla TV appare un codice, poi scrivilo su plex.tv/link con questo telefono.",
+    "Name (optional)": "Nome (facoltativo)",
+    "My TV": "La mia TV",
+    "TV guide address, XMLTV (optional)": "Indirizzo guida TV, XMLTV (facoltativo)",
+    "Send to the screen": "Invia allo schermo",
+    "Sent!": "Inviato!",
+    "Look at your screen: APL TV is loading your playlist.": "Guarda lo schermo: APL TV sta caricando la tua playlist.",
+    "Show the Plex code on the TV": "Mostra il codice Plex sulla TV",
+    "Fill in the server, the username and the password.": "Inserisci il server, il nome utente e la password.",
+    "Fill in the portal and a MAC address like 00:1A:79:12:34:56.": "Inserisci il portale e un indirizzo MAC come 00:1A:79:12:34:56.",
+    "Fill in the server's address and your user name.": "Inserisci l'indirizzo del server e il tuo nome utente.",
+    "Paste the playlist's link.": "Incolla il link della playlist.",
+    "Look at your TV: the Plex code is there. Type it on plex.tv/link.": "Guarda la TV: c'è il codice Plex. Scrivilo su plex.tv/link.",
+    "This code has expired: scan the new one on the screen.": "Questo codice è scaduto: inquadra quello nuovo sullo schermo.",
+    "The screen did not answer. Is the phone on the same Wi-Fi?": "Lo schermo non ha risposto. Il telefono è sulla stessa rete Wi-Fi?",
+    "TMDB key (optional)": "Chiave TMDB (facoltativa)",
+    "For posters, summaries and ratings: your free key from themoviedb.org (Settings › API). You can send it alone.": "Per locandine, trame e valutazioni: la tua chiave gratuita di themoviedb.org (Settings › API). Puoi inviarla da sola.",
+    "Look at your screen: APL TV is checking your TMDB key.": "Guarda lo schermo: APL TV sta controllando la tua chiave TMDB.",
+    "The portal (MAG, Ministra) and the MAC address your provider registered. The serial number and device IDs only if it asks for them.": "Il portale (MAG, Ministra) e l'indirizzo MAC registrato dal fornitore. Il numero di serie e i Device ID solo se li richiede.",
+    "Serial number (optional)": "Numero di serie (facoltativo)",
+    "Device ID 1 (optional)": "Device ID 1 (facoltativo)",
+    "Device ID 2 (optional)": "Device ID 2 (facoltativo)"
+};
 function phonePage(lang, token, ok) {
-    var fr = /^fr/i.test(lang || ""), pl = /^pl/i.test(lang || "");
-    function t(en, f) { return fr ? f : (pl && PHONE_PL[en]) || en; }
+    var fr = /^fr/i.test(lang || ""), pl = /^pl/i.test(lang || ""), it = /^it/i.test(lang || "");
+    function t(en, f) { return fr ? f : (pl && PHONE_PL[en]) || (it && PHONE_IT[en]) || en; }
     var css = phoneCss();
     if (!ok) {
         return "<!doctype html><html><head><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'><title>APL TV</title><style>" + css + "</style></head><body>" +
@@ -675,7 +713,8 @@ var EDIT_TEXT = {
           hideAll: "Ukryj wszystkie", showAll: "Poka\u017C wszystkie", hideN: "Ukryj znalezione ({n})", showN: "Poka\u017C znalezione ({n})", hideSel: "Ukryj", showSel: "Poka\u017C", shownOf: "Widoczne na telewizorze: {n} z {t}",
           names: "Nazwy", namesHint: "Nadaj kana\u0142owi dowoln\u0105 nazw\u0119: telewizor poka\u017Ce j\u0105 wsz\u0119dzie (TV na \u017Cywo, przewodnik, wyszukiwanie, Kontynuuj ogl\u0105danie) i zachowa j\u0105 po aktualizacji playlisty. Zostaw pole puste, aby przywr\u00F3ci\u0107 nazw\u0119 od dostawcy.",
           hideCh: "Ukryj", showCh: "Poka\u017C", hiddenCh: "Ukryte",
-          renamed: "Ze zmienion\u0105 nazw\u0105", findChan: "Wyszukaj kana\u0142, aby zmieni\u0107 nazw\u0119 lub go ukry\u0107", newName: "Nazwa kana\u0142u", was: "wcze\u015Bniej: {name}", reset: "Nazwa od dostawcy", typeMore: "Wpisz kilka liter nazwy kana\u0142u." }
+          renamed: "Ze zmienion\u0105 nazw\u0105", findChan: "Wyszukaj kana\u0142, aby zmieni\u0107 nazw\u0119 lub go ukry\u0107", newName: "Nazwa kana\u0142u", was: "wcze\u015Bniej: {name}", reset: "Nazwa od dostawcy", typeMore: "Wpisz kilka liter nazwy kana\u0142u." },
+    it: {"sub":"Nascondi o sposta le categorie, crea i tuoi gruppi di canali, ordina i preferiti. Poi invia tutto alla TV.","cats":"Categorie","groups":"Gruppi","favs":"Preferiti","live":"TV","movies":"Film","series":"Serie","catsHint":"L'interruttore nasconde o mostra una categoria ovunque sulla TV; Nascondi tutto / Mostra tutto agiscono su tutto l'elenco, o solo su ciò che trova la ricerca (“ar”, “adult”…). Tieni premuto ≡ e trascina per spostarne una, o tocca le categorie per selezionarle, poi spostale, nascondile o mostrale tutte insieme.","none":"Niente qui.","groupsHint":"Le tue liste di canali, in TV in diretta e nella Guida dopo i Preferiti. Tieni premuto ≡ e trascina per spostare un canale.","rename":"Rinomina","del":"Elimina","addChans":"Aggiungi canali","newGroup":"Nuovo gruppo","favsHint":"I tuoi canali preferiti, nell'ordine in cui la TV li mostra. Tieni premuto ≡ e trascina per spostarne uno.","noChans":"Ancora nessun canale.","search":"Cerca un canale","done":"Fine","noMatch":"Nessun canale con questo nome.","groupName":"Nome del gruppo","delGroup":"Eliminare il gruppo “{name}”?","send":"Invia alla TV","sent":"Inviato!","sentHow":"Guarda la TV: le tue modifiche sono lì.","again":"Continua a modificare","expired":"Questo codice è scaduto","expiredHow":"Sulla TV, apri APL TV › Impostazioni › Modifica dal telefono, poi inquadra il nuovo codice.","noAnswer":"La TV non ha risposto. Il telefono è sulla stessa rete Wi-Fi?","error":"Qualcosa è andato storto. Inquadra di nuovo il codice.","loading":"Caricamento della playlist…","findCat":"Cerca una categoria","noCat":"Nessuna categoria con questo nome.","sel1":"1 selezionata","seln":"{n} selezionate","toTop":"In cima","toBottom":"In fondo","moveAfter":"Metti dopo…","placeHint":"Ora tocca la categoria dopo la quale metterle.","cancel":"Annulla","hideAll":"Nascondi tutto","showAll":"Mostra tutto","hideN":"Nascondi queste {n}","showN":"Mostra queste {n}","hideSel":"Nascondi","showSel":"Mostra","shownOf":"{n} su {t} visibili sulla TV","names":"Nomi","namesHint":"Dai a un canale il nome che vuoi: la TV lo mostra ovunque (TV in diretta, guida, ricerca, Continua a guardare) e lo mantiene quando la playlist si aggiorna. Lascia vuoto per tornare al nome del fornitore.","renamed":"Rinominati","findChan":"Cerca un canale da rinominare","newName":"Nome del canale","was":"prima: {name}","reset":"Nome del fornitore","typeMore":"Scrivi qualche lettera del canale.","hideCh":"Nascondi","showCh":"Mostra","hiddenCh":"Nascosti"}
 };
 var EDIT_CSS = ".r{display:flex;align-items:center;gap:8px;padding:10px 12px;border-top:1px solid rgba(255,255,255,.08)}.card>.r:first-child{border-top:0}" +
     ".r .n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.r small{color:rgba(255,255,255,.5);font-size:13px;margin-left:4px}.r.off .n{opacity:.45}" +
@@ -1055,7 +1094,7 @@ function ytScript() {
     });
 }
 function editPage(lang, token, ok) {
-    var L = {}, mine = EDIT_TEXT[/^fr/i.test(lang || "") ? "fr" : /^pl/i.test(lang || "") ? "pl" : "en"], k;
+    var L = {}, mine = EDIT_TEXT[/^fr/i.test(lang || "") ? "fr" : /^pl/i.test(lang || "") ? "pl" : /^it/i.test(lang || "") ? "it" : "en"], k;
     for (k in EDIT_TEXT.en) L[k] = mine[k] || EDIT_TEXT.en[k];          // a text not translated yet: in English
     var head = "<!doctype html><html><head><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'><title>APL TV</title><style>" + phoneCss() + EDIT_CSS + "</style></head><body>";
     if (!ok) return head + "<div class=done><div class=big>\u231B</div><h2>" + L.expired + "</h2><p>" + L.expiredHow + "</p></div></body></html>";

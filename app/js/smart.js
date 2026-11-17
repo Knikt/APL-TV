@@ -30,7 +30,7 @@
     var DECOR = /[★☆●◆■□▶►◀◄♦♥♠♣✪✦✧⭐🔥⚽🎬📺🎥🇫🇷]|[☀-➿]|[\ud83c-\ud83e][\udc00-\udfff]/g;
     var QUALITY = /\b(UHD|4K|2160P?|FHD|1080P?|HD|720P?|SD|576P?|480P?|HEVC|H\.?265|H\.?264|HDR|50FPS|60FPS|LOW|HQ|RAW|BACKUP)\b/gi;
 
-    var PRIMARY = { fr: ["FR", "FRA", "FRANCE"], en: ["UK", "GB", "US", "USA", "EN", "ENG"] };
+    var PRIMARY = { fr: ["FR", "FRA", "FRANCE"], it: ["IT", "ITA", "ITALIA", "ITALY"], en: ["UK", "GB", "US", "USA", "EN", "ENG"] };
     /* "SOUTH AFRICA" -> "South Africa"; short words (TV, HD, TNT, C+) stay as they are */
     function readable(s) {
         var letters = String(s).replace(/[^A-Za-z\u00c0-\u024f]/g, "");

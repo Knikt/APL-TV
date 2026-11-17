@@ -120,8 +120,8 @@
             run: function () { choose(T("Search Keyboard"), "kbLayout", [["auto", T("Automatic")], ["qwerty", "QWERTY"], ["azerty", "AZERTY"], ["abc", T("Alphabetical (ABC)")], ["arabic", T("Arabic") + " (\u0639\u0631\u0628\u064A)"]]); } });
         rows.push({ label: T("Time Format"), value: TV.pref("timeFormat") === "12" ? "12 h" : "24 h", run: function () { TV.setPref("timeFormat", TV.pref("timeFormat") === "12" ? "24" : "12"); redraw(); } });
         // A list rather than OK going round the languages: each change restarts APL TV
-        var LANGUAGES = [["auto", T("Automatic")], ["en", "English"], ["fr", "Français"], ["pl", "Polski"]];
-        rows.push({ label: T("Language"), acc: "chevron", value: { auto: T("Automatic"), en: "English", fr: "Français", pl: "Polski" }[TV.pref("language")] || T("Automatic"), desc: T("APL TV restarts in the new language."),
+        var LANGUAGES = [["auto", T("Automatic")], ["en", "English"], ["fr", "Français"], ["it", "Italiano"], ["pl", "Polski"]];
+        rows.push({ label: T("Language"), acc: "chevron", value: { auto: T("Automatic"), en: "English", fr: "Français", it: "Italiano", pl: "Polski" }[TV.pref("language")] || T("Automatic"), desc: T("APL TV restarts in the new language."),
             run: function () {
                 var was = TV.pref("language");
                 choose(T("Language"), "language", LANGUAGES, function () {
