@@ -1072,5 +1072,12 @@ window.TV_LANG_FR = {
     "GB": "Go",
     "For a TV or a stick with little memory, or one that lags: Home with 2 catalogs, smaller covers, the playlist refreshed only when nothing plays, the TV guide and the animations off. Automatic: on with 1 GB of memory, off with 2 GB or more.": "Pour une TV ou une clé avec peu de mémoire, ou qui rame : l'accueil avec 2 catalogues, des affiches plus légères, la playlist rafraîchie seulement quand rien ne joue, le guide TV et les animations coupés. Automatique : activé avec 1 Go de mémoire, désactivé avec 2 Go ou plus.",
     "This screen: {ram}.": "Cet écran : {ram}.",
-    "APL TV restarts to apply it.": "APL TV redémarre pour l'appliquer."
+    "APL TV restarts to apply it.": "APL TV redémarre pour l'appliquer.",
+    /* Send a Report (#22, #30, #34), a portal with no link for a video (#30) */
+    "Send a Report": "Envoyer un rapport",
+    "Something doesn't work? Right after the problem, send the developer what APL TV did: the last lines of its log, your TV's model and the app's version, with a code to give on GitHub.": "Quelque chose ne marche pas ? Juste après le problème, envoie au développeur ce qu'APL TV a fait : les dernières lignes de son journal, le modèle de ta TV et la version de l'app, avec un code à donner sur GitHub.",
+    "Something doesn't work? Send the developer what APL TV did just now: the last lines of its log, your TV's model and the app's version. No passwords, no playlist addresses.": "Quelque chose ne marche pas ? Envoie au développeur ce qu'APL TV vient de faire : les dernières lignes de son journal, le modèle de ta TV et la version de l'app. Aucun mot de passe, aucune adresse de playlist.",
+    "Send it right after the problem, then give this code with your issue on GitHub: {code}": "Envoie-le juste après le problème, puis donne ce code avec ton issue sur GitHub : {code}",
+    "Give this code with your issue on GitHub: {code}": "Donne ce code avec ton issue sur GitHub : {code}",
+    "The portal gave no link for this video.": "Le portail n'a donné aucun lien pour cette vidéo."
 };

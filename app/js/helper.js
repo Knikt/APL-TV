@@ -8,8 +8,17 @@
     "use strict";
 
     var TV = global.TV;
-    var SERVICE_ID = "APLTVMedia.Helper", PORT = 8765;
-    var bases = null, baseIndex = 0, starting = null;
+    var PORT = 8765;
+    var bases = null, baseIndex = 0, starting = null, lastAnswer = "";
+
+    /* Samsung: the service is "<package>.Helper". Apps2Samsung can give the package another id on a TV (#22: an id
+       blocked there, or taken by another app) and rewrites it in the installed files, not in the code that comes
+       later through the automatic updates: the id is the running app's own. */
+    function serviceId() {
+        try { var p = global.tizen.application.getCurrentApplication().appInfo.packageId; if (p) return p + ".Helper"; } catch (e) {}
+        return "APLTVMedia.Helper";
+    }
+    function why(e) { return e ? (e.name && e.name !== "Error" ? e.name + ": " : "") + (e.message || e) : "?"; }
 
     function hosts() {
         if (bases) return bases;
@@ -36,28 +45,43 @@
     }
     function startService() {
         if (starting) return starting;
+        lastAnswer = "";
         starting = new Promise(function (resolve) {
             if (TV.WEBOS) { startWebos(resolve); return; }
             // Android: the helper is part of the app (Helper.java), started with it
             if (TV.ANDROID) { try { global.APLAndroid.startHelper(); } catch (e) {} resolve(); return; }
             var T = global.tizen;
             if (!T || !T.application) { resolve(); return; }
-            function plain() { try { T.application.launch(SERVICE_ID, resolve, resolve); } catch (e) { resolve(); } }
-            try { T.application.launchAppControl(new T.ApplicationControl("http://tizen.org/appcontrol/operation/service"), SERVICE_ID, resolve, plain); }
-            catch (e) { plain(); }
+            var id = serviceId();
+            function plain(e) {
+                if (e) TV.log("helper " + id + ": " + why(e));
+                try { T.application.launch(id, resolve, function (e2) { TV.log("helper " + id + " not started: " + why(e2)); lastAnswer = why(e2); resolve(); }); }
+                catch (e3) { TV.log("helper " + id + " not started: " + why(e3)); lastAnswer = why(e3); resolve(); }
+            }
+            try { T.application.launchAppControl(new T.ApplicationControl("http://tizen.org/appcontrol/operation/service"), id, resolve, plain); }
+            catch (e) { plain(e); }
         }).then(function () { return waitUp(Date.now() + 12000); });
         starting.then(function () { starting = null; }, function () { starting = null; });
         return starting;
     }
+    /* /ping answers 200 from APL TV's helper. Any other answer is another app on the port (#22: Tizenfy's phone page
+       listens on 8765 too), said in the error. */
     function ping(base) {
-        return TV.http(base + "/ping", { timeout: 1500 }).then(function (r) { if (r.status !== 200) throw new Error("no"); return base; });
+        return TV.http(base + "/ping", { timeout: 1500 }).then(function (r) {
+            if (r.status !== 200) { if (r.status) lastAnswer = "port " + PORT + ": HTTP " + r.status + ", another app?"; throw new Error("no"); }
+            return base;
+        });
     }
     function waitUp(until) {
         return new Promise(function (resolve, reject) {
             (function again() {
                 var list = hosts(), i = 0;
                 (function tryNext() {
-                    if (i >= list.length) { if (Date.now() > until) reject(new Error("helper unavailable")); else setTimeout(again, 400); return; }
+                    if (i >= list.length) {
+                        if (Date.now() > until) { TV.log("helper unavailable" + (lastAnswer ? ": " + lastAnswer : "")); reject(new Error("helper unavailable" + (lastAnswer ? ", " + lastAnswer : ""))); }
+                        else setTimeout(again, 400);
+                        return;
+                    }
                     var b = list[i++];
                     ping(b).then(function () { baseIndex = list.indexOf(b); resolve(); }, tryNext);
                 })();

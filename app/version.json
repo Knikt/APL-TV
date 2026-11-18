@@ -1,8 +1,8 @@
 {
- "version": "1.4.0",
+ "version": "1.4.1",
  "loader": 1,
  "reinstall": "1.0.1",
- "notes": "Stremio in the Versions, public domain movies, Spanish and Italian, crash reports",
+ "notes": "Send a Report from Settings, Stalker series filed among movies, and the Samsung helper under another package id",
  "platforms": {
   "tizen": {
    "reinstall": "1.0.1"

@@ -179,11 +179,28 @@
     /* The catalog. onFirst(out), when given, is called once the channels and the first page of every category
        are in: the screen can be used while the other pages come (#19: a big portal took minutes). */
     function load(src, progress, base, onFirst) {
-        var out = base;
+        var out = base, vodCats = {};
         out.type = "stalker";
+        /* A series filed among the movies (is_series): many portals keep their shows in the video club (#30). It goes to
+           Series, in a category of the same name. Its episodes come with it when the portal lists them there, or are
+           asked when its page opens (seriesInfo). */
+        function addVodSeries(s, ct) {
+            if (out.series.items.length >= MAX_ITEMS) return;
+            var cid = src.id + ":v" + ct.id.split(":").pop();
+            if (!vodCats[cid]) { vodCats[cid] = 1; out.series.cats.push({ id: cid, name: ct.name, raw: ct.raw, tag: ct.tag, lang: ct.lang, adult: ct.adult, kind: "series", count: 0 }); }
+            var name = s.name || s.o_name || "", t = S.title(name), list = Array.isArray(s.series) ? s.series : [], sn = seasonOf(name);
+            out.series.items.push({
+                id: src.id + "|v" + s.id, src: src.id, seriesId: s.id, kind: "series", name: name, title: t.title !== name ? t.title : undefined,
+                year: t.year || parseInt(s.year, 10) || 0, poster: img(src, s.screenshot_uri || s.cover_big), cat: cid, rating: parseFloat(s.rating_imdb || s.rating_kinopoisk) || 0,
+                added: Date.parse(String(s.added || "").replace(" ", "T")) / 1000 || 0,
+                eps: list.length ? list.map(function (n) { var e = parseInt(n, 10) || 0; return { id: s.id + "_" + sn + "_" + e, season: sn, episode: e, url: addr(src, "vod", s.cmd, e) }; }) : undefined
+            });
+        }
         function addMovies(d, ct) {
             d.forEach(function (m) {
-                if (!m || !m.cmd || m.is_series == 1 || out.movies.items.length >= MAX_ITEMS) return;
+                if (!m || !m.cmd) return;
+                if (m.is_series == 1) { addVodSeries(m, ct); return; }
+                if (out.movies.items.length >= MAX_ITEMS) return;
                 var name = m.name || m.o_name || "", t = S.title(name);
                 out.movies.items.push({
                     id: src.id + "|m" + m.id, src: src.id, sid: m.id, url: addr(src, "vod", m.cmd), kind: "movie", name: name, title: t.title !== name ? t.title : undefined,
@@ -238,7 +255,7 @@
         }).then(function () {
             progress(T("Loading series…"));
             return call(src, "type=series&action=get_categories").then(function (sc) {
-                out.series.cats = cats(sc, src.id, "series", "s");
+                out.series.cats = cats(sc, src.id, "series", "s").concat(out.series.cats);      // after the ones found among the movies
                 return firstPages(src, out.series.cats, seriesParams, addSeries).then(function (r) { restS = r; });
             }).catch(function (e) { TV.log("stalker series: " + e.message); out.failed.series = e.message; });
         }).then(function () {
@@ -253,18 +270,30 @@
         });
     }
 
-    /* A series' seasons and episodes (asked when its page opens) */
+    /* "Show S02", "Season 2": its season; 1 otherwise */
+    function seasonOf(name) {
+        var m = /\bS(\d{1,2})(?:\b|E\d)|\b(?:season|saison|temporada|staffel|stagione|sezon)\s*(\d{1,2})\b/i.exec(String(name || ""));
+        return m ? parseInt(m[1] || m[2], 10) || 1 : 1;
+    }
+    /* A series' seasons and episodes (asked when its page opens): from the series module, or from the video club for a
+       series filed among the movies (its id has "|v") */
     function seriesInfo(src, item) {
-        return call(src, "type=series&action=get_ordered_list&movie_id=" + encodeURIComponent(item.seriesId) + "&season_id=0&episode_id=0&p=1", 60000).then(function (j) {
+        var type = /\|v[^|]*$/.test(item.id) ? "vod" : "series";
+        return call(src, "type=" + type + "&action=get_ordered_list&movie_id=" + encodeURIComponent(item.seriesId) + "&season_id=0&episode_id=0&p=1", 60000).then(function (j) {
             var seasons = {};
             ((j && j.data) || []).forEach(function (se, si) {
                 var sn = parseInt(String(se.name || "").replace(/\D+/g, " ").trim().split(" ")[0], 10) || (si + 1);
                 var eps = Array.isArray(se.series) ? se.series : [];
+                if (!eps.length) return;
                 seasons[sn] = eps.map(function (n) {
                     var e = parseInt(n, 10) || 0;
                     return { id: item.seriesId + "_" + sn + "_" + e, season: sn, episode: e, title: "", url: addr(src, "vod", se.cmd, e), image: "", plot: "" };
                 });
             });
+            if (!Object.keys(seasons).length) {
+                var first = ((j && j.data) || [])[0];
+                TV.log("stalker: no episodes in the " + type + " answer for " + item.seriesId + " (" + ((j && j.data) || []).length + " items" + (first ? ", fields " + Object.keys(first).slice(0, 20).join(",") : "") + ")");
+            }
             return { seasons: seasons, info: {} };
         });
     }
@@ -281,7 +310,12 @@
             if (!/^(https?|rtsp|rtmp):\/\//i.test(link)) {
                 // some portals give the link directly in the channel's own cmd
                 link = cmd.replace(/^(ffmpeg|ffrt\d*|auto)\s+/i, "").trim();
-                if (!/^https?:\/\//i.test(link) || /localhost/i.test(link)) throw new Error(T("The portal gave no link for this channel."));
+                if (!/^https?:\/\//i.test(link) || /localhost/i.test(link)) {
+                    // what the portal said, for the log and the report (#30: movies a portal gave no link for)
+                    var said = "";
+                    try { TV.log("stalker: no link in the portal's answer: " + JSON.stringify(j).slice(0, 400)); said = j && (j.error || j.msg) ? String(j.error || j.msg).slice(0, 80) : ""; } catch (e) {}
+                    throw new Error((m[2] === "itv" ? T("The portal gave no link for this channel.") : T("The portal gave no link for this video.")) + (said ? " (" + said + ")" : ""));
+                }
             }
             return link;
         });

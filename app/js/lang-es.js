@@ -1168,5 +1168,12 @@ window.TV_LANG_ES = {
     "GB": "GB",
     "For a TV or a stick with little memory, or one that lags: Home with 2 catalogs, smaller covers, the playlist refreshed only when nothing plays, the TV guide and the animations off. Automatic: on with 1 GB of memory, off with 2 GB or more.": "Para una TV o un stick con poca memoria, o que va lento: el inicio con 2 catálogos, carátulas más ligeras, la lista actualizada solo cuando no se reproduce nada, la guía de TV y las animaciones desactivadas. Automático: activado con 1 GB de memoria, desactivado con 2 GB o más.",
     "This screen: {ram}.": "Esta pantalla: {ram}.",
-    "APL TV restarts to apply it.": "APL TV se reinicia para aplicarlo."
+    "APL TV restarts to apply it.": "APL TV se reinicia para aplicarlo.",
+    /* Send a Report (#22, #30, #34), a portal with no link for a video (#30) */
+    "Send a Report": "Enviar un informe",
+    "Something doesn't work? Right after the problem, send the developer what APL TV did: the last lines of its log, your TV's model and the app's version, with a code to give on GitHub.": "¿Algo no funciona? Justo después del problema, envía al desarrollador lo que hizo APL TV: las últimas líneas de su registro, el modelo de tu TV y la versión de la app, con un código para dar en GitHub.",
+    "Something doesn't work? Send the developer what APL TV did just now: the last lines of its log, your TV's model and the app's version. No passwords, no playlist addresses.": "¿Algo no funciona? Envía al desarrollador lo que APL TV acaba de hacer: las últimas líneas de su registro, el modelo de tu TV y la versión de la app. Sin contraseñas ni direcciones de listas.",
+    "Send it right after the problem, then give this code with your issue on GitHub: {code}": "Envíalo justo después del problema y luego da este código con tu issue en GitHub: {code}",
+    "Give this code with your issue on GitHub: {code}": "Da este código con tu issue en GitHub: {code}",
+    "The portal gave no link for this video.": "El portal no dio ningún enlace para este vídeo."
 };

@@ -189,6 +189,9 @@
         rows.push({ label: T("Crash Reports"), acc: "chevron", value: { ask: T("Ask"), always: T("Always Send"), never: T("Never") }[TV.pref("crashReports")] || T("Ask"),
             desc: T("When APL TV stopped unexpectedly, the next start offers to send a report to the developer: the last lines of APL TV's log, your TV's model and the app's version. Never a password or a playlist address."),
             run: function () { choose(T("Crash Reports"), "crashReports", CRASH); } });
+        if (TV.crash) rows.push({ label: T("Send a Report"), acc: "chevron",
+            desc: T("Something doesn't work? Right after the problem, send the developer what APL TV did: the last lines of its log, your TV's model and the app's version, with a code to give on GitHub."),
+            run: function () { TV.crash.manual(); } });
         if (TV.DONATE) rows.push({ label: T("Support APL TV"), acc: "chevron", icon: "star",
             desc: T("APL TV is free and made by one person. If you like it, you can buy me a coffee on Ko-fi: OK shows a code to scan with your phone."),
             run: function () {

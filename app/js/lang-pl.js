@@ -1095,5 +1095,12 @@ window.TV_LANG_PL = {
     "GB": "GB",
     "For a TV or a stick with little memory, or one that lags: Home with 2 catalogs, smaller covers, the playlist refreshed only when nothing plays, the TV guide and the animations off. Automatic: on with 1 GB of memory, off with 2 GB or more.": "Dla telewizora lub przystawki z małą ilością pamięci albo działającej wolno: ekran główny z 2 katalogami, lżejsze okładki, playlista odświeżana tylko wtedy, gdy nic nie jest odtwarzane, przewodnik TV i animacje wyłączone. Automatycznie: włączony przy 1 GB pamięci, wyłączony przy 2 GB lub więcej.",
     "This screen: {ram}.": "Ten ekran: {ram}.",
-    "APL TV restarts to apply it.": "APL TV uruchomi się ponownie, aby to zastosować."
+    "APL TV restarts to apply it.": "APL TV uruchomi się ponownie, aby to zastosować.",
+    /* Send a Report (#22, #30, #34), a portal with no link for a video (#30) */
+    "Send a Report": "Wyślij raport",
+    "Something doesn't work? Right after the problem, send the developer what APL TV did: the last lines of its log, your TV's model and the app's version, with a code to give on GitHub.": "Coś nie działa? Zaraz po problemie wyślij twórcy, co zrobiło APL TV: ostatnie linie jego dziennika, model telewizora i wersję aplikacji, z kodem do podania na GitHubie.",
+    "Something doesn't work? Send the developer what APL TV did just now: the last lines of its log, your TV's model and the app's version. No passwords, no playlist addresses.": "Coś nie działa? Wyślij twórcy, co APL TV właśnie zrobiło: ostatnie linie jego dziennika, model telewizora i wersję aplikacji. Bez haseł i adresów list.",
+    "Send it right after the problem, then give this code with your issue on GitHub: {code}": "Wyślij go zaraz po problemie, a potem podaj ten kod w swoim zgłoszeniu na GitHubie: {code}",
+    "Give this code with your issue on GitHub: {code}": "Podaj ten kod w swoim zgłoszeniu na GitHubie: {code}",
+    "The portal gave no link for this video.": "Portal nie podał linku do tego filmu."
 };

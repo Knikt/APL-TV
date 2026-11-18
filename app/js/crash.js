@@ -62,6 +62,8 @@
         return "";
     }
     function apk() { try { return TV.ANDROID && global.APLAndroid && global.APLAndroid.version ? global.APLAndroid.version() || "" : ""; } catch (e) { return ""; } }
+    function platform() { return TV.ANDROID ? "android" : TV.WEBOS ? "webos" : TV.TIZEN ? "tizen" : "preview"; }
+    function os() { return String(navigator.userAgent || "").replace(/\s+APLTV-Android$/, "").slice(0, 160); }
 
     /* What happened last time, or null when APL TV left normally */
     function last() {
@@ -86,8 +88,7 @@
         return {
             app: "APL TV", id: TV.uid() + Math.random().toString(36).slice(2, 6),
             version: (p && p.version) || TV.VERSION, installed: global.TV_UPDATE ? global.TV_UPDATE.installed : "", apk: apk(),
-            platform: TV.ANDROID ? "android" : TV.WEBOS ? "webos" : TV.TIZEN ? "tizen" : "preview",
-            model: model(), os: String(navigator.userAgent || "").replace(/\s+APLTV-Android$/, "").slice(0, 160), lang: TV.lang || "",
+            platform: platform(), model: model(), os: os(), lang: TV.lang || "",
             kind: kind, why: why, reason: mask(reason).slice(0, 6000), memory: mask(a.memory || ""),
             upFor: p && p.started ? Math.round(((p.at || p.started) - p.started) / 1000) : 0,
             when: p && p.at ? new Date(p.at).toISOString() : java && java.at ? new Date(java.at).toISOString() : "",
@@ -110,8 +111,9 @@
     }
     function sendNow(r, quiet) {
         return send(r).then(function () {
-            TV.log("crash report " + r.id + " sent");
-            TV.toast(quiet ? T("A report about the last stop was sent to the developer.") : T("Report sent. Thank you!"));
+            TV.log((r.code ? "report " + r.code : "crash report " + r.id) + " sent");
+            if (r.code) TV.alert({ title: T("Report sent. Thank you!"), message: T("Give this code with your issue on GitHub: {code}", { code: r.code }) });
+            else TV.toast(quiet ? T("A report about the last stop was sent to the developer.") : T("Report sent. Thank you!"));
         }, function (e) {
             TV.log("crash report not sent: " + e.message);
             if (!quiet) TV.toast(T("The report couldn't be sent: {error}", { error: e.message }), true);
@@ -151,7 +153,42 @@
         });
     }
 
+    /* Settings › About › Send a Report: when something doesn't work (a phone page that doesn't open, a movie that doesn't
+       play, subtitles without their language), what APL TV did just now goes to the developer, with a short code to
+       give in a GitHub issue. The same relay and the same care as a crash report; nothing goes without the OK. */
+    function now() {
+        var code = Math.random().toString(36).slice(2, 8).toUpperCase(), mem = "", screen = "", playing = "";
+        while (code.length < 6) code += "X";
+        try { if (TV.ANDROID && global.APLAndroid && global.APLAndroid.memory) mem = String(global.APLAndroid.memory() || ""); } catch (e) {}
+        try { screen = TV.shell && TV.shell.current ? String(TV.shell.current() || "") : ""; } catch (e) {}
+        try { var c = TV.player && TV.player.current && TV.player.current(); playing = c ? (c.opts && c.opts.live ? "live" : "video") : ""; } catch (e) {}
+        words = null;                                     // the playlists as they are now
+        return {
+            app: "APL TV", id: TV.uid() + code.toLowerCase(), code: code,
+            version: TV.VERSION, installed: global.TV_UPDATE ? global.TV_UPDATE.installed : "", apk: apk(),
+            platform: platform(), model: model(), os: os(), lang: TV.lang || "",
+            kind: "report", why: "", reason: "Report sent from Settings, code " + code, memory: mask(mem),
+            upFor: TV.blackbox ? Math.round((Date.now() - TV.blackbox.started) / 1000) : 0, when: new Date().toISOString(),
+            screen: screen, playing: playing, lines: (TV.logs || []).slice(-200).map(mask), serviceLines: []
+        };
+    }
+    function manual() {
+        if (!relay()) { TV.toast(T("The report couldn't be sent: {error}", { error: T("no address to send to yet") }), true); return; }
+        var r = now();
+        TV.alert({
+            title: T("Send a Report"),
+            message: T("Something doesn't work? Send the developer what APL TV did just now: the last lines of its log, your TV's model and the app's version. No passwords, no playlist addresses.") + "\n\n" +
+                     T("Send it right after the problem, then give this code with your issue on GitHub: {code}", { code: r.code }),
+            buttons: [
+                { label: T("Send"), run: function () { sendNow(r); } },
+                { label: T("Show the Report"), run: function () { showReport(r, function () {}); } },
+                { label: T("Cancel") }
+            ]
+        });
+    }
+
     TV.crash = {
+        manual: manual,
         /* At start-up, before anything else is offered (js/app.js): the box when the last session stopped on screen,
            then "then" (the resume offer…) */
         check: function (then) {

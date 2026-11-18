@@ -43,7 +43,8 @@ export default {
         if (await count(kv, "ip:" + ip + ":" + hour, 3600) > PER_SCREEN_HOUR) return answer({ error: "too many reports, later" }, 429);
         if (await count(kv, "day:" + day, 86400) > PER_DAY) return answer({ error: "too many reports today" }, 429);
 
-        const sig = await hash([rep.platform, rep.version, rep.kind, signature(rep.reason)].join("|"));
+        // a report sent from Settings is about one person's problem: always its own issue
+        const sig = await hash([rep.platform, rep.version, rep.kind, rep.kind === "report" ? rep.id : signature(rep.reason)].join("|"));
         const first = await get(kv, "sig:" + sig);
         let res;
         if (first) res = await github(env, "POST", "/issues/" + first + "/comments", { body: commentBody(rep) });
@@ -70,7 +71,7 @@ function clean(r) {
     return {
         id: String(r.id), version: String(r.version), platform,
         installed: str(r.installed, 20), apk: str(r.apk, 20), model: str(r.model, 80), os: str(r.os, 160), lang: str(r.lang, 8),
-        kind: ["crash", "closed", "page", "memory", "test"].indexOf(r.kind) >= 0 ? r.kind : "closed",
+        kind: ["crash", "closed", "page", "memory", "test", "report"].indexOf(r.kind) >= 0 ? r.kind : "closed",
         reason: str(r.reason, 6000), why: str(r.why, 200), memory: str(r.memory, 300), upFor: Math.max(0, Math.min(1e7, Number(r.upFor) || 0)),
         when: str(r.when, 30), screen: str(r.screen, 40), playing: str(r.playing, 20),
         lines, javaLines
@@ -91,7 +92,7 @@ function signature(reason) {
 }
 
 /* ---------- the issue ---------- */
-const KIND = { crash: "Crash", closed: "Closed unexpectedly", page: "Page stopped", memory: "Closed: low memory", test: "Test" };
+const KIND = { crash: "Crash", closed: "Closed unexpectedly", page: "Page stopped", memory: "Closed: low memory", test: "Test", report: "Report" };
 function title(r) {
     const first = (String(r.reason || "").split("\n").filter((l) => l.trim())[0] || r.why || "").slice(0, 90);
     return safe("[" + r.platform + " " + r.version + "] " + KIND[r.kind] + (first ? ": " + first : "") + (r.model ? " · " + r.model : "")).slice(0, 180);
