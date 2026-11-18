@@ -11,7 +11,7 @@
     "use strict";
 
     var TV = global.TV, el = TV.el, esc = TV.esc, T = TV.t, D = TV.data;
-    TV.VERSION = "1.3.0";
+    TV.VERSION = "1.4.0";
     TV.DONATE = "https://ko-fi.com/knikt";     // the Ko-fi page for donations (Settings > About, README, .github/FUNDING.yml)
     var BASE = [
         { id: "home", label: T("Home") },
@@ -32,6 +32,8 @@
         mediaIds = media.map(function (t) { return t.id + "=" + t.label; }).join(",");
         // Settings > Display > Sports Tab off (#25): no Sports tab, and nothing of Sports ever loads (it loads when shown)
         var base = BASE.filter(function (t) { return t.id !== "sports" || TV.pref("sportsTab") !== false; });
+        // little memory (core.js TV.SMALL): the TV guide off takes its tab away too
+        if (TV.SMALL && TV.pref("tvGuide") === false) base = base.filter(function (t) { return t.id !== "guide"; });
         var after = base.map(function (t) { return t.id; }).indexOf("series") + 1;
         TABS = base.slice(0, after).concat(media, base.slice(after));
         var nav = TV.$("tabs");
@@ -172,6 +174,8 @@
                 return true;
             }
             if (m.tab && TV.views[m.tab]) { go(m.tab, true); return true; }
+            // a page of Settings to add a source (APL Launcher, a test): settings=phone|media|plex|jellyfin|stremio
+            if (m.settings && TV.setup && /^(phone|media|plex|jellyfin|stremio)$/.test(m.settings)) { TV.setup.media(m.settings); return true; }
             // A search asked from outside (voice, APL Launcher): search=<words>
             if (m.search && TV.voice) { TV.voice.search(String(m.search).slice(0, 80)); return true; }
             if (m.play === "last") { var last = D.channel(TV.pref("lastChannel")); if (last) { TV.live.play(last); return true; } }
@@ -275,8 +279,12 @@
             if (tab === "settings" || tab === "search" || !TV.views[tab] || !TABS.some(function (t) { return t.id === tab; })) tab = "home";
             go(hasData ? tab : "home", true);
             // the first start (or the first after this update): how to show the playlist, then the rest
-            if (TV.pref("setupDone") !== 1 && TV.playlistSetup) setTimeout(function () { TV.playlistSetup(function () { if (hasData) setTimeout(offerResume, 800); }); }, 700);
-            else if (hasData) setTimeout(offerResume, 1200);
+            function offers() {
+                if (TV.pref("setupDone") !== 1 && TV.playlistSetup) setTimeout(function () { TV.playlistSetup(function () { if (hasData) setTimeout(offerResume, 800); }); }, 700);
+                else if (hasData) setTimeout(offerResume, 1200);
+            }
+            // a stop without warning last time (js/crash.js): its box comes first
+            if (TV.crash) TV.crash.check(offers); else offers();
             setTimeout(function () { TV.$("boot").classList.add("is-hidden"); document.body.classList.remove("is-booting"); global.TV_BOOT_OK = true; }, 150);
             readRequest();
             if (TV.voice) TV.voice.start();

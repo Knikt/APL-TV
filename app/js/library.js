@@ -13,6 +13,7 @@
 
     function isMedia(s) { return !!s && (s.type === "jellyfin" || s.type === "plex"); }
     function label(s) { return s.type === "plex" ? "Plex" : s.kind === "emby" ? "Emby" : "Jellyfin"; }
+    function firstRow() { return T("Recently Added"); }
     /* The tabs of the media servers: "Plex", "Jellyfin"… (the server's own name when two have the same) */
     function tabs() {
         var list = D.sources().filter(isMedia), count = {};
@@ -64,7 +65,7 @@
             heroEl.innerHTML = "";
             if (!item) return;
             var s = src();
-            heroEl.appendChild(el("div", "hero__kicker", esc((s ? label(s) : "") + " · " + T("Recently Added"))));
+            heroEl.appendChild(el("div", "hero__kicker", esc((s ? label(s) : "") + " · " + firstRow(s))));
             var title = el("div", "hero__title", esc(item.title || item.name));
             heroEl.appendChild(title);
             var bits = [];
@@ -151,7 +152,7 @@
                     return TV.card.wide(x.item, { sub: sub, progress: r.upNext ? 0 : (r.dur ? r.pos / r.dur : 0) });
                 }
             });
-            addRow(T("Recently Added"), all.slice(0, 30), "poster");
+            addRow(firstRow(s), all.slice(0, 30), "poster");
             L.forEach(function (l) { addRow(l.cat.name, l.items.slice(0, 400), "poster", { sub: l.kind === "movies" ? T("{n} movies", { n: l.items.length }) : T("{n} series", { n: l.items.length }) }); });
             addRow(T("My List"), D.itemsIn("movies", "mylist").concat(D.itemsIn("series", "mylist")).filter(mine), "poster");
             if (zone >= strips.length) zone = strips.length - 1;

@@ -77,6 +77,7 @@ public class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle state) {
         super.onCreate(state);
+        Crash.install(this);              // an error no code catches: written down for the next start (js/crash.js)
         takeRequest(getIntent());
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         FrameLayout root = new FrameLayout(this);
@@ -96,16 +97,34 @@ public class MainActivity extends Activity {
             stage.post(() -> stage.setLayoutParams(p));
         });
 
+        this.stage = stage;
         player = new Player(this, stage);
-        web = new WebView(this);
+        web = makePage();
+        stage.addView(web, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
+        setContentView(root);
+
+        player.attach(web);
+
+        helper = new Helper(this);
+        helper.start();
+        Crash.use(helper);
+
+        web.loadUrl(PAGE);
+        web.requestFocus();
+    }
+
+    private static final String PAGE = "file:///android_asset/app/index.html";
+    private FrameLayout stage;
+    /* The page: the WebView and its settings (made again when Android stopped the old one, pageGone) */
+    @SuppressLint({"SetJavaScriptEnabled", "AddJavascriptInterface"})
+    private WebView makePage() {
+        WebView web = new WebView(this);
         web.setBackgroundColor(Color.TRANSPARENT);
         web.setLayerType(View.LAYER_TYPE_HARDWARE, null);
         web.setFocusable(true);
         web.setFocusableInTouchMode(true);
         web.setVerticalScrollBarEnabled(false);
         web.setHorizontalScrollBarEnabled(false);
-        stage.addView(web, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
-        setContentView(root);
 
         WebSettings s = web.getSettings();
         s.setJavaScriptEnabled(true);
@@ -124,17 +143,51 @@ public class MainActivity extends Activity {
         s.setUserAgentString(s.getUserAgentString() + " APLTV-Android");
         s.setTextZoom(100);
         web.setInitialScale(0);
-        web.setWebViewClient(new WebViewClient());
+        web.setWebViewClient(new WebViewClient() {
+            /* The page runs in a process of its own, which Android stops when memory is short (a Fire TV Stick), or
+               which can crash. Without this, Android then closed the whole app: the page is made again instead. */
+            @Override public boolean onRenderProcessGone(WebView view, android.webkit.RenderProcessGoneDetail d) {
+                pageGone(view, d != null && d.didCrash());
+                return true;
+            }
+        });
         web.setWebChromeClient(new WebChromeClient());
         if (BuildConfigDebug.on(this)) WebView.setWebContentsDebuggingEnabled(true);
-
-        player.attach(web);
         web.addJavascriptInterface(new Bridge(), "APLAndroid");
+        return web;
+    }
 
-        helper = new Helper(this);
-        helper.start();
-
-        web.loadUrl("file:///android_asset/app/index.html");
+    /* ---------- the page stopped by Android ----------
+       The old WebView can't be used again: it goes, the video stops (the new page starts from Home), and a new one
+       opens; at once when the app is on screen, otherwise when it comes back. A fourth time with less than two minutes
+       between each: closed, as before, rather than starting again without end. */
+    private boolean visible = false, pageWanted = false;
+    private int pageRestarts = 0;
+    private long pageRestartAt = 0;
+    private void pageGone(WebView dead, boolean crashed) {
+        String why = crashed ? "crashed" : "was stopped by Android (memory)";
+        android.util.Log.w("APLTV", "the page " + why);
+        if (stage != null) stage.removeView(dead);
+        if (dead != web) { dead.destroy(); return; }
+        web = null;
+        editing = false;
+        if (player != null) { player.page(null); player.close(); }
+        dead.destroy();
+        if (helper != null) helper.pageGone(why);
+        if (visible) Crash.pageStopped(crashed);           // the new page offers to send a report (js/crash.js)
+        long now = android.os.SystemClock.elapsedRealtime();
+        pageRestarts = now - pageRestartAt < 120000 ? pageRestarts + 1 : 1;
+        pageRestartAt = now;
+        if (pageRestarts > 3) { android.util.Log.w("APLTV", "the page keeps stopping: APL TV closes"); finishAndRemoveTask(); return; }
+        if (visible) newPage(); else pageWanted = true;
+    }
+    private void newPage() {
+        pageWanted = false;
+        if (isFinishing() || isDestroyed()) return;
+        web = makePage();
+        stage.addView(web, Math.min(1, stage.getChildCount()), new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));   // over the video
+        player.page(web);
+        web.loadUrl(PAGE);
         web.requestFocus();
     }
 
@@ -222,9 +275,10 @@ public class MainActivity extends Activity {
             editing = on;
             runOnUiThread(() -> {
                 InputMethodManager im = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
-                if (im == null) return;
-                if (on) { web.requestFocus(); im.showSoftInput(web, InputMethodManager.SHOW_IMPLICIT); }
-                else im.hideSoftInputFromWindow(web.getWindowToken(), 0);
+                WebView w = web;
+                if (im == null || w == null) return;
+                if (on) { w.requestFocus(); im.showSoftInput(w, InputMethodManager.SHOW_IMPLICIT); }
+                else im.hideSoftInputFromWindow(w.getWindowToken(), 0);
             });
         }
         // The player (Player.java): the same calls as Samsung's AVPlay, through js/android.js
@@ -251,6 +305,19 @@ public class MainActivity extends Activity {
         /* AV Sync, in milliseconds: + the sound later, - earlier (Settings > Playback) */
         @JavascriptInterface public void audioDelay(int ms) { Player.audioOffsetUs = Math.max(-2000, Math.min(2000, ms)) * 1000L; }
         @JavascriptInterface public void suspend() { player.suspend(); }
+        /* js/crash.js: what Android knows about the last stop without warning, then "answered" */
+        /* js/core.js TV.SMALL: { total, free (MB), small, heap } */
+        @JavascriptInterface public String memory() { return Crash.memoryJson(MainActivity.this); }
+        /* Light Mode as the page decided it (Automatic, On or Off in Settings) */
+        @JavascriptInterface public void light(boolean on) { Crash.forced = on; }
+        @JavascriptInterface public String crashReport() { return Crash.report(MainActivity.this); }
+        @JavascriptInterface public void crashDone() { Crash.done(MainActivity.this); }
+        /* Development builds only: an error on purpose, to try the "Oops" box ("java": in a thread, "page": the page's process) */
+        @JavascriptInterface public void crashTest(String kind) {
+            if (!BuildConfigDebug.on(MainActivity.this)) return;
+            if ("page".equals(kind)) runOnUiThread(() -> { WebView w = web; if (w != null) w.loadUrl("chrome://crash"); });
+            else new Thread(() -> { throw new IllegalStateException("APL TV crash test (development build)"); }, "crash-test").start();
+        }
         @JavascriptInterface public void restore() { player.restore(); }
     }
 
@@ -262,8 +329,14 @@ public class MainActivity extends Activity {
         web.onPause();
     }
     @Override protected void onResume() { super.onResume(); if (web != null) web.onResume(); }
-    @Override protected void onStop() { super.onStop(); if (player != null) player.suspend(); }
-    @Override protected void onStart() { super.onStart(); if (player != null) player.restore(); }
+    @Override protected void onStop() { super.onStop(); visible = false; if (player != null) player.suspend(); }
+    @Override protected void onStart() { super.onStart(); visible = true; if (pageWanted) newPage(); if (player != null) player.restore(); }
+    /* Android says memory is short: the guides the helper keeps go first (the page already has what it asked) */
+    @Override public void onTrimMemory(int level) {
+        super.onTrimMemory(level);
+        if (helper != null && (level == TRIM_MEMORY_RUNNING_LOW || level == TRIM_MEMORY_RUNNING_CRITICAL || level >= TRIM_MEMORY_MODERATE))
+            helper.trim("Android asked to free memory (" + level + ")");
+    }
     @Override
     protected void onDestroy() {
         if (helper != null) helper.stop();

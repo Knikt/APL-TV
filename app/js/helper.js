@@ -119,6 +119,13 @@
             });
         },
         session: function () { return call("/session", { method: "POST", body: "{}" }).then(json); },
+        /* Stremio's torrent engine started by the service (Samsung): { ok, base } (an older service: not known) */
+        stremioEngine: function () {
+            return call("/stremio/engine", { timeout: 32000 }).then(function (r) {
+                if (r.status === 404) return { ok: false, old: true };
+                return json(r);
+            });
+        },
         /* The phone editor (1.0.11): the playlist goes to the helper, the phone's changes come back */
         editStart: function (data) {
             return call("/edit/start", { method: "POST", timeout: 30000, body: JSON.stringify(data) }).then(function (r) {

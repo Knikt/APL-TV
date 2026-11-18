@@ -50,10 +50,13 @@
         draw();
         TV.pushNav(screen);
         var t0 = Date.now();
+        // Stremio: a movie's streams join its Versions (a title of the playlist is found in Stremio by its IMDb id, from TMDB)
+        stremioFor(it, null, my);
         // TMDB at once: usually already known from the covers, so the page is complete in its first frame
         TV.meta.lookup(it, it._ref && it._ref.id).then(function (m) {
             if (my !== token || !m || meta) return;
             meta = m;
+            stremioFor(it, m, my);
             if (it.kind === "series") tmdbTv = m.tmdbId;
             if (m.backdrop) setBg(m.backdrop);
             drawSoon();
@@ -72,6 +75,7 @@
             }
             if (it.kind === "series" && info) {
                 seasons = info.seasons || {};
+                if (it._imdb) setTimeout(function () { addStremioEps(it, my); }, 0);
                 seasonKeys = Object.keys(seasons).filter(function (k) { return seasons[k].length; }).sort(function (a, b) { return a - b; });
                 tmdbId = parseInt(info.info && (info.info.tmdb || info.info.tmdb_id), 10) || 0;
                 if (!it.plot && info.info && info.info.plot) it.plot = info.info.plot;
@@ -95,6 +99,7 @@
             if (it.kind === "series") tmdbTv = m.tmdbId;
             if (changed && m.backdrop) setBg(m.backdrop);
             if (changed) { drawSoon(); extraLists = {}; loadExtras(my); }
+            stremioFor(it, m, my);
             if (it.kind === "series") enrichSeason();
         }).catch(function (e) { TV.log("detail: " + e.message); });
         onCloseCb = opts.onClose || null;
@@ -224,22 +229,9 @@
                 add("btn--primary", TV.icon("play", 28) + esc(label), function () { playEp(first, resuming ? start.pos : 0); });
             }
         }
-        if (it.versions && it.versions.length > 1) {
-            add("", TV.icon("quality", 28) + esc(T("Versions ({n})", { n: it.versions.length })), function () {
-                TV.menu(T("Versions"), it.versions.map(function (v) {
-                    var c = D.catOf(v), q = (String(v.name).match(/\b(4K|UHD|FHD|HD|MULTI|VOSTFR|VF|VO|HDR)\b/gi) || []).join(" ");
-                    return { label: [c.tag, q, c.name].filter(Boolean).join(" · ") || v.name, check: v === item, run: function () {
-                        if (v === item) return;
-                        // the page opens again on this version: its own episodes, plot and links (before, a series kept
-                        // the episodes of the first version, so that one played), and it is remembered for next time
-                        var vs = it.versions; v.versions = vs;
-                        D.preferVersion(v);
-                        token++;
-                        open(v, { back: true, onClose: onCloseCb });
-                        TV.toast(T("Version changed: {name}", { name: [c.tag, q].filter(Boolean).join(" · ") || c.name || v.name }));
-                    } };
-                }));
-            });
+        var plVers = playlistVersions(it), stVers = it.kind === "movie" ? it._streams || [] : [], stOthers = it.kind === "movie" ? it._others || [] : [];
+        if (plVers.length + stVers.length + stOthers.length > 1) {
+            add("", TV.icon("quality", 28) + esc(T("Versions ({n})", { n: plVers.length + stVers.length + stOthers.length })), function () { versionsMenu(it, plVers, stVers, stOthers); });
         }
         var inl = D.inMyList(it.id);
         add("", TV.icon(inl ? "check" : "plus", 28) + esc(T("My List")), function () {
@@ -310,7 +302,7 @@
         if (D.watched(item, ep)) { art.appendChild(el("div", "ep__seen", TV.icon("check", 20) + esc(T("Watched")))); c.classList.add("is-seen"); }
         else if (r && r.dur) { var b = el("div", "card__bar"); b.innerHTML = "<i style='width:" + Math.round(100 * Math.min(1, r.pos / r.dur)) + "%'></i>"; art.appendChild(b); }
         c.appendChild(art);
-        c.appendChild(el("div", "ep__n", esc(T("Episode {n}", { n: ep.episode })) + (ep.dur ? " · " + esc(TV.runtime(Math.round(ep.dur / 60))) : "")));
+        c.appendChild(el("div", "ep__n", esc(T("Episode {n}", { n: ep.episode })) + (ep.dur ? " · " + esc(TV.runtime(Math.round(ep.dur / 60))) : "") + (ep.fromStremio ? " · Stremio" : "")));
         c.appendChild(el("div", "ep__t", esc(ep._name || ep.title || T("Episode {n}", { n: ep.episode }))));
         c.appendChild(el("div", "ep__d", esc(ep._plot || ep.plot || "")));
         c._art = function () {
@@ -389,10 +381,43 @@
     function epMenu(ep) {
         if (!ep) return;
         var done = D.watched(item, ep), k = seasonKeys[seasonIndex], sd = seasonDone(k);
-        TV.menu(T("S{s} E{e}", { s: ep.season, e: ep.episode }) + " · " + (ep._name || ep.title || ""), [
+        var items = [
             { label: done ? T("Mark as Unwatched") : T("Mark as Watched"), icon: "eyeCheck", run: function () { D.markWatched(item, [ep], !done); draw(); } },
             { label: sd ? T("Mark Season {n} as Unwatched", { n: k }) : T("Mark Season {n} as Watched", { n: k }), icon: "eyeCheck", run: function () { D.markWatched(item, seasons[k], !sd); draw(); } }
-        ]);
+        ];
+        // its versions: the playlist's, then the streams of your Stremio addons (the next episodes then take the same)
+        var sUrl = TV.stremio && TV.stremio.account() ? epStremioUrl(ep) : "";
+        if (sUrl) items.unshift({ label: T("Versions"), icon: "quality", run: function () {
+            TV.stremio.versions(sUrl).then(function (r) { epVersions(ep, sUrl, r.playable, r.others || []); }, function (e) { TV.toast(e.message); });
+        } });
+        TV.menu(T("S{s} E{e}", { s: ep.season, e: ep.episode }) + " · " + (ep._name || ep.title || ""), items);
+    }
+    function epVersions(ep, sUrl, st, others) {
+        others = others || [];
+        var it = item, fromPl = !ep.fromStremio && !isStremio(ep), pref = !fromPl || seriesPrefers(it), items = [];
+        if (fromPl) {
+            items.push({ header: srcName(it) });
+            items.push({ label: T("S{s} E{e}", { s: ep.season, e: ep.episode }) + (ep._name || ep.title ? " · " + (ep._name || ep.title) : ""), check: !pref, focus: !pref, run: function () {
+                setSeriesPrefers(it, false); TV.stremio.forget(sUrl);
+                TV.toast(T("Version changed: {name}", { name: srcName(it) })); draw();
+            } });
+        }
+        if (!st.length && !others.length && !fromPl) { TV.toast(T("Your Stremio addons found nothing that plays on a TV for this title.")); return; }
+        if (st.length || others.length) items.push({ header: "Stremio" });
+        if (st.length) {
+            var cur = TV.stremio.chosen(sUrl);
+            st.forEach(function (x, i) {
+                var on = pref && (cur ? x.link === cur : i === 0);
+                items.push({ label: x.label, check: on, focus: on, run: function () {
+                    TV.stremio.choose(sUrl, x);
+                    if (fromPl) setSeriesPrefers(it, true);
+                    TV.toast(T("Version changed: {name}", { name: x.label }));
+                    draw();
+                } });
+            });
+        }
+        items = items.concat(othersItems(others));
+        TV.menu(T("Versions"), items);
     }
     function hide(it) {
         TV.alert({ title: T("Hide “{name}”?", { name: it.title || it.name }), message: T("It will no longer appear anywhere in APL TV. You can bring it back in Settings, Hidden Titles."), buttons: [
@@ -401,19 +426,134 @@
         ] });
     }
 
+
+    /* ---------- Stremio in every title's Versions ---------- */
+    function isStremio(v) { return /^stremio:/.test(String((v && v.url) || "")); }
+    /* The playlist's versions of a title (not the Stremio catalog's copy of it, whose streams come below) */
+    function playlistVersions(it) {
+        var vs = it.versions && it.versions.length ? it.versions : [it];
+        return vs.filter(function (v) { return !isStremio(v); });
+    }
+    /* A title's Stremio address: its own (a title of your addons' catalogs), its Stremio copy among its versions, or its
+       IMDb id from TMDB. A series: kept for its episodes (the IMDb id of the show). */
+    function stremioFor(it, m, my) {
+        if (!TV.stremio || !TV.stremio.account() || it !== item) return;
+        if (it.kind === "series") {
+            var sid = it.seriesId && /^tt\d+$/.test(it.seriesId) && isStremioSrc(it) ? it.seriesId : (m && m.imdbId) || "";
+            if (sid && it._imdb !== sid) { it._imdb = sid; if (Object.keys(seasons).length) addStremioEps(it, my); }
+            return;
+        }
+        var vs = it.versions || [], own = isStremio(it) ? it : vs.filter(isStremio)[0];
+        var url = own ? own.url : m && m.imdbId ? TV.stremio.urlFor("movie", m.imdbId) : "";
+        if (!url || it._sUrl === url) return;
+        it._sUrl = url; it._streams = null; it._others = null;
+        // as each addon answers: the slowest one does not hold the others back
+        function got(r) { if (my !== token) return; it._streams = r.playable; it._others = r.others || []; drawSoon(); }
+        TV.stremio.versions(url, got).then(got,
+            function (e) { TV.log("stremio versions: " + e.message); it._streams = []; it._others = []; });
+    }
+    function isStremioSrc(it) { var s = D.sourceOf(it); return !!s && s.type === "stremio"; }
+    function srcName(v) { var s = D.sourceOf(v); return (s && s.name) || T("Playlist"); }
+    /* A stream the screen cannot play by itself: said so, with what to do */
+    /* A stream this TV cannot play: a torrent without Stremio's app on the TV (install it), a link needing headers */
+    function othersItems(list) {
+        return list.map(function (x) {
+            return { label: x.label + " · " + (x.why === "torrent" ? T("Install Stremio") : T("Needs a Streaming Server")), run: function () {
+                TV.alert({ title: x.why === "torrent" ? T("A Torrent") : T("A Protected Link"),
+                           message: T("To play torrents, install the Stremio app on this TV (APL TV then uses its torrent engine), or set a debrid service in this addon's settings.") });
+            } };
+        });
+    }
+    function versionsMenu(it, pl, st, others) {
+        others = others || [];
+        var items = [], url = it._sUrl, pref = url && TV.stremio.prefers(url);
+        var groups = {}, order = [];
+        pl.forEach(function (v) { var n = srcName(v); if (!groups[n]) { groups[n] = []; order.push(n); } groups[n].push(v); });
+        order.forEach(function (n) {
+            if (st.length || order.length > 1) items.push({ header: n });
+            groups[n].forEach(function (v) {
+                var c = D.catOf(v), q = (String(v.name).match(/\b(4K|UHD|FHD|HD|MULTI|VOSTFR|VF|VO|HDR)\b/gi) || []).join(" ");
+                items.push({ label: [c.tag, q, c.name].filter(Boolean).join(" · ") || v.name, check: v === item && !pref, focus: v === item && !pref, run: function () {
+                    if (url) TV.stremio.forget(url);
+                    if (v === item) { if (pref) { TV.toast(T("Version changed: {name}", { name: n })); draw(); } return; }
+                    // the page opens again on this version: its own links, remembered for next time
+                    var vs = it.versions; v.versions = vs;
+                    D.preferVersion(v);
+                    token++;
+                    open(v, { back: true, onClose: onCloseCb });
+                    TV.toast(T("Version changed: {name}", { name: [c.tag, q].filter(Boolean).join(" · ") || c.name || v.name }));
+                } });
+            });
+        });
+        if (st.length || others.length) items.push({ header: "Stremio" });
+        if (st.length) {
+            st.forEach(function (x, i) {
+                var on = pref ? TV.stremio.isPick(url, x) : !pl.length && i === 0;
+                items.push({ label: x.label, check: on, focus: on, run: function () {
+                    // chosen, not played: Play then plays it (and next time too)
+                    TV.stremio.choose(url, x);
+                    TV.toast(T("Version changed: {name}", { name: x.label }));
+                    draw();
+                } });
+            });
+        }
+        items = items.concat(othersItems(others));
+        TV.menu(T("Versions"), items);
+    }
+    /* Play: the playlist's version, unless a Stremio one was chosen for this title, or the playlist has none */
+    function playUrl(it) {
+        if (it._sUrl && (TV.stremio.prefers(it._sUrl) || !playlistVersions(it).length)) return it._sUrl;
+        return D.vodUrl(it);
+    }
+    /* A series of the playlist: an episode's Stremio address, and whether Stremio was chosen for this series */
+    function epStremioUrl(ep) {
+        if (isStremio(ep)) return ep.url;
+        return item && item._imdb && TV.stremio ? TV.stremio.urlFor("series", item._imdb + ":" + ep.season + ":" + ep.episode) : "";
+    }
+    function seriesPrefs() { return TV.load("stremioSeries", {}) || {}; }
+    function seriesPrefers(it) { return !!seriesPrefs()[it.id]; }
+    function setSeriesPrefers(it, on) {
+        var p = seriesPrefs(), k = Object.keys(p);
+        if (on) { if (k.length > 300) delete p[k[0]]; p[it.id] = 1; } else delete p[it.id];
+        TV.save("stremioSeries", p);
+    }
+    /* The episodes your playlist misses, from Stremio (a whole season too): they play from Stremio */
+    function addStremioEps(it, my) {
+        TV.stremio.episodes(it._imdb).then(function (list) {
+            if (my !== token || it !== item || !list.length) return;
+            var have = {}, added = 0;
+            Object.keys(seasons).forEach(function (k) { seasons[k].forEach(function (e) { have[(+e.season) + ":" + (+e.episode)] = 1; }); });
+            var now = Date.now();
+            list.forEach(function (e) {
+                if (have[e.season + ":" + e.episode] || (e.released && Date.parse(e.released) > now)) return;
+                e.fromStremio = true;
+                (seasons[e.season] = seasons[e.season] || []).push(e);
+                added++;
+            });
+            if (!added) return;
+            Object.keys(seasons).forEach(function (k) { seasons[k].sort(function (a, b) { return a.episode - b.episode; }); });
+            var cur = seasonKeys[seasonIndex];
+            seasonKeys = Object.keys(seasons).filter(function (k) { return seasons[k].length; }).sort(function (a, b) { return a - b; });
+            seasonIndex = Math.max(0, seasonKeys.indexOf(cur));
+            drawSoon();
+        });
+    }
+
     /* ---------- playing ---------- */
     function play(it, start) {
         var title = (meta && meta.title) || it.title || it.name;
-        TV.osd.vod({ url: D.vodUrl(it), item: it, title: title, sub: it.year ? String(it.year) : "", resumeKey: it.id, start: start || 0,
+        TV.osd.vod({ url: playUrl(it), item: it, title: title, sub: it.year ? String(it.year) : "", resumeKey: it.id, start: start || 0,
                      onClose: function () { if (isOpen) draw(); } });
     }
-    function playEp(ep, start) {
+    function playEp(ep, start, via) {
         var it = item, title = (meta && meta.title) || it.title || it.name;
         var sub = T("S{s} E{e}", { s: ep.season, e: ep.episode }) + ((ep._name || ep.title) ? " · " + (ep._name || ep.title) : "");
         var key = it.id + "|" + ep.id, n = nextEp(ep), all = allEps(), p = all[all.indexOf(ep) - 1] || null;
         function label(e) { return T("S{s} E{e}", { s: e.season, e: e.episode }) + ((e._name || e.title) ? " · " + (e._name || e.title) : ""); }
         if (!start) { var r = D.resumeOf(key); if (r && !r.done && r.pos > 60) start = r.pos; }
-        TV.osd.vod({ url: D.vodUrl(it, ep), item: it, ep: ep, title: title, sub: sub, resumeKey: key, start: start || 0,
+        // Stremio chosen for this series (or an episode only Stremio has): from Stremio
+        var url = via || (ep.fromStremio || isStremio(ep) ? ep.url : seriesPrefers(it) && epStremioUrl(ep)) || D.vodUrl(it, ep);
+        TV.osd.vod({ url: url, item: it, ep: ep, title: title, sub: sub, resumeKey: key, start: start || 0,
             next: n ? { ep: n, label: label(n) } : null,
             prev: p ? { ep: p, label: label(p) } : null,
             onEpisode: function (e) { playEp(e, 0); },
@@ -457,6 +597,9 @@
             titleMenu();
         }
     };
+
+    // your Stremio addons were found to play more titles: the rows under the title are made again
+    D.onChange(function (w) { if (w === "virtual" && isOpen && meta) { extraLists = {}; loadExtras(token); } });
 
     TV.detail = { open: open, close: close, isOpen: function () { return isOpen; },
         play: function (it, start) { if (it.kind === "movie") { item = it; meta = null; TV.meta.lookup(it).then(function (m) { meta = m; }); play(it, start); } else open(it); },

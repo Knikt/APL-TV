@@ -230,10 +230,10 @@
 .osd__seek.is-scrubbing .bar u { transform: scale(1.4); }
 
 /* ---------- 7. Search: the list moves inside a full-screen frame ---------- */
-.search__results { top: 0; padding-top: 610px; box-sizing: border-box; }
+.search__results { top: 0; padding-top: 290px; box-sizing: border-box; }
 .search__in { will-change: transform; }
-.search__field, .kb { transition: transform 360ms var(--glide), opacity 240ms ease; }
-.is-results .kb { opacity: 0; transform: translateY(-30px); }
+.search__field { transition: transform 360ms var(--glide), opacity 240ms ease, box-shadow 200ms ease; }
+.search__field.is-focused { box-shadow: 0 0 0 4px #fff, 0 20px 44px rgba(0,0,0,0.5); transform: scale(1.015); }
 .is-results .search__field { transform: translateY(-110px) scale(0.9); transform-origin: left center; opacity: 0.85; }
 .in-results .top { opacity: 0; transform: translateY(-40px); }
 .search__in .row { transition: opacity 240ms ease; }
@@ -401,6 +401,8 @@
 .no-gap .qr__state > .dot { margin-left: calc(14px + 14px); }
 .no-gap .step > * + * { margin-left: 26px; }
 .no-gap .step > .dot { margin-left: calc(14px + 26px); }
+.no-gap .steps__btns > * + * { margin-left: 24px; }
+.no-gap .steps__btns > .dot { margin-left: calc(14px + 24px); }
 .no-gap .search__field > * + * { margin-left: 20px; }
 .no-gap .search__field > .dot { margin-left: calc(14px + 20px); }
 .no-gap .menu__item > * + * { margin-left: 40px; }

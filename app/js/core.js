@@ -15,6 +15,23 @@
     TV.ANDROID = !TV.TIZEN && !TV.WEBOS && !!global.APLAndroid;      // the Android app (android/), js/android.js
     TV.PREVIEW = !TV.TIZEN && !TV.WEBOS && !TV.ANDROID;
     TV.PLATFORM = TV.TIZEN ? "tizen" : TV.WEBOS ? "webos" : TV.ANDROID ? "android" : "preview";
+    /* A device with little memory (a Fire TV Stick has 1 GB for everything, 0.2 free while a channel plays): the page
+       was stopped by Android when the playlist's refresh came on top of the video and the guides. TV.LOW_RAM is what the
+       device says; TV.SMALL (below, with Settings > Display > Light Mode) keeps the heavy work away from playback
+       (js/data.js, js/epg.js, js/home.js; Helper.java and Player.java do the same on their side).
+       1 GB: light; 2 GB or more: normal (an Android device under 1.6 GB). Android TV and Fire TV only: Samsung and LG
+       TVs stay as they are. */
+    TV.RAM_MB = 0;
+    TV.LOW_RAM = (function () {
+        try {
+            if (TV.ANDROID && global.APLAndroid.memory) { var m = JSON.parse(global.APLAndroid.memory() || "{}"); TV.RAM_MB = m.total || 0; return TV.RAM_MB > 0 && TV.RAM_MB < 1600; }
+            // an older Android package: the browser's own figure, rounded down (1 = 1 to 2 GB)
+            var dm = global.navigator.deviceMemory;
+            if (TV.ANDROID && dm) { TV.RAM_MB = dm * 1024; return dm <= 1; }
+        } catch (e) {}
+        return false;
+    })();
+    TV.SMALL = TV.LOW_RAM;          // until Settings are read (below)
     if (TV.PREVIEW) { document.body.classList.add("is-preview"); document.documentElement.style.background = "#000"; }
     if (TV.WEBOS) {
         document.documentElement.classList.add("is-webos");
@@ -80,7 +97,8 @@
     };
     /* TMDB pictures at the size they are shown. Providers give "original", "w500" or "w600_and_h900_bestv2"
        (600 x 900 for a cover shown 220 px wide: three times the pixels to decode and draw) */
-    TV.sized = function (u, w) { return u ? String(u).replace(/(image\.tmdb\.org\/t\/p\/)[^\/]+\//, "$1" + w + "/") : u; };
+    var SMALLER = { w342: "w185", w500: "w342", w1280: "w780", original: "w780" };     // little memory: covers of a third of the pixels
+    TV.sized = function (u, w) { if (TV.SMALL && SMALLER[w]) w = SMALLER[w]; return u ? String(u).replace(/(image\.tmdb\.org\/t\/p\/)[^\/]+\//, "$1" + w + "/") : u; };
     /* Apple's activity indicator: eight rounded bars around a centre, the brightest one going round (the whole turns
        in eight steps on a layer of its own: nothing is painted again while it turns) */
     TV.spinner = function (size) { return "<span class='aspin' style='width:" + (size || 64) + "px;height:" + (size || 64) + "px'><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>"; };
@@ -103,7 +121,7 @@
     TV.drop = function (key) { delete memo[key]; try { global.localStorage.removeItem(PFX + key); } catch (e) {} };
 
     var DEFAULTS = { tvGuide: true, sportsTab: true, audioDelay: 0, pictureMode: "fit", language: "auto", sounds: true, showAdult: false, mergeQuality: true, chanOrder: "list", autoPreview: false, motion: true, startTab: "home", lastChannel: null, timeFormat: "24",
-                     audioLang: "auto", audioLang2: "orig", subLang: "auto", subLang2: "off", subSize: "m", subColor: "white", subBg: "outline", subPos: "low", autoNext: false, resumePrompt: true, autoUpdate: true, screenSaver: "auto", tidyCats: true, tidyNames: true, kbLayout: "auto", timeshift: true };
+                     audioLang: "auto", audioLang2: "orig", subLang: "auto", subLang2: "off", subSize: "m", subColor: "white", subBg: "outline", subPos: "low", autoNext: false, resumePrompt: true, autoUpdate: true, screenSaver: "auto", tidyCats: true, tidyNames: true, kbLayout: "auto", timeshift: true, crashReports: "ask", lightMode: "auto" };
     var prefs = TV.load("prefs", {}) || {};
     var prefListeners = [];
     TV.pref = function (k) { return Object.prototype.hasOwnProperty.call(prefs, k) ? prefs[k] : DEFAULTS[k]; };
@@ -112,6 +130,30 @@
         prefListeners.forEach(function (fn) { try { fn(k, v); } catch (e) {} });
     };
     TV.onPref = function (fn) { prefListeners.push(fn); };
+    /* A Fire TV (Amazon's sticks and cubes): live channels in HLS by default (Settings > Playback > Live Stream Format).
+       Its MPEG-TS playback stuttered or froze where HLS played. A choice made in Settings stays, an Xtream account that
+       doesn't offer HLS gets MPEG-TS (js/data.js), and a provider that refuses HLS goes back to it by itself (js/live.js). */
+    TV.FIRETV = false;
+    try { TV.FIRETV = TV.ANDROID && /^amazon\b/i.test(global.APLAndroid.model ? global.APLAndroid.model() : ""); } catch (e) {}
+    if (TV.FIRETV) DEFAULTS.liveFormat = "m3u8";
+    /* Light Mode (Settings > Display): Automatic (the device's memory, TV.LOW_RAM), On (a TV that lags with 2 GB), Off */
+    TV.SMALL = TV.ANDROID && (TV.pref("lightMode") === "on" || (TV.pref("lightMode") !== "off" && TV.LOW_RAM));
+    try { if (TV.ANDROID && global.APLAndroid.light) global.APLAndroid.light(TV.SMALL); } catch (e) {}     // Helper.java, Player.java
+    /* Light Mode, the first time: the TV guide (and its tab) and the animations off. The guide is the heaviest work after
+       the playlist: its file read and kept, the public guides of several countries. Settings turns both on again, and
+       that choice stays. Light Mode left: what it turned off comes back. */
+    var smallSet = TV.load("smallSet", 0);
+    if (TV.SMALL && !smallSet) {
+        TV.save("smallSet", { tvGuide: TV.pref("tvGuide"), motion: TV.pref("motion") });
+        TV.setPref("tvGuide", false);
+        TV.setPref("motion", false);
+        TV.smallFirst = true;
+    } else if (!TV.SMALL && smallSet) {
+        var was = typeof smallSet === "object" ? smallSet : { tvGuide: true, motion: true };
+        if (TV.pref("tvGuide") === false && was.tvGuide !== false) TV.setPref("tvGuide", true);
+        if (TV.pref("motion") === false && was.motion !== false) TV.setPref("motion", true);
+        TV.drop("smallSet");
+    }
 
     /* ---------- IndexedDB: the big things (catalogs, guides) ---------- */
     var dbp = null;
@@ -190,7 +232,56 @@
         TV.logTotal = (TV.logTotal || 0) + 1;
         if (logs.length > 300) logs.shift();
         try { global.console.log("[APL TV] " + line); } catch (e) {}
+        if (TV.blackbox) TV.blackbox.dirty();
     };
+    setTimeout(function () {
+        var ram = TV.RAM_MB ? (TV.RAM_MB / 1024).toFixed(1) + " GB" : "memory unknown";
+        if (TV.SMALL) TV.log("Light Mode on (" + (TV.pref("lightMode") === "on" ? "chosen" : "automatic") + ", " + ram + "): the playlist's refresh waits until nothing plays, 2 catalogs on Home, smaller covers, 2 public guides" + (TV.smallFirst ? "; the TV guide and the animations turned off (Settings)" : ""));
+        else TV.log("Light Mode off (" + (TV.pref("lightMode") === "off" ? "chosen" : "automatic") + ", " + ram + ")");
+    }, 0);
+
+    /* ---------- black box (js/crash.js) ----------
+       The log above lives in memory: when APL TV stops without warning (a crash, a screen short of memory that closes
+       it) it goes with it. So its last 150 lines are also kept on the screen, with what was on screen: every 5 s when
+       something new was written, and each time the app leaves the screen or comes back. Leaving normally (Quit, a
+       restart, the background, the TV's standby) is written too: at the next start, js/crash.js knows whether the
+       previous session stopped while it was on screen, and what it was doing. */
+    TV.blackbox = (function () {
+        var KEY = "apltv.blackbox", prev = null, changed = false, end = "", started = Date.now();
+        try { prev = JSON.parse(global.localStorage.getItem(KEY) || "null"); } catch (e) {}
+        function playing() {
+            try { var c = TV.player && TV.player.current && TV.player.current(); return c ? (c.opts && c.opts.live ? "live" : "video") : ""; } catch (e) { return ""; }
+        }
+        function save() {
+            changed = false;
+            try {
+                global.localStorage.setItem(KEY, JSON.stringify({ v: 1, started: started, at: Date.now(), shown: !document.hidden, end: end, version: TV.VERSION || "",
+                    screen: TV.shell && TV.shell.current ? String(TV.shell.current() || "") : "", playing: playing(), lines: logs.slice(-150) }));
+            } catch (e) {}
+        }
+        setInterval(function () { if (changed) save(); }, 5000);
+        document.addEventListener("visibilitychange", save);
+        // a reload (an update, a new language) or the page closed by the screen: not a stop without warning
+        global.addEventListener("pagehide", function () { if (!end) end = "unload"; save(); });
+        return {
+            prev: prev,                                   // the previous session's, as it was left
+            started: started,
+            dirty: function () { changed = true; },
+            end: function (why) { end = why; save(); }
+        };
+    })();
+    /* An error no code caught, or a promise refused with no one listening: written to the log (30 at most), so a report
+       says what went wrong just before */
+    var jsErrors = 0;
+    global.addEventListener("error", function (e) {
+        if (!e || !e.message || ++jsErrors > 30) return;
+        TV.log("script error: " + e.message + " (" + String(e.filename || "").replace(/^.*\//, "") + ":" + (e.lineno || 0) + ")");
+    });
+    global.addEventListener("unhandledrejection", function (e) {
+        var r = e && e.reason;
+        if (++jsErrors > 30) return;
+        TV.log("promise refused, no one listening: " + String(r && (r.stack || r.message) || r).split("\n").slice(0, 2).join(" | ").slice(0, 300));
+    });
     /* Development builds: JavaScript memory in use, to find what weighs */
     TV.heap = function (label) {
         if (!TV.DEV) return;
@@ -352,7 +443,7 @@
         min = Math.round(min || 0);
         if (!min) return "";
         var h = Math.floor(min / 60), m = min % 60;
-        return h ? (TV.lang === "fr" ? h + " h " + (m ? pad(m) : "") : TV.lang === "pl" ? h + " godz." + (m ? " " + m + " min" : "") : TV.lang === "it" ? h + " h" + (m ? " " + m + " min" : "") : h + "h " + (m ? m + "m" : "")) : m + " min";
+        return h ? (TV.lang === "fr" ? h + " h " + (m ? pad(m) : "") : TV.lang === "es" ? h + " h" + (m ? " " + m + " min" : "") : TV.lang === "it" ? h + " h" + (m ? " " + m + " min" : "") : TV.lang === "pl" ? h + " godz." + (m ? " " + m + " min" : "") : h + "h " + (m ? m + "m" : "")) : m + " min";
     };
     TV.dayName = function (d) {
         try { return d.toLocaleDateString(TV.locale, { weekday: "long" }); } catch (e) { return ""; }
@@ -491,6 +582,7 @@
     TV.uid = function () { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); };
 
     TV.exit = function () {
+        if (TV.blackbox) TV.blackbox.end("quit");      // left on purpose: no "Oops" at the next start
         if (TV.WEBOS) { try { global.close(); } catch (e) {} return; }
         if (TV.ANDROID) { try { global.APLAndroid.exit(); } catch (e) {} return; }
         try { global.tizen.application.getCurrentApplication().exit(); } catch (e) { TV.toast("Exit (preview)"); }

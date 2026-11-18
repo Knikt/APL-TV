@@ -462,6 +462,10 @@ body.is-preview { cursor: default; }
 .step { display: flex; gap: 26px; margin-bottom: 44px; font-size: 30px; line-height: 1.35; color: rgba(255,255,255,0.88); }
 .step b { flex: none; width: 56px; height: 56px; border-radius: 28px; background: rgba(255,255,255,0.14); display: flex; align-items: center; justify-content: center; font-size: 26px; }
 .steps .btn { margin-top: 20px; }
+/* A guide without a QR code (Stremio in APL TV): the steps across the screen, the buttons in a row */
+.steps--wide { left: 240px; top: 190px; width: 1440px; }
+.steps--wide .step { margin-bottom: 30px; font-size: 28px; }
+.steps__btns { display: flex; gap: 24px; }
 
 /* On-screen keyboard (search) */
 .search__field { position: absolute; left: 96px; top: 150px; width: 1728px; height: 90px; border-radius: 45px; padding: 0 40px; display: flex; align-items: center; gap: 20px; font-size: 38px; font-weight: 600;
@@ -497,6 +501,8 @@ body.is-preview { cursor: default; }
     background: var(--glass), rgba(40, 42, 50, 0.97); transition: opacity 180ms ease, transform 320ms var(--spring); }
 .menu.is-open .menu__panel { opacity: 1; transform: translate(-50%, -50%) scale(1); }
 .menu__title { padding: 16px 28px 14px; font-size: 24px; font-weight: 600; color: var(--faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* a heading between a menu's choices (Versions: the playlist's name, then Stremio) */
+.menu__head { padding: 20px 30px 8px; font-size: 21px; font-weight: 700; letter-spacing: 0.8px; text-transform: uppercase; color: var(--faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .menu__item { display: flex; align-items: center; justify-content: space-between; gap: 40px; height: 80px; padding: 0 28px 0 30px; border-radius: 20px; font-size: 30px; font-weight: 600;
     transition: background 150ms ease, color 150ms ease, transform 220ms var(--spring); }
 .menu__item.is-focused { background: #fff; color: #1d1d1f; transform: scale(1.03); }
@@ -517,6 +523,8 @@ body.is-preview { cursor: default; }
 .alert__msg { margin: 0 0 46px; font-size: 29px; line-height: 1.38; color: rgba(255, 255, 255, 0.66); white-space: pre-line; }
 .alert__buttons { display: flex; flex-direction: column; align-items: center; gap: 18px; }
 .alert__btn { width: 620px; height: 86px; line-height: 86px; border-radius: 20px; background: rgba(255, 255, 255, 0.14); font-size: 31px; font-weight: 600; transition: background 160ms ease, color 160ms ease, transform 240ms var(--spring); }
+/* js/crash.js: the report, as it will be sent */
+.alert__report { margin: 0 0 36px; padding: 18px 24px; max-height: 470px; overflow: hidden; text-align: left; white-space: pre; font: 19px/1.4 "SF Mono", Menlo, Consolas, monospace; color: rgba(255, 255, 255, 0.78); background: rgba(0, 0, 0, 0.32); border-radius: 18px; }
 .alert__btn.is-danger { color: #ff453a; }
 .alert__btn.is-focused { background: #fff; color: #1d1d1f; transform: scale(1.06); }
 .alert__btn.is-focused.is-danger { color: #ff3b30; }

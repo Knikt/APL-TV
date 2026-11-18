@@ -86,7 +86,7 @@ final class Helper {
     synchronized void start() {
         if (running) return;
         running = true;
-        pool.execute(() -> {
+        bg(() -> {
             try {
                 server = new ServerSocket();
                 server.setReuseAddress(true);
@@ -94,7 +94,7 @@ final class Helper {
                 log("listening on " + PORT);
                 while (running) {
                     Socket s = server.accept();
-                    pool.execute(() -> serve(s));
+                    bg(() -> serve(s));
                 }
             } catch (IOException e) {
                 log("server: " + e.getMessage());
@@ -102,7 +102,7 @@ final class Helper {
                 running = false;
             }
         });
-        pool.execute(() -> {           // guides are kept 10 minutes after their last use
+        bg(() -> {                     // guides are kept 10 minutes after their last use
             while (true) {
                 try { Thread.sleep(60000); } catch (InterruptedException e) { return; }
                 long now = System.currentTimeMillis();
@@ -112,6 +112,38 @@ final class Helper {
                 }
             }
         });
+    }
+    /* Every task of the service runs through this: on Android an error a thread does not catch closes the whole app
+       (the page, the video, everything). A request that fails, even for lack of memory, is only that request. */
+    private void bg(Runnable r) {
+        pool.execute(() -> {
+            try { r.run(); }
+            catch (Throwable e) { log("background task: " + e); }
+        });
+    }
+    /* Android says memory is short (MainActivity.onTrimMemory), or the page was stopped (it starts again from
+       nothing): the guides kept here and IMDb's table are let go; they are read again when the app asks. */
+    void trim(String why) {
+        int n = 0;
+        for (Iterator<Map.Entry<String, Epg>> it = epgCache.entrySet().iterator(); it.hasNext(); ) { if (it.next().getValue().ready) { it.remove(); n++; } }
+        imdb = null;
+        log("memory: " + why + ", " + n + " guide(s) let go");
+    }
+    /* Crash.java: the memory the guides and IMDb's table hold, let go at once (an error is being written down) */
+    void dropAll() { epgCache.clear(); imdb = null; }
+    /* Crash.java: the last lines of the helper's log, without credentials */
+    JSONArray recent(int n) {
+        JSONArray a = new JSONArray();
+        synchronized (logs) {
+            int skip = Math.max(0, logs.size() - n), i = 0;
+            for (String l : logs) if (i++ >= skip) a.put(redact(l));
+        }
+        return a;
+    }
+    void pageGone(String why) {
+        log("the page " + why + ": opened again");
+        tsStop();
+        trim("page opened again");
     }
     synchronized void stop() {
         running = false;
@@ -134,6 +166,7 @@ final class Helper {
         String method, path, query = "", origin = null, lang = "", remote = "";
         Map<String, String> q = new HashMap<>();
         byte[] body = new byte[0];
+        boolean sent = false;          // the answer has begun (relay): an error after that can only cut it
     }
 
     private void serve(Socket s) {
@@ -175,6 +208,8 @@ final class Helper {
             handle(r, out);
         } catch (Exception e) {
             log("request: " + e.getMessage());
+        } catch (OutOfMemoryError e) {
+            log("request: not enough memory for it");
         } finally {
             try { s.close(); } catch (IOException ignored) {}
         }
@@ -200,6 +235,37 @@ final class Helper {
         out.write(hd.toString().getBytes(StandardCharsets.UTF_8));
         out.write(body);
         out.flush();
+    }
+    /* A provider's answer passed on as it arrives (chunked), instead of read whole first: a playlist of 100 MB took
+       three times that in memory here, enough to close the app on a Fire TV Stick. Its first block is read before
+       anything is sent, so a server that cuts at once still gets the 502 the page reads (core.js cut()); a cut
+       later ends the answer without its last chunk, which the page sees as a failed request, never a short list. */
+    private void relay(OutputStream out, Req r, Got g, String type) throws IOException {
+        byte[] buf = new byte[65536];
+        int n = readSome(g.in, buf);
+        StringBuilder hd = new StringBuilder("HTTP/1.1 ").append(g.status).append(" ").append(g.status == 200 ? "OK" : "Status").append("\r\n");
+        String o = allowOrigin(r);
+        if (o != null) hd.append("Access-Control-Allow-Origin: ").append(o).append("\r\nVary: Origin\r\n");
+        hd.append("Access-Control-Allow-Methods: GET, POST, OPTIONS\r\nAccess-Control-Allow-Headers: Content-Type\r\n");
+        hd.append("Content-Type: ").append(type).append("\r\nCache-Control: no-store\r\nConnection: close\r\nTransfer-Encoding: chunked\r\n\r\n");
+        OutputStream bo = new BufferedOutputStream(out, 65536 + 16);
+        r.sent = true;
+        bo.write(hd.toString().getBytes(StandardCharsets.UTF_8));
+        while (n > 0) {
+            bo.write((Integer.toHexString(n) + "\r\n").getBytes(StandardCharsets.US_ASCII));
+            bo.write(buf, 0, n);
+            bo.write(CRLF);
+            n = readSome(g.in, buf);
+        }
+        bo.write("0\r\n\r\n".getBytes(StandardCharsets.US_ASCII));
+        bo.flush();
+    }
+    private static final byte[] CRLF = { '\r', '\n' };
+    /* Fills buf as far as the stream allows (a gzip stream gives a few bytes at a time); 0 at the end */
+    private static int readSome(InputStream in, byte[] buf) throws IOException {
+        int got = 0, k;
+        while (got < buf.length && (k = in.read(buf, got, buf.length - got)) > 0) got += k;
+        return got;
     }
     private void json(OutputStream out, Req r, int status, String js) throws IOException { send(out, r, status, "application/json; charset=utf-8", js.getBytes(StandardCharsets.UTF_8)); }
     private static String err(String m) { return "{\"error\":" + JSONObject.quote(m == null ? "error" : m) + "}"; }
@@ -398,9 +464,8 @@ final class Helper {
             }
             String u = b.getString("url");
             try (Got g = get(u, b.optInt("t", 60000), 0, false, hd)) {
-                byte[] body = readAll(g.in);
-                send(out, r, g.status, "text/plain; charset=utf-8", body);
-            } catch (Exception e) { log("stalker request failed " + redact(u) + ": " + e.getMessage()); json(out, r, 502, err(e.getMessage())); }
+                relay(out, r, g, "text/plain; charset=utf-8");
+            } catch (Exception e) { if (!r.sent) { log("stalker request failed " + redact(u) + ": " + e.getMessage()); json(out, r, 502, err(e.getMessage())); } else throw e; }
             return;
         }
         if (p.equals("/fetch")) {
@@ -408,9 +473,8 @@ final class Helper {
             if (u == null || !u.matches("(?i)^https?://.*")) { json(out, r, 400, err("bad url")); return; }
             int t = 120000; try { t = Integer.parseInt(r.q.get("t")); } catch (Exception ignored) {}
             try (Got g = get(u, t)) {
-                byte[] body = readAll(g.in);
-                send(out, r, g.status, g.type.toLowerCase(Locale.US).contains("json") ? "application/json; charset=utf-8" : "text/plain; charset=utf-8", body);
-            } catch (Exception e) { log("fetch failed " + redact(u) + ": " + e.getMessage()); json(out, r, 502, err(e.getMessage())); }
+                relay(out, r, g, g.type.toLowerCase(Locale.US).contains("json") ? "application/json; charset=utf-8" : "text/plain; charset=utf-8");
+            } catch (Exception e) { if (!r.sent) { log("fetch failed " + redact(u) + ": " + e.getMessage()); json(out, r, 502, err(e.getMessage())); } else throw e; }
             return;
         }
         if (p.equals("/epg") && post) {
@@ -517,11 +581,12 @@ final class Helper {
         if (old != null) for (File f : old) f.delete();
         final TsRec t = new TsRec();
         t.id = newToken(); t.url = url;
+        t.max = Math.min(TS_MAX_BYTES, Math.max(0, tsDir().getUsableSpace() / 2));
         synchronized (tsLock) { tsRec = t; }
         final java.util.concurrent.CountDownLatch first = new java.util.concurrent.CountDownLatch(1);
         final String[] why = { null };
-        log("timeshift: recording " + redact(url).replaceAll("^(https?://[^/]+).*$", "$1/..."));
-        pool.execute(() -> tsRun(t, first, why));
+        log("timeshift: recording " + redact(url).replaceAll("^(https?://[^/]+).*$", "$1/...") + ", " + (t.max >> 20) + " MB at most");
+        bg(() -> tsRun(t, first, why));
         try { if (!first.await(20, java.util.concurrent.TimeUnit.SECONDS)) why[0] = "timeout"; } catch (InterruptedException e) { why[0] = "stopped"; }
         if (why[0] != null) { if (tsRec == t) tsStop(); return why[0]; }
         return null;
@@ -730,7 +795,7 @@ final class Helper {
     /* ---------- XMLTV, read as it arrives ---------- */
     private static final class Prog { long st, sp; String title, desc; }
     private static final class Epg {
-        long at, used; int count; volatile boolean ready = false; Exception error;
+        long at, used; int count, cut; volatile boolean ready = false; Exception error;
         final Map<String, List<Prog>> chans = new HashMap<>();
         final Map<String, String> names = new HashMap<>();
     }
@@ -868,6 +933,7 @@ final class Helper {
             return loadXmltv(target);
         }
         final long from = System.currentTimeMillis() - 6 * 3600 * 1000L, to = System.currentTimeMillis() + 3 * 86400 * 1000L;
+        final Room room = new Room();
         log("epg: loading " + redact(target));
         try {
             readXmltv(target, 240000, (programme, attrs, inner) -> {
@@ -878,26 +944,57 @@ final class Helper {
                 }
                 long st = xmltvTime(grab(START, attrs)), sp = xmltvTime(grab(STOP, attrs));
                 if (st == 0 || sp < from || st > to) return;
+                if (room.full) { mine.cut++; return; }
                 String ch = decodeXml(grab(CH, attrs));
                 if (ch.isEmpty()) return;
                 Prog p = new Prog();
                 p.st = st; p.sp = sp; p.title = decodeXml(grab(TITLE, inner));
-                String d = decodeXml(grab(DESC, inner)); p.desc = d.length() > 320 ? d.substring(0, 320) : d;
+                if (room.light) p.desc = "";
+                else { String d = decodeXml(grab(DESC, inner)); p.desc = d.length() > 320 ? d.substring(0, 320) : d; }
                 List<Prog> l = mine.chans.get(ch);
                 if (l == null) { l = new ArrayList<>(); mine.chans.put(ch, l); }
-                l.add(p); mine.count++;
+                l.add(p);
+                if ((++mine.count & 2047) == 0) room(room, mine);
             });
             for (List<Prog> l : mine.chans.values()) Collections.sort(l, (a, b) -> Long.compare(a.st, b.st));
             mine.at = mine.used = System.currentTimeMillis();
-            log("epg: " + mine.count + " programmes, " + mine.chans.size() + " channels");
+            log("epg: " + mine.count + " programmes, " + mine.chans.size() + " channels" + (mine.cut > 0 ? ", " + mine.cut + " more left out (not enough memory)" : ""));
         } catch (Exception x) {
             mine.error = x; epgCache.remove(target, mine);
             log("epg failed: " + x.getMessage());
             throw x;
+        } catch (OutOfMemoryError x) {
+            mine.chans.clear(); mine.names.clear();
+            IOException io = new IOException("not enough memory on this device for this guide");
+            mine.error = io; epgCache.remove(target, mine);
+            log("epg failed: not enough memory");
+            throw io;
         } finally {
             synchronized (mine) { mine.ready = true; mine.notifyAll(); }
         }
         return mine;
+    }
+    /* A guide on a device with little memory (a Fire TV Stick has 1 to 2 GB for everything): past 70 % of what the app
+       may use, the other guides kept here are let go and the programmes are kept without their description; past 85 %,
+       the rest of this guide is left out. Before, a guide too big for the memory closed the whole app. */
+    private static final class Room { boolean light, full; long gcAt; }
+    private Boolean small = null;
+    private void room(Room m, Epg keep) {
+        Runtime rt = Runtime.getRuntime();
+        if (small == null) small = Crash.small(ctx);
+        /* A device with little memory (a Fire TV Stick: 1 GB for everything): the app's own limit is far more than the
+           device can give while a video plays and the page is open; guides stay within 45 % of it there */
+        long max = small ? rt.maxMemory() * 45 / 85 : rt.maxMemory(), used = rt.totalMemory() - rt.freeMemory();
+        if (used < max / 10 * 7) return;
+        long now = System.currentTimeMillis();
+        if (now - m.gcAt > 5000) {                 // what is in use, not what is only waiting to be collected
+            m.gcAt = now;
+            for (Iterator<Map.Entry<String, Epg>> it = epgCache.entrySet().iterator(); it.hasNext(); ) { Epg e = it.next().getValue(); if (e != keep && e.ready) it.remove(); }
+            rt.gc();
+            used = rt.totalMemory() - rt.freeMemory();
+        }
+        if (!m.light && used >= max / 10 * 7) { m.light = true; log("epg: memory is short (" + (used >> 20) + " of " + (max >> 20) + " MB), programmes kept without their description"); }
+        if (!m.full && used >= max / 100 * 85) { m.full = true; log("epg: memory is full (" + (used >> 20) + " of " + (max >> 20) + " MB), the rest of this guide is left out"); }
     }
     private static void progs(StringBuilder sb, List<Prog> list, long from, long to) {
         sb.append('[');
@@ -924,11 +1021,20 @@ final class Helper {
         final Map<String, List<String>> idTo = new HashMap<>();
         final Map<String, List<Prog>> out = new HashMap<>();
         final int[] count = {0};
+        final Room room = new Room();
         log("epg match: " + redact(target) + " for " + names.length() + " names");
+        try {
         readXmltv(target, 180000, (programme, attrs, inner) -> {
             if (!programme) {
                 String id = decodeXml(grab(ID, attrs));
                 if (id.isEmpty()) return;
+                // a channel asked by its guide id ("#id:" + its tvg-id, js/epg.js): U.and.GOLD.HD.uk found as it is (#32)
+                String byId = "#id:" + id.toLowerCase(Locale.ROOT);
+                if (want.remove(byId) != null) {
+                    List<String> l = idTo.get(id);
+                    if (l == null) { l = new ArrayList<>(); idTo.put(id, l); }
+                    l.add(byId);
+                }
                 Matcher dn = NAME.matcher(inner);
                 while (dn.find()) {
                     String c = compact(decodeXml(dn.group(1)));
@@ -943,13 +1049,19 @@ final class Helper {
             List<String> who = idTo.get(decodeXml(grab(CH, attrs)));
             if (who == null) return;
             long st = xmltvTime(grab(START, attrs)), sp = xmltvTime(grab(STOP, attrs));
-            if (st == 0 || sp < from || st > to) return;
+            if (st == 0 || sp < from || st > to || room.full) return;
             Prog p = new Prog();
             p.st = st; p.sp = sp; p.title = decodeXml(grab(TITLE, inner));
-            String d = decodeXml(grab(DESC, inner)); p.desc = d.length() > 320 ? d.substring(0, 320) : d;
+            if (room.light) p.desc = "";
+            else { String d = decodeXml(grab(DESC, inner)); p.desc = d.length() > 320 ? d.substring(0, 320) : d; }
             for (String n : who) { List<Prog> l = out.get(n); if (l == null) { l = new ArrayList<>(); out.put(n, l); } l.add(p); }
-            count[0]++;
+            if ((++count[0] & 2047) == 0) room(room, null);
         });
+        } catch (OutOfMemoryError x) {
+            out.clear();
+            log("epg match failed: not enough memory");
+            throw new IOException("not enough memory on this device for this guide");
+        }
         StringBuilder sb = new StringBuilder("{");
         boolean first = true;
         for (Map.Entry<String, List<Prog>> e : out.entrySet()) {

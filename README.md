@@ -19,6 +19,15 @@ Created by **Knikt** (Gero Corp.), the maker of [APL Launcher](https://github.co
 
 > **APL TV is only a player.** It comes with no channels, no playlists and no provider: you add your own. Only use it with content you have the right to watch.
 
+## New in 1.4
+
+- **Stremio in the Versions.** Settings › Add a Playlist › Your Media Server › Stremio: link your Stremio account with a code. The streams of your addons show in each movie's and episode's Versions, next to your playlist's, and the titles they play join APL TV's lists. On Samsung, torrents play through the Stremio app's own engine (install Stremio from the Samsung store); the links your addons give (a debrid service, for example) play everywhere.
+- **Public domain movies.** Settings › Add a Playlist › Public Domain Movies: 2,700 movies, shorts and cartoons free of rights, from the Internet Archive and Wikimedia Commons, in Movies.
+- **APL TV in Spanish and Italian.** Italian thanks to @beLikeJo (#31).
+- **Crash reports.** If APL TV stopped unexpectedly, the next start offers to send a report to the developer. Never without your OK (Settings › About › Crash Reports).
+- **Light Mode on Android TV and Fire TV.** With 1 GB of memory, APL TV lightens itself: 2 catalogs on Home, smaller covers, the playlist refreshed only when nothing plays, the TV guide and the animations off the first time. Settings › Display › Light Mode forces it on a TV that lags, or turns it off.
+- **Fixes.** Samsung's player is closed in the background and when a stream can't play (#27). A spinner that never ends opens the channel again (#30). Fire TV: live channels in HLS by default, and a big guide or playlist no longer closes the app. Your Guides also find a channel by its guide id (#32). Search types with the TV's own keyboard. Poland: Tauron Liga, PGE Basket Liga and the set in play in Sports (#28).
+
 ## New in 1.3
 
 - **Stalker portals ready in seconds.** The channels and the newest titles of every category come first, and the rest of the movies and series keep arriving in the background while you use the app. A big portal used to take minutes.
@@ -75,7 +84,7 @@ The same app on every TV: same look, same features, same updates.
 - **Voice with Alexa.** The small [APL TV skill](alexa-skill/) brings your searches and channels to APL TV on any TV: "Alexa, ask APL TV to search Dragon Ball movies" and the results are on screen; "Alexa, ask APL TV to put on M6" and the channel starts. On Samsung, the screen's own Alexa also reaches APL TV directly for "Alexa, pause", play, skip and next episode.
 - **Set up from your phone.** The TV shows a QR code; your phone opens a page served by the TV itself on your Wi-Fi (no outside website), protected by a one-time code. The remote works too. Your phone can also **edit your playlist**: hide and order your categories, make your groups of channels, order your favorites and rename channels, then send it all to the TV (Settings › Edit on Your Phone).
 - **Automatic updates.** APL TV checks this repository every 6 hours and updates itself (code, look, texts), then restarts when nothing is playing. Your playlists and settings stay. Each TV only takes the updates that are ready for it; when its installed part changes, it asks once for a new install. Settings › Updates.
-- English, French, Polish and Italian (it follows the TV's language).
+- English, French, Spanish, Polish and Italian (it follows the TV's language).
 
 ## Screenshots
 
@@ -220,8 +229,9 @@ If you like APL TV, have a look at APL Launcher, and a star on either repository
 ## Privacy and security
 
 - Your playlists and accounts stay on the TV, in APL TV's own storage. They are only sent to your provider, and never written in logs.
-- APL TV only talks to your provider, to TMDB and Stremio's Cinemeta (to look titles up), to IMDb's public datasets (the ratings file, once a day), to the guide sources, to OpenSubtitles through Stremio's public add-on (only when you look for subtitles), to your own Jellyfin, Emby or Plex server (and plex.tv to link Plex) if you add one, for Sports to ESPN's public scoreboards, 365Scores, the LFP and Wikipedia, and to YouTube (to find the official video summaries, and its embedded player from youtube-nocookie.com when you watch one), to GitHub every 6 hours to look for an update (Settings › Updates turns it off), and, only if you turn on the Alexa skill, to your private ntfy.sh topic (the searched words only).
+- APL TV only talks to your provider, to TMDB and Stremio's Cinemeta (to look titles up), to IMDb's public datasets (the ratings file, once a day), to the guide sources, to OpenSubtitles through Stremio's public add-on (only when you look for subtitles), to your own Jellyfin, Emby or Plex server (and plex.tv to link Plex) if you add one, for Sports to ESPN's public scoreboards, 365Scores, the LFP and Wikipedia, and to YouTube (to find the official video summaries, and its embedded player from youtube-nocookie.com when you watch one), to GitHub every 6 hours to look for an update (Settings › Updates turns it off), and, only if you turn on the Alexa skill, to your private ntfy.sh topic (the searched words only), to Stremio and your Stremio addons if you link a Stremio account, to the Internet Archive and Wikimedia Commons if you add the Public Domain Movies, and to APL TV's crash relay only when you send a report (below).
 - The helper on the TV (port 8765) only answers APL TV itself, and the phone pages while their code is shown. A channel you pause is kept in the TV's temporary memory and deleted when you go back to live. Websites opened in the TV's browser are refused. The code is random, changes each time, and too many wrong codes close it.
+- Crash reports: if APL TV stopped unexpectedly, the next start asks whether to send a report to its developer (Send, Always Send, Show the Report, Don't Send; Settings › About › Crash Reports to change it). The report holds the last lines of APL TV's log, the TV's model and the app's version, never a password or a provider's address. It goes through APL TV's small relay on Cloudflare ([tools/crash-relay](tools/crash-relay)) to a private GitHub repository only the developer reads. Nothing is sent without your OK.
 - No account, no analytics, no ads.
 
 ## Support APL TV

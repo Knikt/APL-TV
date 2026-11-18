@@ -15,7 +15,7 @@
     "use strict";
 
     var TV = global.TV, S = TV.smart, T = TV.t;
-    var MAX_AGE = 6 * 3600 * 1000;
+    var MAX_AGE = (TV.SMALL ? 24 : 6) * 3600 * 1000;    // a device with little memory: once a day (core.js TV.SMALL)
     var CATALOG_V = 2;          // raise it when smart.js reads names differently: catalogs are then refreshed
 
     /* ---------- sources ---------- */
@@ -50,6 +50,8 @@
         if (src.type === "stalker" && TV.stalker) { src.portal = TV.stalker.normPortal(src.portal); src.mac = TV.stalker.normMac(src.mac) || String(src.mac || "").trim(); }
         if (src.type === "jellyfin" && TV.media) { src.server = TV.media.normServer(src.server); if (!String(src.name || "").trim()) src.autoName = true; }
         src.id = src.id || TV.uid();
+        if (src.type === "stremio" && !String(src.name || "").trim()) src.name = "Stremio";
+        if (src.type === "free" && !String(src.name || "").trim()) src.name = T("Public Domain Movies");
         src.name = String(src.name || "").trim() || hostName(src.type === "xtream" || src.type === "jellyfin" ? src.server : src.type === "stalker" ? src.portal : src.url) || T("My playlist");
         list.push(src);
         saveSources(list);
@@ -99,7 +101,10 @@
         });
     }
 
-    function loadXtream(src, progress) {
+    /* liveOnly (a device with little memory, the automatic refresh): its channels only, the movies and series from before
+       stay. Reading 100,000 movies again while the old ones are still in memory is what Android stopped the page for. */
+    function loadXtream(src, progress, liveOnly) {
+        var prevC = cats[src.id], keepVod = !!(liveOnly && prevC && prevC.movies && prevC.series && (prevC.movies.items.length || prevC.series.items.length));
         var out = { id: src.id, v: CATALOG_V, at: Date.now(), type: "xtream", live: { cats: [], chans: [] }, movies: { cats: [], items: [] }, series: { cats: [], items: [] }, failed: {} };
         function lists(what) {
             return function (r) {
@@ -129,9 +134,11 @@
                     logo: c.stream_icon || "", cat: src.id + ":" + c.category_id, epg: c.epg_channel_id || "", arch: parseInt(c.tv_archive, 10) ? (parseInt(c.tv_archive_duration, 10) || 1) : 0
                 });
             });
+            if (keepVod) { out.keptVod = true; TV.log("refresh of " + src.name + ": its channels only (little memory), its movies and series stay"); return null; }
             progress(T("Loading movies…"));
             return Promise.all([xApi(src, "get_vod_categories"), xApi(src, "get_vod_streams")]).then(lists("movies")).catch(lost("movies"));
         }).then(function (r) {
+            if (!r) return null;
             out.movies.cats = catList(r[0], src.id, "movie");
             (r[1] || []).forEach(function (m) {
                 if (!m || S.isSeparator(m.name)) return;
@@ -144,6 +151,7 @@
             progress(T("Loading series…"));
             return Promise.all([xApi(src, "get_series_categories"), xApi(src, "get_series")]).then(lists("series")).catch(lost("series"));
         }).then(function (r) {
+            if (!r) return out;
             out.series.cats = catList(r[0], src.id, "series");
             (r[1] || []).forEach(function (s) {
                 if (!s || S.isSeparator(s.name)) return;
@@ -165,11 +173,13 @@
         return TV.stalker.load(src, progress, { id: src.id, v: CATALOG_V, at: Date.now(), type: "stalker", live: { cats: [], chans: [] }, movies: { cats: [], items: [] }, series: { cats: [], items: [] }, failed: {} }, onFirst);
     }
 
-    /* ---------- media servers (Jellyfin, Emby, Plex): js/media.js, in the same catalog shape ---------- */
-    function isMedia(src) { return !!src && (src.type === "jellyfin" || src.type === "plex"); }
+    /* ---------- media servers (Jellyfin, Emby, Plex: js/media.js), Stremio (js/stremio.js) and the Public Domain
+       Movies (js/freefilms.js): libraries of their own, in the same catalog shape ---------- */
+    function isMedia(src) { return !!src && (src.type === "jellyfin" || src.type === "plex" || src.type === "stremio" || src.type === "free"); }
+    function modOf(src) { return src.type === "stremio" ? TV.stremio : src.type === "free" ? TV.freeFilms : TV.media; }
     function loadMedia(src, progress) {
-        if (!TV.media) return Promise.reject(new Error("no media server support"));
-        return TV.media.load(src, progress, { id: src.id, v: CATALOG_V, at: Date.now(), type: src.type, live: { cats: [], chans: [] }, movies: { cats: [], items: [] }, series: { cats: [], items: [] }, failed: {} });
+        if (!modOf(src)) return Promise.reject(new Error("no media server support"));
+        return modOf(src).load(src, progress, { id: src.id, v: CATALOG_V, at: Date.now(), type: src.type, live: { cats: [], chans: [] }, movies: { cats: [], items: [] }, series: { cats: [], items: [] }, failed: {} });
     }
 
     /* ---------- M3U ---------- */
@@ -284,7 +294,8 @@
         list.forEach(function (src) {
             var c = cats[src.id];
             if (!c) return;
-            var media = src.type === "jellyfin" || src.type === "plex";
+            // the Public Domain Movies are shown like a playlist's: in Movies, with the other categories
+            var media = isMedia(src) && src.type !== "free";
             ["live", "movies", "series"].forEach(function (k) {
                 var part = c[k], counts = {};
                 (k === "live" ? part.chans : part.items).forEach(function (x) { counts[x.cat] = (counts[x.cat] || 0) + 1; });
@@ -337,9 +348,9 @@
     /* early: for a screen that waits (adding a playlist, Refresh, the first start). A Stalker portal gives its
        titles 14 at a time and a big one took minutes (#19): the screen can be used once the channels and the
        newest titles of every category are in, and the rest arrives in the background. */
-    function loadSource(src, progress, early) {
+    function loadSource(src, progress, early, liveOnly) {
         if (behind[src.id]) return behind[src.id];
-        if (!early || src.type !== "stalker") return loadFull(src, progress);
+        if (!early || src.type !== "stalker") return loadFull(src, progress, liveOnly);
         return new Promise(function (resolve, reject) {
             var first = false, done = null;
             var full = loadStalker(src, function (m) { if (!first) progress(m); }, function (c) {
@@ -375,8 +386,8 @@
             done.then(function (c) { delete behind[src.id]; if (!first) resolve(c); }, function (e) { delete behind[src.id]; reject(e); });
         });
     }
-    function loadFull(src, progress) {
-        return (src.type === "xtream" ? loadXtream(src, progress) : src.type === "stalker" ? loadStalker(src, progress) : isMedia(src) ? loadMedia(src, progress) : loadM3U(src, progress)).then(function (c) { return took(src, c); }, function (e) {
+    function loadFull(src, progress, liveOnly) {
+        return (src.type === "xtream" ? loadXtream(src, progress, liveOnly) : src.type === "stalker" ? loadStalker(src, progress) : isMedia(src) ? loadMedia(src, progress) : loadM3U(src, progress)).then(function (c) { return took(src, c); }, function (e) {
             updateSource(src.id, { error: e.message });
             throw e;
         });
@@ -387,9 +398,12 @@
            instead of an empty Movies tab until the next refresh, and APL TV asks again in 10 minutes. */
         var prev = cats[src.id], failed = c.failed || {}, missed = [];
         delete c.failed;
+        var vodKept = !!(c.keptVod && prev);
+        if (vodKept) { c.movies = prev.movies; c.series = prev.series; }      // a refresh of the channels only (liveOnly)
+        delete c.keptVod;
         ["movies", "series"].forEach(function (k) {
             var had = prev && prev[k] && prev[k].items && prev[k].items.length || 0;
-            if (failed[k] || (had >= 50 && !c[k].items.length)) {
+            if (failed[k] || (had >= 50 && !c[k].items.length && src.type !== "stremio")) {
                 missed.push(k);
                 if (had) { c[k] = prev[k]; TV.log(k + " of " + src.name + " not received (" + (failed[k] || "empty") + "): the " + had + " from before stay"); }
             }
@@ -401,7 +415,7 @@
         }
         cats[src.id] = c;
         updateSource(src.id, { error: "", at: c.at, counts: { live: c.live.chans.length, movies: c.movies.items.length, series: c.series.items.length }, account: c.account || null });
-        return saveCatalog(c).then(function () { return c; });
+        return saveCatalog(c, vodKept).then(function () { return c; });
     }
 
     /* Saved in parts (channels, movies, series) and packed: rows of values instead of objects that repeat
@@ -451,8 +465,10 @@
         });
         return kind === "live" ? { cats: cats, chans: list } : { cats: cats, items: list };
     }
-    function saveCatalog(c) {
+    function saveCatalog(c, vodKept) {
         var id = c.id, saved = { movies: false, series: false };
+        // the movies and series did not change (a refresh of the channels only): their saved copies stay as they are
+        if (vodKept) { saved = { movies: true, series: true }; return saveHead(); }
         // Room first: the previous copy goes before the new one is written
         return Promise.all([TV.idb.del("catm:" + id), TV.idb.del("cats:" + id)]).then(function () {
             return TV.idb.set("catm:" + id, pack(c.movies, "movies", id));
@@ -463,11 +479,14 @@
         }).then(function (r) {
             saved.series = r !== false;
             if (!saved.series) TV.idb.del("cats:" + id);
-            var head = { id: id, v: c.v || 1, at: c.at, type: c.type, account: c.account || null, epgUrl: c.epgUrl || "", live: pack(c.live, "live", id), parts: 3, saved: saved };
-            return TV.idb.set("cat:" + id, head);
-        }).then(function (r) {
-            TV.log("catalog saved: channels " + (r !== false) + ", movies " + saved.movies + ", series " + saved.series);
+            return saveHead();
         });
+        function saveHead() {
+            var head = { id: id, v: c.v || 1, at: c.at, type: c.type, account: c.account || null, epgUrl: c.epgUrl || "", live: pack(c.live, "live", id), parts: 3, saved: saved };
+            return TV.idb.set("cat:" + id, head).then(function (r) {
+                TV.log("catalog saved: channels " + (r !== false) + ", movies " + saved.movies + ", series " + saved.series + (vodKept ? " (as they were)" : ""));
+            });
+        }
     }
     function readCatalog(id) {
         return TV.idb.get("cat:" + id).then(function (c) {
@@ -487,7 +506,11 @@
     function start(progress) {
         var list = sources();
         return (TV.epg && TV.epg.prune ? TV.epg.prune() : Promise.resolve()).then(function () { return Promise.all(list.map(function (s) {
-            return readCatalog(s.id).then(function (c) { if (c) cats[s.id] = c; });
+            return readCatalog(s.id).then(function (c) {
+                // a Stremio account gives no catalog (one saved by an earlier version of APL TV is left out)
+                if (c && s.type === "stremio") { c.movies = { cats: [], items: [] }; c.series = { cats: [], items: [] }; }
+                if (c) cats[s.id] = c;
+            });
         })); }).then(function () {
             var missing = list.filter(function (s) { return !cats[s.id]; });
             var partial = list.filter(function (s) { return cats[s.id] && (!cats[s.id].movies || !cats[s.id].series); });
@@ -502,7 +525,7 @@
                 .then(rebuild);
         }).then(function () {
             var old = sources().filter(function (s) { return cats[s.id] && (Date.now() - (cats[s.id].at || 0) > MAX_AGE || (cats[s.id].v || 1) < CATALOG_V); });
-            if (old.length) whenQuiet(function () { refresh(old, function () {}); });
+            if (old.length) whenQuiet(function () { refresh(old, function () {}, TV.SMALL); });
         });
     }
     /* Refreshing a big account is seconds of heavy work for the TV (reading and saving 200,000 titles: up
@@ -514,13 +537,16 @@
         var since = Date.now();
         (function check() {
             var still = Date.now() - Math.max(TV.keyAt || 0, bootAt) > 45000 && !(TV.player && TV.player.isBuffering());
+            /* A device with little memory: never while a video plays, nor in the background (the refresh on top of a
+               channel was what Android stopped the page for, on a Fire TV Stick), and not after 20 minutes either */
+            if (TV.SMALL && (document.hidden || (TV.player && TV.player.current && TV.player.current()))) { setTimeout(check, 5000); return; }
             if (still || Date.now() - since > 20 * 60000) { TV.log("catalog refresh: starting (" + Math.round((Date.now() - bootAt) / 1000) + " s after start)"); fn(); }
             else setTimeout(check, 5000);
         })();
     }
-    function refresh(list, progress) {
+    function refresh(list, progress, liveOnly) {
         list = list || sources();
-        return sequence(list, function (s) { return loadSource(s, progress || function () {}).catch(function (e) { TV.log("refresh " + s.name + ": " + e.message); }); }).then(rebuild);
+        return sequence(list, function (s) { return loadSource(s, progress || function () {}, false, liveOnly).catch(function (e) { TV.log("refresh " + s.name + ": " + e.message); }); }).then(rebuild);
     }
     function sequence(items, fn) {
         return items.reduce(function (p, it) { return p.then(function () { return fn(it); }); }, Promise.resolve());
@@ -583,7 +609,11 @@
     function streamUrl(ch) {
         if (ch.url) return ch.url;
         var src = sourceOf(ch);
-        return src ? xUrl(src, "live", ch.sid, TV.pref("liveFormat") === "m3u8" ? "m3u8" : "ts") : "";
+        if (!src) return "";
+        var f = TV.pref("liveFormat") === "m3u8" ? "m3u8" : "ts", fm = src.account && src.account.formats;
+        // HLS by default (a Fire TV, core.js) for an account that doesn't offer it: MPEG-TS; your own choice stays as it is
+        if (f === "m3u8" && !TV.pref("liveFormatMine") && fm && fm.length && fm.indexOf("m3u8") < 0) f = "ts";
+        return xUrl(src, "live", ch.sid, f);
     }
     function sourceOf(x) { var id = x.src; var list = sources(); for (var i = 0; i < list.length; i++) if (list[i].id === id) return list[i]; return null; }
 
@@ -645,6 +675,7 @@
     function myList() { return TV.load("mylist", []) || []; }
     function inMyList(id) { return myList().indexOf(id) !== -1; }
     function toggleMyList(id) {
+        keepVirtual(id);
         var l = myList(), i = l.indexOf(id);
         if (i === -1) l.unshift(id); else l.splice(i, 1);
         TV.save("mylist", l);
@@ -716,7 +747,7 @@
     /* A group's name in Settings and in the category lists: a country, Other Categories, or a media server */
     function groupLabel(g) {
         if (!g) return T("Other Categories");
-        if (g.indexOf("srv:") === 0) { var s = sourceOf({ src: g.slice(4) }); return s ? s.name || (s.type === "plex" ? "Plex" : s.kind === "emby" ? "Emby" : "Jellyfin") : g.slice(4); }
+        if (g.indexOf("srv:") === 0) { var s = sourceOf({ src: g.slice(4) }); return s ? s.name || (s.type === "plex" ? "Plex" : s.type === "stremio" ? "Stremio" : s.type === "free" ? T("Public Domain Movies") : s.kind === "emby" ? "Emby" : "Jellyfin") : g.slice(4); }
         return S.groupName(g);
     }
     function setCatOff(c, on) {
@@ -867,7 +898,7 @@
         return Promise.all(on.map(function (t) {
             return Promise.all([TV.meta.themeTitles(t, "movie"), TV.meta.themeTitles(t, "tv")]).then(function (l) {
                 var both = l[0].concat(l[1]);
-                return Promise.all([findTitles("movies", both), findTitles("series", both)]);
+                return Promise.all([findTitles("movies", both, true), findTitles("series", both, true)]);
             }).then(function (r) { r[0].concat(r[1]).forEach(function (x) { setThemeKey(hideKey(x), t); }); });
         })).then(function () {
             groupCache = {};
@@ -904,6 +935,7 @@
     /* Resume points: id -> { pos, dur, at, item id, series episode } (seconds) */
     function resumes() { return TV.load("resume", {}) || {}; }
     function setResume(id, info) {
+        if (info && info.item) keepVirtual(info.item);
         var r = resumes();
         if (!info) delete r[id];
         else { info.at = Date.now(); r[id] = info; }
@@ -1008,6 +1040,7 @@
                 if (seen[e.item] || !merged) return;
                 seen[e.item] = 1;
                 var it = (kind !== "series" && merged.movies.byId[e.item]) || (kind !== "movies" && merged.series.byId[e.item]);
+                if (!it) { var v = virtualById(e.item); if (v && (kind === "series" ? v.kind === "series" : kind === "movies" ? v.kind === "movie" : true)) it = v; }
                 if (it && !isHidden(it)) out.push(it);
             });
         return out.slice(0, 80);
@@ -1020,7 +1053,7 @@
             if (!e || !e.item || e.manual) return;
             // a series whose episode is over: its next episode waits here ("up next")
             if (!e.upNext && (e.pos < 60 || e.done || (e.dur && e.pos > e.dur * 0.94))) return;
-            var it = (merged && (merged.movies.byId[e.item] || merged.series.byId[e.item]));
+            var it = (merged && (merged.movies.byId[e.item] || merged.series.byId[e.item])) || virtualById(e.item);
             if (it && !isHidden(it)) out.push({ item: it, resume: e, key: k });
         });
         var seen = {};
@@ -1112,10 +1145,48 @@
         });
         return idxWaiting[kind];
     }
-    /* TMDB titles (t: title, o: original title, y: year) found in your catalog, in the same order */
-    function findTitles(kind, list) {
+    /* A TMDB title your playlist doesn't have, when your Stremio addons have a stream for it that plays here
+       (js/stremio.js asks them in the background): a card of its own, played from Stremio. The same object each time,
+       and kept once played or put in My List, so Continue Watching and My List find it after a restart. */
+    var virt = {}, virtKept = TV.load("virtItems", {}) || {};
+    function virtualOf(kind, r, ask) {
+        var S2 = TV.stremio, a = S2 && S2.account(), type = kind === "series" ? "series" : "movie";
+        if (!a || !r || !r.id) return null;
+        var known = S2.knownHas(type, r.id);
+        if (known === null && ask) S2.wantHas(type, r.id);
+        if (!known) return null;
+        var id = a.id + (type === "series" ? "|st" : "|mt") + r.id;
+        if (virt[id]) return virt[id];
+        var x = { src: a.id, kind: type, name: r.t || r.o, title: r.t || r.o, year: r.y || 0, poster: "", cat: a.id + ":tmdb", rating: 0, added: 0,
+                  tmdb: String(r.id), _ref: { id: r.id, t: r.t, o: r.o, y: r.y }, virtual: true, id: id };
+        if (type === "series") x.seriesId = "tmdb:" + r.id;
+        else { x.sid = "tmdb:" + r.id; x.url = "stremio:" + a.id + ":movie:" + encodeURIComponent("tmdb:" + r.id); }
+        virt[id] = x;
+        return x;
+    }
+    function keepVirtual(id) {
+        var x = virt[id];
+        if (!x || virtKept[id]) return;
+        var k = Object.keys(virtKept);
+        if (k.length > 300) delete virtKept[k[0]];
+        virtKept[id] = { src: x.src, kind: x.kind, name: x.name, title: x.title, year: x.year, tmdb: x.tmdb, seriesId: x.seriesId, sid: x.sid, url: x.url, _ref: x._ref };
+        TV.save("virtItems", virtKept);
+    }
+    function virtualById(id) {
+        if (virt[id]) return virt[id];
+        var k = virtKept[id];
+        if (!k || !TV.stremio || !TV.stremio.account()) return null;
+        var x = {}; Object.keys(k).forEach(function (f) { x[f] = k[f]; });
+        x.id = id; x.virtual = true; x.poster = ""; x.cat = x.src + ":tmdb"; x.rating = 0; x.added = 0;
+        virt[id] = x;
+        return x;
+    }
+    /* TMDB titles (t: title, o: original title, y: year) found in your catalog, in the same order. With a Stremio account,
+       the ones your playlist misses too when your addons play them (only: never, for hiding themes). */
+    var ASK_PER_LIST = 25;
+    function findTitles(kind, list, only) {
         return titleIndex(kind).then(function (idx) {
-            var out = [], used = {};
+            var out = [], used = {}, asked = 0;
             list.forEach(function (r) {
                 var kt = titleKey(r.t), ko = titleKey(r.o);
                 var cands = (kt.length > 1 && idx[kt] || []).concat(ko !== kt && ko.length > 1 && idx[ko] || []), hits = [];
@@ -1124,7 +1195,13 @@
                     if (r.y && x.year && Math.abs(x.year - r.y) > 1) return;
                     used[x.id] = 1; hits.push(x);
                 });
-                if (!hits.length) return;
+                if (!hits.length) {
+                    if (only) return;
+                    var v = virtualOf(kind, r, asked < ASK_PER_LIST);
+                    if (TV.stremio && TV.stremio.knownHas(kind === "series" ? "series" : "movie", r.id) === null) asked++;
+                    if (v && !used[v.id]) { used[v.id] = 1; out.push(v); }
+                    return;
+                }
                 hits.sort(function (a, b) { return (catOf(b).lang === TV.lang ? 1 : 0) - (catOf(a).lang === TV.lang ? 1 : 0); });
                 hits.forEach(function (x) { x._ref = r; out.push(x); });
             });
@@ -1133,7 +1210,7 @@
     }
 
     /* A genre: its popular titles found in your catalog, one card per title */
-    var genreLists = {}, genreLoading = {};
+    var genreLists = {}, genreLoading = {}, listSrc = {};
     function oneCardPerTitle(found) {
         var byRef = {}, reps = [];
         found.forEach(function (x) {
@@ -1148,6 +1225,7 @@
         if (genreLists[k]) return Promise.resolve(genreLists[k]);
         if (genreLoading[k]) return genreLoading[k];
         genreLoading[k] = TV.meta.genreTitles(kind === "movies" ? "movie" : "tv", gid).then(function (list) {
+            listSrc["genre|" + k] = { kind: kind, list: list };
             return findTitles(kind, list).then(function (found) {
                 genreLists[k] = oneCardPerTitle(found);
                 delete genreLoading[k];
@@ -1178,6 +1256,20 @@
         return out.concat(rest);
     }
 
+    /* Your Stremio addons play new titles of these lists: the lists are made again (in place, no "finding…" on screen) */
+    function remakeLists() {
+        Object.keys(listSrc).forEach(function (key) {
+            var s = listSrc[key], parts = key.split("|"), what = parts[0], k = parts.slice(1).join("|");
+            findTitles(s.kind, s.list).then(function (found) {
+                if (what === "genre") genreLists[k] = oneCardPerTitle(found);
+                else if (what === "trend") trendLists[k] = oneCardPerTitle(found);
+                else if (what === "top") topLists[k] = oneCardPerTitle(found);
+            });
+        });
+        setTimeout(function () { fire("genre"); fire("trend"); fire("top"); fire("virtual"); }, 400);
+    }
+    if (TV.stremio && TV.stremio.onHas) TV.stremio.onHas(remakeLists);
+
     /* "Top Rated": weighted by the number of votes (meta.js), found in your catalog */
     var topLists = {}, topLoading = {};
     function topRatedItems(kind) {
@@ -1188,6 +1280,7 @@
                 var m = kind === "movies" ? 3000 : 1000, C = 7.0;
                 list.forEach(function (r) { r.wr = (r.v * r.n + C * m) / (r.n + m); });
                 list.sort(function (a, b) { return b.wr - a.wr; });
+                listSrc["top|" + kind] = { kind: kind, list: list };
                 return findTitles(kind, list).then(function (found) {
                     // One card per title: its other versions (another language, 4K…) behind it
                     var byRef = {}, reps = [];
@@ -1212,6 +1305,7 @@
         if (!trendLoading[kind] && TV.meta && TV.meta.enabled()) {
             trendLoading[kind] = true;
             TV.meta.trending(kind === "movies" ? "movie" : "tv").then(function (list) {
+                listSrc["trend|" + kind] = { kind: kind, list: list };
                 return findTitles(kind, list).then(function (found) {
                     trendLists[kind] = oneCardPerTitle(found);
                     trendLoading[kind] = false;
@@ -1250,7 +1344,7 @@
             if (top) return top.filter(ok);
             return [];                       // a second, while the list is being found
         }
-        if (catId === "mylist") return myList().map(function (id) { return part.byId[id]; }).filter(Boolean);
+        if (catId === "mylist") return myList().map(function (id) { var v; return part.byId[id] || ((v = virtualById(id)) && (v.kind === "series") === (kind === "series") ? v : null); }).filter(Boolean);
         if (catId === "all") return part.items.filter(ok);
         return hid ? (part.byCat[catId] || []).filter(ok) : (part.byCat[catId] || []);
     }
@@ -1263,7 +1357,7 @@
     }
     function vodInfo(item) {
         var src = sourceOf(item);
-        if (isMedia(src) && TV.media && item.kind === "movie") return Promise.resolve(TV.media.info(item));
+        if (isMedia(src) && modOf(src) && item.kind === "movie") return Promise.resolve(modOf(src).info(item));
         if (!src || src.type !== "xtream" || item.kind !== "movie") return Promise.resolve(null);
         return xApi(src, "get_vod_info", "vod_id=" + item.sid).catch(function () { return null; });
     }
@@ -1278,7 +1372,7 @@
         var src = sourceOf(item);
         if (!src) return Promise.resolve({ seasons: {}, info: {} });
         if (src.type === "stalker" && TV.stalker) return TV.stalker.seriesInfo(src, item);
-        if (isMedia(src) && TV.media) return TV.media.seriesInfo(src, item);
+        if (isMedia(src) && modOf(src)) return modOf(src).seriesInfo(src, item);
         return xApi(src, "get_series_info", "series_id=" + item.seriesId).then(function (j) {
             var seasons = {};
             var eps = j && j.episodes || {};

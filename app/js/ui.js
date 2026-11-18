@@ -615,17 +615,21 @@
     };
     /* A menu longer than the screen (subtitle languages, versions…) scrolls inside its panel: the title
        stays, the chosen line is always in view, and a half line at the bottom shows there is more. */
-    TV.menu = function (title, items) {
+    TV.menu = function (title, items, o) {
         var root = TV.$("menu"), panel = root.firstChild;
         panel.innerHTML = "";
         if (title) panel.appendChild(el("div", "menu__title", esc(title)));
         var list = el("div", "menu__list");
         panel.appendChild(list);
-        var tiles = items.map(function (it) {
+        // { header: "…" }: a heading between the choices (a playlist's name, Stremio), never focused
+        var tiles = [];
+        items.forEach(function (it) {
+            if (it.header) { list.appendChild(el("div", "menu__head", esc(it.header))); return; }
             var r = el("div", "menu__item" + (it.danger ? " is-danger" : ""), "<span class='menu__label'>" + esc(it.label) + "</span>" + (it.check ? "<span class='menu__check'>" + TV.icon("check", 30) + "</span>" : (it.icon ? TV.icon(it.icon, 30) : "")));
             list.appendChild(r);
-            return r;
+            tiles.push(r);
         });
+        items = items.filter(function (it) { return !it.header; });
         function inView(t) {
             var top = t.offsetTop, h = t.offsetHeight, view = list.clientHeight, s = list.scrollTop, room = 44;
             if (list.scrollHeight <= view + 1) return;
@@ -635,7 +639,7 @@
         var nav = new TV.Nav({
             onFocus: function (i, t) { inView(t); },
             onSelect: function (i) { close(); if (items[i].run) items[i].run(); },
-            onBack: close
+            onBack: function () { close(); if (o && o.onCancel) o.onCancel(); }
         });
         function close() { root.classList.remove("is-open"); TV.popNav(nav); }
         root.classList.add("is-open");

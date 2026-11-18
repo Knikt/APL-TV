@@ -392,7 +392,7 @@
         TV.player.subtitleDelay(delayMs);                  // the video's own subtitles move too
         refreshPop();
     }
-    function fmtDelay() { var s = delayMs / 1000; return (s > 0 ? "+" : s < 0 ? "−" : "") + Math.abs(s).toFixed(2).replace(".", TV.lang === "fr" || TV.lang === "pl" || TV.lang === "it" ? "," : ".") + " s"; }
+    function fmtDelay() { var s = delayMs / 1000; return (s > 0 ? "+" : s < 0 ? "−" : "") + Math.abs(s).toFixed(2).replace(".", TV.lang === "fr" || TV.lang === "es" || TV.lang === "pl" || TV.lang === "it" ? "," : ".") + " s"; }
 
     /* ---------- the menus above the buttons (Apple TV style) ---------- */
     function subsItems() {
@@ -966,6 +966,8 @@
             onEnded: function () { o.ended = true; save(true); if (o.next && o.onEpisode && TV.pref("autoNext")) { var n = o.next.ep, cb = o.onEpisode; finish(true); cb(n); } else finish(); },
             onError: function (e) {
                 stateBox.classList.remove("is-on");
+                // Back in the list of a Stremio title's streams: nothing plays, the player closes
+                if (e === "cancelled") { finish(); return; }
                 // a format the screen cannot decode (HEVC 10-bit on a small Android box, an old Samsung…)
                 var dec = /DECOD|FORMAT_UNSUPPORTED|NOT_SUPPORTED/i.test(String(e));
                 error(dec ? T("This screen cannot decode this video.") : T("This video cannot be played."), String(e),

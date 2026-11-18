@@ -121,7 +121,13 @@ final class Player {
             .setTsExtractorFlags(DefaultTsPayloadReaderFactory.FLAG_ALLOW_NON_IDR_KEYFRAMES | DefaultTsPayloadReaderFactory.FLAG_DETECT_ACCESS_UNITS);
         http = new DefaultHttpDataSource.Factory()
             .setUserAgent(UA).setAllowCrossProtocolRedirects(true).setConnectTimeoutMs(15000).setReadTimeoutMs(20000);
-        DefaultLoadControl load = new DefaultLoadControl.Builder().setBufferDurationsMs(15000, 50000, 2500, 5000).build();
+        /* The video kept ahead: ExoPlayer's own limit is about 140 MB, taken from what the app may use. On a device with
+           little memory (a Fire TV Stick lets an app use 256 MB or less) that alone, with a guide or a playlist, was
+           enough to close the app: a quarter of what the app may use instead, 16 to 128 MB (about 20 s of 4K at 256 MB). */
+        android.app.ActivityManager am = (android.app.ActivityManager) act.getSystemService(android.content.Context.ACTIVITY_SERVICE);
+        long heapMb = am != null ? am.getLargeMemoryClass() : 256;
+        int bufferBytes = (int) Math.max(16L << 20, Math.min(Crash.small(act) ? 32L << 20 : 128L << 20, (heapMb << 20) / 4));   // little memory: 32 MB (about 50 s of a 1080p channel)
+        DefaultLoadControl load = new DefaultLoadControl.Builder().setBufferDurationsMs(15000, 50000, 2500, 5000).setTargetBufferBytes(bufferBytes).build();
         meter = new DefaultBandwidthMeter.Builder(act).build();
         exo = new ExoPlayer.Builder(act, new SyncedRenderers(act).setEnableDecoderFallback(true))
             .setTrackSelector(selector)
@@ -186,8 +192,11 @@ final class Player {
     private void event(String name, String arg) {
         if (web == null) return;
         final String js = "window.__aplEvent&&__aplEvent('" + name + "'" + (arg != null ? "," + arg : "") + ")";
-        ui.post(() -> web.evaluateJavascript(js, null));
+        // the page of that moment: it may have been replaced in between (MainActivity.pageGone)
+        ui.post(() -> { WebView w = web; if (w != null) w.evaluateJavascript(js, null); });
     }
+    /* A new page after Android stopped the old one (MainActivity.pageGone); null while there is none */
+    void page(WebView w) { web = w; }
 
     /* ---------- AVPlay's calls ---------- */
     void open(String u) {

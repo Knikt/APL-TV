@@ -2,7 +2,7 @@
 """Checks run before every package and on every push (GitHub Actions).
 
 - every script parses (node --check), the app's and the helper service's;
-- every text shown in the interface (TV.t("...")) has its French translation in app/js/lang-fr.js;
+- every text shown in the interface (TV.t("...")) has its French, Spanish and Polish translations (app/js/lang-fr.js, lang-es.js, lang-pl.js);
 - the version is the same in app/config.xml, app/js/app.js and app/service/service.js;
 - no personal file is tracked by git (keys, development log, fonts, sounds, certificates).
 """
@@ -33,15 +33,17 @@ for s in scripts:
 # ---- translations ----
 keys = []
 for s in scripts:
-    if s.endswith(("lang-fr.js", "qr.js")) or "service" in s or "alexa-skill" in s:
+    if s.endswith(("lang-fr.js", "lang-es.js", "lang-pl.js", "qr.js")) or "service" in s or "alexa-skill" in s:
         continue
     for m in re.finditer(r'\bT\(\s*"((?:[^"\\]|\\.)*)"', read(s)):
         if m.group(1) not in keys:
             keys.append(m.group(1))
-fr = set(re.findall(r'^\s*"((?:[^"\\]|\\.)*)"\s*:', read(os.path.join(APP, "js", "lang-fr.js")), re.M))
-missing = [k for k in keys if k not in fr]
-if missing:
-    errors.append("French translation missing for %d texts:\n  %s" % (len(missing), "\n  ".join(missing)))
+# every text in French, Spanish and Polish (the interface's languages besides English)
+for _lang, _file in (("French", "lang-fr.js"), ("Spanish", "lang-es.js"), ("Polish", "lang-pl.js")):
+    _have = set(re.findall(r'^\s*"((?:[^"\\]|\\.)*)"\s*:', read(os.path.join(APP, "js", _file)), re.M))
+    missing = [k for k in keys if k not in _have]
+    if missing:
+        errors.append("%s translation missing for %d texts:\n  %s" % (_lang, len(missing), "\n  ".join(missing)))
 
 # ---- version ----
 v_config = re.search(r'<widget[^>]*\sversion="([^"]+)"', read(os.path.join(APP, "config.xml"))).group(1)

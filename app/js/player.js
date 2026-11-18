@@ -123,12 +123,20 @@
        A live stream that stops moving for 10 s (a movie for 20 s), or that breaks, is opened again by itself,
        up to 5 times in a row (0.8, 2, 4, 6, 8 s apart), a movie at the place it had reached. After a minute
        of good playback the count starts again. Nothing is reopened while the picture moves. */
-    var tickAt = 0, started = false, attempts = 0, goodSince = 0, stallTimer = null, retryTimer = null;
+    var tickAt = 0, started = false, attempts = 0, goodSince = 0, stallTimer = null, retryTimer = null, bufAt = 0, userPaused = false;
     var DELAYS = [800, 2000, 4000, 6000, 8000];
+    /* A stream given up: Samsung's player is closed at once, never left open behind the message. A player left in
+       error could keep the TV's decoder, and every app failed to play until the TV was restarted (#27). */
+    function fail(why) {
+        if (cur) cur.failed = true;
+        clearTimeout(watchdog); clearTimeout(retryTimer);
+        closeAv();
+        emit("onError", why);
+    }
     function reconnect(why) {
         if (!cur) return;
         var c = cur;
-        if (attempts >= DELAYS.length) { TV.log("giving up after " + attempts + " reconnections (" + why + ")"); emit("onError", why); return; }
+        if (attempts >= DELAYS.length) { TV.log("giving up after " + attempts + " reconnections (" + why + ")"); fail(why); return; }
         var wait = DELAYS[attempts++];
         TV.log("reconnecting (" + why + "), attempt " + attempts + " in " + wait + " ms");
         emit("onReconnect", attempts);
@@ -146,6 +154,17 @@
         stallTimer = setInterval(function () {
             // hidden (another app, standby): the player is paused, no picture is expected (it reopened the channel in the background)
             if (!cur || !started || document.hidden) return;
+            /* The spinner itself: on, without the picture moving, for 15 s (a movie 30 s), the stream is opened again,
+               whatever the TV says. An LG UR7500 kept a channel "buffering" for good on a black screen while its
+               player said the video was paused or seeking, which the check below leaves alone (#30). Never after
+               a pause of yours. */
+            var now = Date.now();
+            bufAt = buffering ? bufAt || now : 0;
+            if (bufAt && !userPaused && now - Math.max(bufAt, tickAt) > (cur.opts.live ? 15000 : 30000)) {
+                reconnect("spinner for " + Math.round((now - bufAt) / 1000) + " s");
+                bufAt = 0;
+                return;
+            }
             if (useAv) { var st = "NONE"; try { st = av.getState(); } catch (e) {} if (st !== "PLAYING") return; }
             else if (!video || video.paused || video.ended || video.seeking) return;
             var limit = cur.opts.live ? 10000 : 20000;
@@ -188,16 +207,18 @@
     function play(url, opts) {
         opts = opts || {};
         loggedTracks = false;
-        // A Stalker portal's channel or movie, or a media server's (Jellyfin, Emby, Plex): its real link is asked
-        // first (a portal's lasts a short time only; a server's carries its key)
-        var via = /^stalker:/.test(url) ? TV.stalker : /^media:/.test(url) ? TV.media : null;
+        // A Stalker portal's channel or movie, a media server's (Jellyfin, Emby, Plex), a Stremio title or a public
+        // domain movie: its real link is asked first (a portal's lasts a short time only; a server's carries its key;
+        // Stremio's addons are asked for their streams, chosen in a list)
+        var via = /^stalker:/.test(url) ? TV.stalker : /^media:/.test(url) ? TV.media : /^stremio:/.test(url) ? TV.stremio : /^free:/.test(url) ? TV.freeFilms : null;
         if (via) {
             var my = ++token;
             clearTimeout(watchdog); clearTimeout(retryTimer);
+            opts._via = url;                                   // a portal's link is asked again after a while in the background (unshelve)
             cur = { url: url, opts: opts, token: my };
             buffering = true; emit("onBuffering", true);
             via.resolve(url).then(function (real) { if (cur && cur.token === my) play(real, opts); },
-                function (e) { if (cur && cur.token === my) { TV.log("link: " + e.message); emit("onError", e.message); } });
+                function (e) { if (cur && cur.token === my) { TV.log("link: " + e.message); emit("onError", e.cancel ? "cancelled" : e.message); } });
             return;
         }
         attempts = 0;
@@ -210,9 +231,10 @@
         var my = ++token;
         clearTimeout(watchdog); clearTimeout(retryTimer);
         closeAv();
+        shelved = null;
         cur = { url: url, opts: opts, token: my };
         if (!again) lastTime = 0;
-        buffering = true; started = false; tickAt = Date.now(); goodSince = 0;
+        buffering = true; started = false; tickAt = Date.now(); goodSince = 0; bufAt = 0; userPaused = false;
         setVideoState();
         emit("onBuffering", true);
         TV.log((again ? "reopen " : "play ") + (opts.live ? "live " : "") + (opts.uhd ? "4K " : "") + url.replace(/^(https?:\/\/[^\/]+).*?([^\/]*)$/, "$1/…/$2"));
@@ -264,6 +286,8 @@
                             return;
                         }
                         if (si && si.w >= 3000) rememberUhd(url);
+                        // opened again after the background while it was paused: paused again on its first picture
+                        if (opts._paused) { opts._paused = false; userPaused = true; try { av.pause(); } catch (e) {} }
                     }
                     if (ms !== lastTime) tickAt = Date.now();
                     lastTime = ms; emit("onTime", ms);
@@ -272,7 +296,7 @@
                 onerror: function (type) {
                     if (!cur || cur.token !== my) return;
                     TV.log("avplay error " + type);
-                    if (started || opts.live) reconnect(String(type)); else { clearTimeout(watchdog); emit("onError", String(type)); }
+                    if (started || opts.live) reconnect(String(type)); else fail(String(type));
                 },
                 onevent: function (type, data) { if (type !== "PLAYER_MSG_RESOLUTION_CHANGED") TV.log("avplay event " + type + " " + (data || "")); },
                 onsubtitlechange: function (dur, text) { if (cur && cur.token === my) emit("onSubtitle", { text: text, dur: +dur || 0 }); },
@@ -296,13 +320,13 @@
                 if (!cur || cur.token !== my) return;
                 if (opts.start && !opts.live) { try { av.seekTo(Math.floor(opts.start * 1000)); } catch (e) {} }
                 emit("onReady");                                   // audio tracks and subtitles are known now
-                try { av.play(); emit("onPlaying"); } catch (e) { emit("onError", "play: " + e.message); }
+                try { av.play(); emit("onPlaying"); } catch (e) { fail("play: " + e.message); }
             }, function (err) {
                 if (!cur || cur.token !== my) return;
                 var why = String(err && (err.name || err.message) || err);
                 TV.log("prepare failed " + why);
                 // a movie that cannot open: its error stays, the start timer does not add a "timeout" later
-                if (again || opts.live) reconnect("prepare " + why); else { clearTimeout(watchdog); emit("onError", why); }
+                if (again || opts.live) reconnect("prepare " + why); else fail(why);
             });
         } catch (e) {
             TV.log("open failed " + e.message);
@@ -314,6 +338,7 @@
         token++;
         clearTimeout(watchdog); clearTimeout(retryTimer); clearInterval(stallTimer);
         closeAv();
+        shelved = null;
         if (video) {
             video._token = 0; textOff(); lgShow(false);
             try { video.pause(); video.removeAttribute("src"); while (video.firstChild) video.removeChild(video.firstChild); video.load(); } catch (e) {}
@@ -327,8 +352,8 @@
         if (useAv) { try { return av.getState(); } catch (e) { return "NONE"; } }
         return video && !video.paused ? "PLAYING" : "PAUSED";
     }
-    function pause() { try { if (useAv) av.pause(); else video.pause(); } catch (e) {} }
-    function resume() { try { if (useAv) av.play(); else video.play(); } catch (e) {} }
+    function pause() { userPaused = true; try { if (useAv) av.pause(); else video.pause(); } catch (e) {} }
+    function resume() { userPaused = false; try { if (useAv) av.play(); else video.play(); } catch (e) {} }
     function toggle() { if (state() === "PLAYING") { pause(); return false; } resume(); return true; }
     function position() { return lastTime / 1000; }
     function duration() {
@@ -627,15 +652,48 @@
         if (gap > 30000 && !document.hidden && now - backAt > 10000) backLive(gap);
     }, 5000);
 
+    /* Samsung: in the background or in standby the player is closed, not only suspended. A suspended player kept the
+       TV's decoder, and restored hours later, or after an error, it could leave Samsung's player stuck for every app
+       until the TV was restarted (#27, a 2021 AU7000 on Tizen 6.0). Back in front, the video opens again where it
+       was, paused if it was; a channel starts again live; a portal's link is asked again. */
+    var shelved = null;
+    function shelve() {
+        var st = "NONE";
+        try { st = av.getState(); } catch (e) {}
+        clearTimeout(watchdog); clearTimeout(retryTimer);
+        if (cur.failed) { closeAv(); return; }            // given up: nothing to open again
+        if (!cur.opts.live && lastTime > 0) cur.opts.start = lastTime / 1000;
+        shelved = { paused: st === "PAUSED" || userPaused };
+        closeAv();
+        TV.log("in the background: player closed");
+    }
+    function unshelve() {
+        var s = shelved, c = cur;
+        shelved = null;
+        if (!c) return;
+        TV.log("back in front: the " + (c.opts.live ? "channel" : "video") + " opens again");
+        attempts = 0;
+        c.opts._paused = s.paused;
+        emit("onReconnect", 0);
+        /* a link still being asked for (Stremio's app opened for its engine hides APL TV for a few seconds) is asked
+           again; a portal's link, which lasts a short time only, too */
+        var again = /^(stalker|media|stremio|free):/.test(c.url) ? c.url : /^stalker:/.test(c.opts._via || "") ? c.opts._via : "";
+        if (again) play(again, c.opts);
+        else open(c.url, c.opts, true);
+    }
+
     document.addEventListener("visibilitychange", function () {
         var now = Date.now();
         if (document.hidden) hiddenAt = now;
         else tickAt = now;                  // the picture is given time to come back before "no picture" counts
         if (document.hidden && cur) {
             if (cur.opts.onHide) emit("onHide");
+            else if (useAv && TV.TIZEN) shelve();
             else if (useAv) { try { av.suspend(); } catch (e) {} }
             else if (video && TV.WEBOS) { try { video.pause(); } catch (e) {} }
-        } else if (!document.hidden && cur && useAv) {
+        } else if (!document.hidden && cur && useAv && shelved) {
+            unshelve();
+        } else if (!document.hidden && cur && useAv && !TV.TIZEN) {
             if (!(hiddenAt && now - hiddenAt > 30000 && now - backAt > 10000 && backLive(now - hiddenAt))) { try { av.restore(); } catch (e) {} }
         } else if (!document.hidden && cur && video && TV.WEBOS) {
             // Back in front on LG: a channel starts again live, a movie goes on where it was

@@ -58,7 +58,8 @@
     }
     function pickFeatured() {
         why = {};
-        var out = interleave(D.itemsIn("movies", "trend").slice(0, 12), D.itemsIn("series", "trend").slice(0, 8), "trend");
+        // little memory (core.js TV.SMALL): the new releases only (the trending titles need the whole catalog indexed)
+        var out = TV.SMALL ? [] : interleave(D.itemsIn("movies", "trend").slice(0, 12), D.itemsIn("series", "trend").slice(0, 8), "trend");
         if (out.length < 6) out = out.concat(interleave(D.itemsIn("movies", "new").slice(0, 12), D.itemsIn("series", "new").slice(0, 8), "new").filter(function (x) { return out.indexOf(x) < 0; }));
         // titles already known to have an adult rating stay out of the banner (see TV.meta.bannerSafe)
         return out.filter(function (x) { return !TV.meta.bannerKnown || TV.meta.bannerKnown(x) !== false; }).slice(0, 12);
@@ -190,22 +191,25 @@
         var ml = D.itemsIn("movies", "mylist").concat(D.itemsIn("series", "mylist"));
         addRow(T("My List"), ml, "poster");
         addRow(T("Recently Watched"), D.recentlyWatched().slice(0, 30), "poster");
-        addRow(T("Trending Movies"), D.itemsIn("movies", "trend").slice(0, 30), "poster", { sub: T("This week") });
-        addRow(T("Trending Series"), D.itemsIn("series", "trend").slice(0, 30), "poster", { sub: T("This week") });
-        addRow(T("New Movies"), D.itemsIn("movies", "new").slice(0, 30), "poster");
-        addRow(T("New Shows"), D.itemsIn("series", "new").slice(0, 30), "poster");
-        addRow(T("Top Rated Movies"), D.itemsIn("movies", "top").slice(0, 30), "poster", { genreKey: "topmovies" });
-        addRow(T("Top Rated Series"), D.itemsIn("series", "top").slice(0, 30), "poster", { genreKey: "topseries" });
+        /* A device with little memory (core.js TV.SMALL): 2 catalogs, New Movies and New Shows, 20 covers each; no
+           trending, top rated nor genre rows (each one is TMDB's list matched against the whole catalog, and its covers) */
+        var small = TV.SMALL, N = small ? 20 : 30;
+        if (!small) addRow(T("Trending Movies"), D.itemsIn("movies", "trend").slice(0, 30), "poster", { sub: T("This week") });
+        if (!small) addRow(T("Trending Series"), D.itemsIn("series", "trend").slice(0, 30), "poster", { sub: T("This week") });
+        addRow(T("New Movies"), D.itemsIn("movies", "new").slice(0, N), "poster");
+        addRow(T("New Shows"), D.itemsIn("series", "new").slice(0, N), "poster");
+        if (!small) addRow(T("Top Rated Movies"), D.itemsIn("movies", "top").slice(0, 30), "poster", { genreKey: "topmovies" });
+        if (!small) addRow(T("Top Rated Series"), D.itemsIn("series", "top").slice(0, 30), "poster", { genreKey: "topseries" });
         var cat2 = D.catalog();
         if (cat2) {
-            var liveCats = cat2.live.cats.filter(function (c) { return !c.adult && !c.off && c.count >= 3; }).slice(0, favs.length ? 2 : 4);
+            var liveCats = cat2.live.cats.filter(function (c) { return !c.adult && !c.off && c.count >= 3; }).slice(0, small ? 1 : favs.length ? 2 : 4);
             liveCats.forEach(function (c) { addRow(c.name, D.channelsIn(c.id).slice(0, 24), "channel", { sub: T("Live now") }); });
             // Genre rows (TMDB genres found in your catalog): loaded once, then Home is drawn again
-            HOME_GENRES.forEach(function (g) {
+            if (!small) HOME_GENRES.forEach(function (g) {
                 var items = D.itemsIn(g.kind, "g:" + g.id).slice(0, 30);
                 if (items.length && genreNames[g.kind + g.id]) addRow(genreNames[g.kind + g.id], items, "poster", { sub: g.kind === "series" ? T("Series") : "", genreKey: g.kind + g.id });
             });
-            if (!genresAsked) {
+            if (!genresAsked && !small) {
                 genresAsked = true;
                 Promise.all([TV.meta.genres("movie"), TV.meta.genres("tv")]).then(function (r) {
                     r[0].forEach(function (g) { genreNames["movies" + g.id] = g.name; });

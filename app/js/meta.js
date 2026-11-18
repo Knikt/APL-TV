@@ -24,6 +24,21 @@
         return TV.fetchJSON(u, { timeout: 15000, noProxy: true });
     }
     function img(p, size) { return p ? IMG + (size || "w780") + p : ""; }
+    /* TMDB's search, in your language: movies and series (t: title, o: original title, y: year), the best known first */
+    function searchTitles(q) {
+        if (!KEY || !q) return Promise.resolve([]);
+        return tmdb("/search/multi", "language=" + TV.locale + "&include_adult=false&query=" + encodeURIComponent(q)).then(function (j) {
+            return ((j && j.results) || []).filter(function (r) { return r.media_type === "movie" || r.media_type === "tv"; }).slice(0, 30).map(function (r) {
+                return { id: r.id, t: r.title || r.name || "", o: r.original_title || r.original_name || "", y: parseInt(String(r.release_date || r.first_air_date || "").slice(0, 4), 10) || 0,
+                         kind: r.media_type === "tv" ? "series" : "movies" };
+            });
+        }, function () { return []; });
+    }
+    /* A title's IMDb id alone (a small request: Stremio's addons want it, js/stremio.js keeps it) */
+    function imdbIdOf(kind, id) {
+        if (!KEY || !id) return Promise.resolve("");
+        return tmdb("/" + (kind === "series" || kind === "tv" ? "tv" : "movie") + "/" + id + "/external_ids").then(function (j) { return (j && j.imdb_id) || ""; }, function () { return ""; });
+    }
 
     function cacheKey(item) {
         var t = S.title(item.name || item.title);
@@ -670,7 +685,7 @@
     function esc0(s) { return String(s).replace(/[&<>"]/g, function (ch) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch]; }); }
 
     /* "7.8" with a decimal comma in French and Polish */
-    function fmt(n) { return n ? n.toFixed(1).replace(".", TV.lang === "fr" || TV.lang === "pl" || TV.lang === "it" ? "," : ".") : ""; }
+    function fmt(n) { return n ? n.toFixed(1).replace(".", TV.lang === "fr" || TV.lang === "es" || TV.lang === "pl" || TV.lang === "it" ? "," : ".") : ""; }
     function known(item) { return memo[cacheKey(item)] || null; }      // what is already known, without asking TMDB
     function imdbBadge(n) { return n ? '<span class="imdb"><b>IMDb</b><span>' + fmt(n) + "</span></span>" : ""; }
 
@@ -681,5 +696,5 @@
     function testKey(k) {
         return TV.fetchJSON(API + "/configuration?api_key=" + encodeURIComponent(String(k || "").trim()), { timeout: 12000, noProxy: true }).then(function (j) { return !!(j && j.images); }, function () { return false; });
     }
-    TV.meta = { setKey: setKey, testKey: testKey, keySource: function () { return global.TV_KEYS && global.TV_KEYS.tmdb ? "setup" : (TV.load("tmdbKey", "") ? "settings" : ""); }, certs: certs, certBadge: certBadge, ageCountries: COUNTRIES, ageCountry: ageCountry, themeWords: themeWords, themes: themes, themeMatch: themeMatch, themeTitles: themeTitles, bannerSafe: bannerSafe, bannerKnown: bannerKnown, allAges: allAges, similar: similar, byPerson: byPerson, collection: collection, genres: genres, genreTitles: genreTitles, topRated: topRated, trending: trending, person: person, lookup: lookup, want: want, clearQueue: clearQueue, season: season, img: img, fmt: fmt, imdbBadge: imdbBadge, known: known, enabled: function () { return !!KEY; } };
+    TV.meta = { setKey: setKey, testKey: testKey, keySource: function () { return global.TV_KEYS && global.TV_KEYS.tmdb ? "setup" : (TV.load("tmdbKey", "") ? "settings" : ""); }, certs: certs, certBadge: certBadge, ageCountries: COUNTRIES, ageCountry: ageCountry, themeWords: themeWords, themes: themes, themeMatch: themeMatch, themeTitles: themeTitles, bannerSafe: bannerSafe, bannerKnown: bannerKnown, allAges: allAges, similar: similar, byPerson: byPerson, collection: collection, genres: genres, genreTitles: genreTitles, topRated: topRated, trending: trending, person: person, lookup: lookup, imdbIdOf: imdbIdOf, searchTitles: searchTitles, want: want, clearQueue: clearQueue, season: season, img: img, fmt: fmt, imdbBadge: imdbBadge, known: known, enabled: function () { return !!KEY; } };
 })(window);

@@ -222,7 +222,7 @@
         kenya: "ke", uganda: "ug", somalia: "so", congo: "cd", mali: "ml", benin: "bj", togo: "tg", gabon: "ga", morocco: "ma", maroc: "ma", algeria: "dz", algerie: "dz",
         tunisia: "tn", tunisie: "tn", egypt: "eg", ethiopia: "et", tanzania: "tz", rwanda: "rw", angola: "ao", mozambique: "mz", zambia: "zm", zimbabwe: "zw" };
     var EPGPW = { fr: 1, gb: 1, us: 1, de: 1, es: 1, br: 1, ca: 1, ru: 1, au: 1, "in": 1, jp: 1, kr: 1, cn: 1 };
-    var LANG_COUNTRY = { fr: "fr", en: "gb", pl: "pl", it: "it" };
+    var LANG_COUNTRY = { fr: "fr", en: "gb", es: "es", pl: "pl", it: "it" };
     function compact(s) {
         s = String(s || "").toLowerCase();
         try { s = s.normalize("NFD").replace(/[\u0300-\u036f]/g, ""); } catch (e) {}
@@ -237,6 +237,14 @@
         if (!tg && LANG_COUNTRY[TV.lang]) return [LANG_COUNTRY[TV.lang]];      // no country: the screen's
         return [];
     }
+    /* What the helper looks for in a guide, for a channel: its name made compact, and its guide id (its tvg-id, as
+       "#id:" + the id in small letters). A guide whose names differ from the playlist's ("U and GOLD HD" for
+       "UK: U&GOLD HD") still has the channel under the same id (#32). Helpers from before only know the names. */
+    function asked(c, names, byName) {
+        var k = compact(c.cname || c.name);
+        if (k) { names[k] = 1; (byName[k] = byName[k] || []).push(c); }
+        if (c.epg) { var ik = "#id:" + String(c.epg).toLowerCase(); names[ik] = 1; (byName[ik] = byName[ik] || []).push(c); }
+    }
     function loadExtra() {
         var cat = TV.data.catalog(), g = gen;
         if (!cat || off()) return Promise.resolve();
@@ -248,7 +256,7 @@
             countriesOf(ct).forEach(function (code) { (by[code] = by[code] || []).push(c); });
             total++;
         });
-        var codes = Object.keys(by).filter(function (k) { return by[k].length >= 3; }).sort(function (a, b) { return by[b].length - by[a].length; }).slice(0, 30);
+        var codes = Object.keys(by).filter(function (k) { return by[k].length >= 3; }).sort(function (a, b) { return by[b].length - by[a].length; }).slice(0, TV.SMALL ? 2 : 30);   // little memory: the 2 main countries
         if (!codes.length) return Promise.resolve();
         TV.log("extra guides: " + total + " channels without programmes, countries " + codes.join(" "));
         var from = Date.now() - 4 * 3600 * 1000, to = Date.now() + 26 * 3600 * 1000, found = 0;
@@ -261,7 +269,7 @@
                     var still = by[code].filter(function (c) { return !has(c); });
                     if (!still.length) return;
                     var names = {}, byName = {};
-                    still.forEach(function (c) { var k = compact(c.cname || c.name); if (k) { names[k] = 1; (byName[k] = byName[k] || []).push(c); } });
+                    still.forEach(function (c) { asked(c, names, byName); });
                     return TV.helper.epgMatch(url, Object.keys(names), from, to).then(function (j) {
                         var n = 0;
                         if (g !== gen) return;
@@ -288,7 +296,7 @@
                 var still = cat.live.chans.filter(function (c) { return !next[c.id] && (first || !has(c)) && !TV.data.catOf(c).adult; });
                 if (!still.length) return;
                 var names = {}, byName = {};
-                still.forEach(function (c) { var k = compact(c.cname || c.name); if (k) { names[k] = 1; (byName[k] = byName[k] || []).push(c); } });
+                still.forEach(function (c) { asked(c, names, byName); });
                 return TV.helper.epgMatch(url, Object.keys(names), from, to).then(function (j) {
                     if (g !== gen) return;
                     var n = 0;

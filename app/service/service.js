@@ -22,7 +22,7 @@ var zlib = require("zlib");
 var os = require("os");
 var crypto = require("crypto");
 
-var PORT = 8765, VERSION = "1.3.0";
+var PORT = 8765, VERSION = "1.4.0";
 var IDLE_MS = 15 * 60 * 1000, SESSION_MS = 20 * 60 * 1000;
 var UA = "APL TV/" + VERSION + " (" + (global.APLTV_PLATFORM || "Tizen") + ")";
 
@@ -497,6 +497,9 @@ function matchXmltv(target, names, from, to, cb) {
                 if (m[1] === "channel") {
                     var id = decodeXml((m[2].match(/id="([^"]*)"/) || [])[1]);
                     if (!id) continue;
+                    // a channel asked by its guide id ("#id:" + its tvg-id, js/epg.js): U.and.GOLD.HD.uk found as it is (#32)
+                    var byId = "#id:" + id.toLowerCase();
+                    if (want[byId]) { (idTo[id] = idTo[id] || []).push(byId); delete want[byId]; }
                     var dn, dre = /<display-name[^>]*>([\s\S]*?)<\/display-name>/g;
                     while ((dn = dre.exec(m[3]))) {
                         var c = compact(decodeXml(dn[1]));
@@ -1110,6 +1113,42 @@ function sessionOk(k) { return !!(session && k && k === session.token && Date.no
 /* A wrong code counts: after 20 the session is closed (the TV shows a new code) */
 function wrongCode() { if (session && ++session.wrong >= 20) { log("too many wrong phone codes: session closed"); session = null; pending = []; } }
 
+/* Stremio's torrent engine (Samsung). Stremio's app for Samsung TVs brings it as a service of its own
+   (IkWsFHtOY9.StremioService, port 11470), which the TV lets only Stremio start; the app (APL TV) is paused as soon
+   as it is in the background, so this service does it: Stremio's app opens, its engine starts (about 4 s), and
+   APL TV comes back to the front. The engine then stays ready until the TV is switched off. */
+var STREMIO_APP = "IkWsFHtOY9.Stremio", stremioWaiting = null;
+function stremioPing(ip, cb) {
+    var done = false, r = http.get({ host: ip, port: 11470, path: "/settings", timeout: 1500 }, function (x) { x.resume(); if (!done) { done = true; cb(x.statusCode === 200); } });
+    r.on("error", function () { if (!done) { done = true; cb(false); } });
+    r.on("timeout", function () { r.destroy(); });
+}
+function stremioEngine(cb) {
+    if (stremioWaiting) { stremioWaiting.push(cb); return; }
+    stremioWaiting = [cb];
+    var ip = lanAddresses()[0] || "127.0.0.1", t0 = Date.now(), base = "http://" + ip + ":11470";
+    function fin(r) { var l = stremioWaiting || []; stremioWaiting = null; l.forEach(function (f) { try { f(r); } catch (e) {} }); }
+    stremioPing(ip, function (up) {
+        if (up) { fin({ ok: true, base: base, started: false }); return; }
+        var T = typeof tizen !== "undefined" ? tizen : null;
+        if (!T || !T.application) { fin({ ok: false, error: "no tizen" }); return; }
+        var me = "APLTVMedia.TV";
+        try { me = T.application.getCurrentApplication().appInfo.packageId + ".TV"; } catch (e) {}
+        function back() { try { T.application.launch(me, function () {}, function () {}); } catch (e) {} }
+        try {
+            T.application.launch(STREMIO_APP, function () {
+                (function poll() {
+                    stremioPing(ip, function (ok) {
+                        if (ok) { back(); log("stremio engine started in " + (Date.now() - t0) + " ms"); fin({ ok: true, base: base, started: true, ms: Date.now() - t0 }); }
+                        else if (Date.now() - t0 < 25000) setTimeout(poll, 400);
+                        else { back(); fin({ ok: false, error: "the engine did not start" }); }
+                    });
+                })();
+            }, function (e) { fin({ ok: false, missing: true, error: String(e && e.message || e) }); });
+        } catch (e) { fin({ ok: false, error: e.message }); }
+    });
+}
+
 function handler(req, res) {
     stopLater();
     var u = req.url || "/", path = u.split("?")[0], q = query(u), local = isLocal(req);
@@ -1119,6 +1158,11 @@ function handler(req, res) {
     if (req.method === "OPTIONS") { cors(res); res.writeHead(204); res.end(); return; }
 
     if (path === "/ping") { send(res, 200, { ok: 1, v: VERSION, session: !!session }); return; }
+    if (path === "/stremio/engine") {
+        if (!local) { send(res, 403, { error: "local only" }); return; }
+        stremioEngine(function (r) { send(res, 200, r); });
+        return;
+    }
 
     if (path === "/" || path === "/s") {
         var good = sessionOk(q.k);
