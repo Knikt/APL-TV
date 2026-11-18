@@ -9,8 +9,7 @@
    and only when the TV lists as many tracks as the file.
 
    Read BEFORE the player opens the file, never at the same time: a provider that allows one connection keeps it
-   for the movie. Only a plain link (a playlist's, an Xtream account's): a portal's or a server's link can be good
-   for one request only, and those servers name their tracks themselves.
+   for the movie. Not on a Stalker portal's link, which can be good for one request only (wanted()).
    ============================================================ */
 (function (global) {
     "use strict";
@@ -150,9 +149,19 @@
         });
     }
 
-    /* A movie or an episode in .mkv, on a plain link, not read yet */
+    /* A movie or an episode in .mkv, not read yet. A playlist's or an Xtream account's link, and also the links asked
+       just before playing for a Stremio stream, a media server's file or a public domain movie: those are good for
+       more than one request (1.4.2 left them out, and a film from one of them had no names, #34). Not a Stalker
+       portal's: it can be good for one request only. An .mkv not read says why in the log, a link read before too. */
     function wanted(url, opts) {
-        return !(opts && (opts.live || opts._via)) && /^https?:\/\/[^?#]+\.mkv([?#]|$)/i.test(String(url || "")) && !(url in known);
+        if (!/^https?:\/\/[^?#]+\.mkv([?#]|$)/i.test(String(url || "")) || (opts && opts.live)) return false;
+        if (/^stalker:/.test((opts && opts._via) || "")) { TV.log("mkv: track names not read (a portal's link can be good for one request only)"); return false; }
+        if (url in known) {
+            var k = known[url];
+            TV.log(k ? "mkv: track names read before (" + k.audio.length + " audio and " + k.subs.length + " subtitle tracks)" : "mkv: track names not readable before, not asked again");
+            return false;
+        }
+        return true;
     }
 
     function put(tv, file) {

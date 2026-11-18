@@ -1,8 +1,8 @@
 {
- "version": "1.4.2",
+ "version": "1.4.3",
  "loader": 1,
  "reinstall": "1.0.1",
- "notes": "Stalker portals load again (no more HTTP 429), and on Samsung the subtitles get their names from the .mkv file",
+ "notes": "On Samsung, subtitle names from the .mkv file also for Stremio streams, media servers and public domain movies",
  "platforms": {
   "tizen": {
    "reinstall": "1.0.1"
