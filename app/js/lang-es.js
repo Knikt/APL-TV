@@ -1175,5 +1175,7 @@ window.TV_LANG_ES = {
     "Something doesn't work? Send the developer what APL TV did just now: the last lines of its log, your TV's model and the app's version. No passwords, no playlist addresses.": "¿Algo no funciona? Envía al desarrollador lo que APL TV acaba de hacer: las últimas líneas de su registro, el modelo de tu TV y la versión de la app. Sin contraseñas ni direcciones de listas.",
     "Send it right after the problem, then give this code with your issue on GitHub: {code}": "Envíalo justo después del problema y luego da este código con tu issue en GitHub: {code}",
     "Give this code with your issue on GitHub: {code}": "Da este código con tu issue en GitHub: {code}",
-    "The portal gave no link for this video.": "El portal no dio ningún enlace para este vídeo."
+    "The portal gave no link for this video.": "El portal no dio ningún enlace para este vídeo.",
+    /* A Stalker portal that says too many requests (#30) */
+    "The portal says it is getting too many requests. Wait a few minutes, then try again.": "El portal dice que está recibiendo demasiadas solicitudes. Espera unos minutos y vuelve a intentarlo."
 };

@@ -1,8 +1,8 @@
 {
- "version": "1.4.1",
+ "version": "1.4.2",
  "loader": 1,
  "reinstall": "1.0.1",
- "notes": "Send a Report from Settings, Stalker series filed among movies, and the Samsung helper under another package id",
+ "notes": "Stalker portals load again (no more HTTP 429), and on Samsung the subtitles get their names from the .mkv file",
  "platforms": {
   "tizen": {
    "reinstall": "1.0.1"
@@ -35,6 +35,7 @@
   "js/data.js",
   "js/epg.js",
   "js/meta.js",
+  "js/mkv.js",
   "js/player.js",
   "js/ui.js",
   "js/home.js",

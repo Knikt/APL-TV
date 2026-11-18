@@ -57,14 +57,46 @@
         if (token) h.Authorization = "Bearer " + token;
         return h;
     }
-    function req(src, api, params, token, timeout) {
+    /* A portal that says it gets too many requests (HTTP 429, or 503): its requests wait and go again (3, 6, then
+       12 s later), two at a time from then on, the handshake included (#30: a portal answered 429 even to it). Every
+       request to a portal goes through its gate: JOBS at a time, fewer once it said so. */
+    var gates = {}, BUSY_WAIT = [3000, 6000, 12000];
+    function gateOf(src) { return gates[src.id] || (gates[src.id] = { max: JOBS, on: 0, q: [], until: 0 }); }
+    function pump(g) { while (g.on < g.max && g.q.length) g.q.shift()(); }
+    function gate(src, fn) {
+        var g = gateOf(src);
+        return new Promise(function (resolve, reject) {
+            g.q.push(function () {
+                g.on++;
+                var wait = g.until - Date.now();
+                (wait > 0 ? new Promise(function (r) { setTimeout(r, wait); }) : Promise.resolve()).then(fn).then(
+                    function (v) { g.on--; pump(g); resolve(v); }, function (e) { g.on--; pump(g); reject(e); });
+            });
+            pump(g);
+        });
+    }
+    function busy(e) { return !!e && (e.status === 429 || e.status === 503); }
+    function req(src, api, params, token, timeout, tries) {
+        tries = tries || 0;
         var url = api + "?" + params + (params.indexOf("JsHttpRequest") < 0 ? "&JsHttpRequest=1-xml" : "");
-        return TV.helper.sget(url, headers(src, token), timeout).then(function (text) {
+        return gate(src, function () { return TV.helper.sget(url, headers(src, token), timeout); }).then(function (text) {
             var j = null;
             try { j = JSON.parse(text); } catch (e) { throw new Error(/authoriz|forbidden|access denied/i.test(text) ? T("The portal refused this MAC address.") : T("The portal did not answer as a Stalker portal.")); }
             return j && j.js !== undefined ? j.js : j;
         }, function (e) {
             if (e && e.old) throw new Error(T("Stalker portals need the new install of APL TV: run APL Launcher Setup again (Samsung) or install the latest .ipk (LG) or .apk (Android) once."));
+            if (busy(e)) {
+                var g = gateOf(src);
+                if (tries < BUSY_WAIT.length) {
+                    if (g.max > 2) TV.log("stalker: the portal says too many requests (HTTP " + e.status + "): two at a time, and asked again in a few seconds");
+                    g.max = Math.min(g.max, 2);
+                    g.until = Math.max(g.until, Date.now() + BUSY_WAIT[tries]);
+                    return req(src, api, params, token, timeout, tries + 1);
+                }
+                var b = new Error(T("The portal says it is getting too many requests. Wait a few minutes, then try again.") + " (HTTP " + e.status + ")");
+                b.status = e.status; b.busy = true;
+                throw b;
+            }
             throw e;
         });
     }
@@ -101,7 +133,7 @@
                         TV.log("stalker: connected (" + api.replace(/^https?:\/\/[^\/]+/, "") + ")");
                         return ses;
                     });
-                }).catch(function (e) { if (worth(e) > worth(lastErr)) lastErr = e; if (e && /new install/.test(e.message)) throw e; return null; });
+                }).catch(function (e) { if (worth(e) > worth(lastErr)) lastErr = e; if (e && (e.busy || /new install/.test(e.message))) throw e; return null; });
             });
         }, Promise.resolve(null)).then(function (ses) {
             if (!ses) throw lastErr || new Error(T("The portal did not answer as a Stalker portal."));
@@ -121,7 +153,7 @@
                 if (!tokenOk(j)) throw new Error("token");
                 return j;
             }).catch(function (e) {
-                if (e && /new install/.test(e.message)) throw e;
+                if (e && (e.busy || /new install/.test(e.message))) throw e;       // a busy portal was already asked again (req)
                 var cur = sessions[src.id];
                 var next = !tokenTrouble(e) ? s : cur && cur.token !== s.token ? cur : null;
                 return (next ? Promise.resolve(next) : login(src, true)).then(function (s2) {
@@ -255,8 +287,12 @@
         }).then(function () {
             progress(T("Loading series…"));
             return call(src, "type=series&action=get_categories").then(function (sc) {
-                out.series.cats = cats(sc, src.id, "series", "s").concat(out.series.cats);      // after the ones found among the movies
-                return firstPages(src, out.series.cats, seriesParams, addSeries).then(function (r) { restS = r; });
+                /* Only the series module's own categories are asked to it. The ones found among the movies were asked
+                   too, under an id it doesn't know: a portal that answers that with all its series made hundreds of
+                   pages more, and then said 429 to everything (1.4.1, #30). */
+                var own = cats(sc, src.id, "series", "s");
+                out.series.cats = own.concat(out.series.cats);                       // before the ones found among the movies
+                return firstPages(src, own, seriesParams, addSeries).then(function (r) { restS = r; });
             }).catch(function (e) { TV.log("stalker series: " + e.message); out.failed.series = e.message; });
         }).then(function () {
             TV.log("stalker: " + out.live.chans.length + " channels, first pages: " + out.movies.items.length + " movies, " + out.series.items.length + " series; " + (restM.length + restS.length) + " pages left");

@@ -224,6 +224,17 @@
         attempts = 0;
         if (!opts.uhd && knownUhd(url)) opts.uhd = true;
         if (TV.WEBOS && /\.ts(\?|$)/i.test(url) && knownHls(url)) { opts._hls = true; url = toHls(url); }
+        // A movie or an episode in .mkv: its tracks' languages and names read from the file first, the player closed
+        // meanwhile, so the provider sees one connection at a time (js/mkv.js, #34)
+        if (useAv && TV.mkv && TV.mkv.wanted(url, opts)) {
+            var mine = ++token;
+            clearTimeout(watchdog); clearTimeout(retryTimer);
+            closeAv();
+            cur = { url: url, opts: opts, token: mine };
+            buffering = true; emit("onBuffering", true);
+            TV.mkv.read(url).then(function () { if (cur && cur.token === mine) open(url, opts, false); });
+            return;
+        }
         open(url, opts, false);
     }
     function open(url, opts, again) {
@@ -480,11 +491,13 @@
         try {
             var list = (av.getTotalTrackInfo() || []).filter(function (t) { return t.type === "AUDIO" || t.type === "TEXT"; });
             if (!loggedTracks && list.length) { loggedTracks = true; TV.log("tracks as the TV gives them: " + list.map(function (t) { return t.type + " " + String(t.extra_info || "").slice(0, 160); }).join(" | ")); }
-            return list.map(function (t) {
+            var out = list.map(function (t) {
                 var x = trackInfo(t.extra_info);
                 return { index: t.index, type: t.type, lang: x.language || x.track_lang || x.lang || x.Language || "", name: x.label || x.track_name || x.name || x.title || "",
                          codec: x.fourCC || "", channels: x.channels || "" };
             });
+            // What the TV leaves empty, from the .mkv file itself (#34: no subtitle languages on a QE65S90C)
+            return TV.mkv ? TV.mkv.fill(out, cur.url) : out;
         } catch (e) { return []; }
     }
     function currentTrack(type) {
