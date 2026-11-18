@@ -75,7 +75,7 @@ La même app sur chaque TV : même look, mêmes fonctions, mêmes mises à jour.
 - **À la voix avec Alexa.** La petite [skill APL TV](alexa-skill/) amène tes recherches et tes chaînes dans APL TV, sur n'importe quelle TV : « Alexa, demande à APL TV de chercher les films Dragon Ball » et les résultats sont à l'écran ; « Alexa, demande à APL TV de mettre M6 » et la chaîne démarre. Sur Samsung, l'Alexa de l'écran arrive aussi directement dans APL TV pour « Alexa, pause », lecture, avance et épisode suivant.
 - **Configuration depuis le téléphone.** La TV affiche un QR code ; ton téléphone ouvre une page servie par la TV elle-même sur ton Wi-Fi (aucun site extérieur), protégée par un code à usage unique. La télécommande marche aussi. Ton téléphone peut aussi **modifier ta playlist** : masquer et ranger tes catégories, faire tes groupes de chaînes, ranger tes favoris et renommer des chaînes, puis tout envoyer à la TV (Réglages › Modifier sur ton téléphone).
 - **Mises à jour automatiques.** APL TV regarde ce dépôt toutes les 6 heures et se met à jour tout seul (code, style, textes), puis redémarre quand rien n'est en lecture. Tes playlists et tes réglages restent. Chaque TV ne prend que les mises à jour prêtes pour elle ; quand sa partie installée change, elle demande une fois une nouvelle installation. Réglages › Mises à jour.
-- En français, en anglais et en polonais (suit la langue de la TV).
+- En français, en anglais, en polonais et en italien (suit la langue de la TV).
 
 ## Captures d'écran
 

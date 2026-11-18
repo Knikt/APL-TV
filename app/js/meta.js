@@ -670,7 +670,7 @@
     function esc0(s) { return String(s).replace(/[&<>"]/g, function (ch) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch]; }); }
 
     /* "7.8" with a decimal comma in French and Polish */
-    function fmt(n) { return n ? n.toFixed(1).replace(".", TV.lang === "fr" || TV.lang === "pl" ? "," : ".") : ""; }
+    function fmt(n) { return n ? n.toFixed(1).replace(".", TV.lang === "fr" || TV.lang === "pl" || TV.lang === "it" ? "," : ".") : ""; }
     function known(item) { return memo[cacheKey(item)] || null; }      // what is already known, without asking TMDB
     function imdbBadge(n) { return n ? '<span class="imdb"><b>IMDb</b><span>' + fmt(n) + "</span></span>" : ""; }
 
