@@ -31,6 +31,7 @@ Créé par **Knikt** (Gero Corp.), l'auteur d'[APL Launcher](https://github.com/
 - **1.4.2.** Les portails Stalker se chargent de nouveau : la 1.4.1 envoyait à certains portails des centaines de demandes en trop, et ils répondaient HTTP 429. Un portail qui dit recevoir trop de demandes est maintenant redemandé, plus lentement (#30). Samsung : les sous-titres que la TV laisse sans langue prennent la langue et le nom écrits dans le fichier .mkv (#34).
 - **1.4.3.** Samsung : les noms des sous-titres lus dans le fichier .mkv aussi pour un flux Stremio, un fichier de serveur multimédia et un film libre de droit, pas seulement pour une playlist ou un compte Xtream (#34).
 - **1.4.4.** Stalker : les films et séries d'un gros portail sont enregistrés pendant leur chargement, fermer APL TV ne les perd plus ; une seule connexion gardée au lieu d'une nouvelle à chaque mise à jour ; un film pour lequel le portail ne donne pas de lien est essayé par son propre fichier (#30).
+- **1.4.5.** Stalker : les épisodes des séries dont les saisons arrivent sans eux, les catégories de séries rangées dans les films chargées en entier, plus de rechargement de tout le portail toutes les 10 minutes quand il n'a pas de section Séries, et le journal dit ce que répond le lien d'un film qui ne démarre pas (#30).
 
 ## Nouveau dans la 1.3
 

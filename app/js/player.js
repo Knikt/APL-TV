@@ -237,6 +237,17 @@
         }
         open(url, opts, false);
     }
+    /* A movie that showed nothing in 40 s: what its link answers, in the log (#30: a portal's movies on an LG ended in
+       "start timeout" with nothing to say why). Only the status and the first line, never the address. */
+    function probeLink(url) {
+        // an HLS playlist only (a few lines): a film's own file would be downloaded whole
+        if (!/^https?:\/\/[^?#]+\.m3u8([?#]|$)/i.test(String(url)) || !TV.fetchText) return;
+        TV.fetchText(url, { timeout: 10000 }).then(function (t) {
+            TV.log("start timeout: the link answers, " + String(t || "").length + " characters, first line: " + TV.redact(String(t || "").split(/\r?\n/)[0]).slice(0, 80));
+        }, function (e) {
+            TV.log("start timeout: the link answers " + (e && e.status ? "HTTP " + e.status : (e && e.message) || "nothing") + (e && e.body ? ": " + TV.redact(String(e.body)).slice(0, 80) : ""));
+        });
+    }
     function open(url, opts, again) {
         if (TV.mark) TV.mark("player");
         var my = ++token;
@@ -253,6 +264,7 @@
         watchdog = setTimeout(function () {
             if (cur && cur.token === my && !started) {
                 TV.log("start timeout");
+                if (!opts.live) probeLink(url);
                 if (again || opts.live) reconnect("start timeout"); else emit("onError", "timeout");
             }
         }, opts.live ? 25000 : 40000);                     // a movie or an episode: some providers are slow to start them

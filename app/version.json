@@ -1,8 +1,8 @@
 {
- "version": "1.4.4",
+ "version": "1.4.5",
  "loader": 1,
  "reinstall": "1.0.1",
- "notes": "Stalker: a big portal's titles kept when APL TV closes, one session, movies tried through their file",
+ "notes": "Stalker: series episodes season by season, full series categories, no reload loop",
  "platforms": {
   "tizen": {
    "reinstall": "1.0.1"
