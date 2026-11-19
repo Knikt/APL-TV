@@ -168,9 +168,31 @@
     }
 
     /* ---------- Stalker portal (MAG): js/stalker.js, in the same catalog shape ---------- */
+    /* A big portal takes minutes (#19; #30: 5,400 pages after the first ones), and closed before the end, nothing was
+       kept: each start began again with no movies at all. What has come in is now saved as it goes (once the first
+       pages are in, then every 3 minutes when it grew by a third), marked unfinished: the next start shows it at
+       once and loads the portal again. Never over a fuller copy from before (a refresh keeps the old one until the
+       end). */
+    function count(c) { return c ? (c.movies && c.movies.items ? c.movies.items.length : 0) + (c.series && c.series.items ? c.series.items.length : 0) : 0; }
     function loadStalker(src, progress, onFirst) {
         if (!TV.stalker) return Promise.reject(new Error("no Stalker support"));
-        return TV.stalker.load(src, progress, { id: src.id, v: CATALOG_V, at: Date.now(), type: "stalker", live: { cats: [], chans: [] }, movies: { cats: [], items: [] }, series: { cats: [], items: [] }, failed: {} }, onFirst);
+        var out = { id: src.id, v: CATALOG_V, at: Date.now(), type: "stalker", live: { cats: [], chans: [] }, movies: { cats: [], items: [] }, series: { cats: [], items: [] }, failed: {} };
+        var before = count(cats[src.id]), savedN = 0, timer = null;
+        function snap() {
+            var n = count(out);
+            if (!stillThere(src.id) || n <= before || n < savedN * 1.3) return;
+            savedN = n;
+            saveCatalog({ id: out.id, v: out.v, at: out.at, type: out.type, account: out.account || null, live: out.live, unfinished: true,
+                          movies: { cats: out.movies.cats.slice(), items: out.movies.items.slice() }, series: { cats: out.series.cats.slice(), items: out.series.items.slice() } })
+                .then(function () { TV.log("unfinished catalog of " + src.name + " saved: " + n + " titles so far"); });
+        }
+        var p = TV.stalker.load(src, progress, out, function (c) {
+            if (onFirst) onFirst(c);
+            snap();
+            timer = setInterval(snap, 3 * 60000);
+        });
+        p.then(function () { clearInterval(timer); }, function () { clearInterval(timer); });
+        return p;
     }
 
     /* ---------- media servers (Jellyfin, Emby, Plex: js/media.js), Stremio (js/stremio.js) and the Public Domain
@@ -406,6 +428,9 @@
             if (failed[k] || (had >= 50 && !c[k].items.length && src.type !== "stremio")) {
                 missed.push(k);
                 if (had) { c[k] = prev[k]; TV.log(k + " of " + src.name + " not received (" + (failed[k] || "empty") + "): the " + had + " from before stay"); }
+                // nothing from before either: saved as unfinished, so the next start asks again instead of keeping an
+                // empty Movies tab for 6 hours (#30: an empty list was saved and showed until a Refresh by hand)
+                else c.unfinished = true;
             }
         });
         if (missed.length) {
@@ -465,7 +490,15 @@
         });
         return kind === "live" ? { cats: cats, chans: list } : { cats: cats, items: list };
     }
+    /* One save at a time per source: an unfinished copy still being written can't land after the finished one */
+    var saving = {};
     function saveCatalog(c, vodKept) {
+        var id = c.id, p = (saving[id] || Promise.resolve()).then(function () { return saveNow(c, vodKept); }, function () { return saveNow(c, vodKept); });
+        saving[id] = p;
+        p.then(function () { if (saving[id] === p) delete saving[id]; }, function () { if (saving[id] === p) delete saving[id]; });
+        return p;
+    }
+    function saveNow(c, vodKept) {
         var id = c.id, saved = { movies: false, series: false };
         // the movies and series did not change (a refresh of the channels only): their saved copies stay as they are
         if (vodKept) { saved = { movies: true, series: true }; return saveHead(); }
@@ -483,8 +516,9 @@
         });
         function saveHead() {
             var head = { id: id, v: c.v || 1, at: c.at, type: c.type, account: c.account || null, epgUrl: c.epgUrl || "", live: pack(c.live, "live", id), parts: 3, saved: saved };
+            if (c.unfinished) head.unfinished = true;
             return TV.idb.set("cat:" + id, head).then(function (r) {
-                TV.log("catalog saved: channels " + (r !== false) + ", movies " + saved.movies + ", series " + saved.series + (vodKept ? " (as they were)" : ""));
+                TV.log("catalog saved: channels " + (r !== false) + ", movies " + saved.movies + ", series " + saved.series + (vodKept ? " (as they were)" : "") + (c.unfinished ? ", unfinished" : ""));
             });
         }
     }
@@ -524,7 +558,8 @@
             return sequence(missing, function (s) { return loadSource(s, progress, true).catch(function (e) { TV.log("load " + s.name + ": " + e.message); TV.toast(s.name + " : " + e.message, true); }); })
                 .then(rebuild);
         }).then(function () {
-            var old = sources().filter(function (s) { return cats[s.id] && (Date.now() - (cats[s.id].at || 0) > MAX_AGE || (cats[s.id].v || 1) < CATALOG_V); });
+            // and the ones saved unfinished (closed while a big portal was loading, or its movies did not come)
+            var old = sources().filter(function (s) { return cats[s.id] && (cats[s.id].unfinished || Date.now() - (cats[s.id].at || 0) > MAX_AGE || (cats[s.id].v || 1) < CATALOG_V); });
             if (old.length) whenQuiet(function () { refresh(old, function () {}, TV.SMALL); });
         });
     }

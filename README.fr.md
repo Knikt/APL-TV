@@ -30,6 +30,7 @@ Créé par **Knikt** (Gero Corp.), l'auteur d'[APL Launcher](https://github.com/
 - **1.4.1.** Réglages › À propos › Envoyer un rapport : juste après un problème, envoie au développeur ce qu'APL TV vient de faire, et donne le code affiché avec ton issue sur GitHub. Stalker : les séries qu'un portail range dans ses films vont dans Séries avec leurs épisodes, et une vidéo pour laquelle le portail ne donne pas de lien affiche la raison du portail (#30). Samsung : le helper démarre même quand Apps2Samsung a donné un autre identifiant à APL TV, et le message dit quand une autre app occupe son port (#22).
 - **1.4.2.** Les portails Stalker se chargent de nouveau : la 1.4.1 envoyait à certains portails des centaines de demandes en trop, et ils répondaient HTTP 429. Un portail qui dit recevoir trop de demandes est maintenant redemandé, plus lentement (#30). Samsung : les sous-titres que la TV laisse sans langue prennent la langue et le nom écrits dans le fichier .mkv (#34).
 - **1.4.3.** Samsung : les noms des sous-titres lus dans le fichier .mkv aussi pour un flux Stremio, un fichier de serveur multimédia et un film libre de droit, pas seulement pour une playlist ou un compte Xtream (#34).
+- **1.4.4.** Stalker : les films et séries d'un gros portail sont enregistrés pendant leur chargement, fermer APL TV ne les perd plus ; une seule connexion gardée au lieu d'une nouvelle à chaque mise à jour ; un film pour lequel le portail ne donne pas de lien est essayé par son propre fichier (#30).
 
 ## Nouveau dans la 1.3
 

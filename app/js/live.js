@@ -126,6 +126,7 @@
 
     /* ---------- channel cards ---------- */
     function renderCard(ch) {
+        if (!ch) return el("div", "lcard");          // a row asked while the list was changing (a report: live.js:130)
         if (TV.mark) TV.mark("card");
         var c = el("div", "lcard" + (playing && playing.id === ch.id ? " is-playing" : "")), art = el("div", "lcard__art"), logo = el("div", "lcard__logo");
         TV.logoBox(logo, ch);

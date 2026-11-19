@@ -30,6 +30,7 @@ Created by **Knikt** (Gero Corp.), the maker of [APL Launcher](https://github.co
 - **1.4.1.** Settings › About › Send a Report: right after something goes wrong, send the developer what APL TV just did, and give the code it shows with your issue on GitHub. Stalker: series a portal files among its movies show in Series with their episodes, and a video the portal gives no link for shows the portal's reason (#30). Samsung: the helper starts even when Apps2Samsung gave APL TV another package id, and the message says when another app holds its port (#22).
 - **1.4.2.** Stalker portals load again: 1.4.1 sent some portals hundreds of requests too many, and they answered HTTP 429. A portal that says it gets too many requests is now asked again, more slowly (#30). Samsung: subtitles the TV leaves without a language get the language and the name written in the .mkv file (#34).
 - **1.4.3.** Samsung: the subtitles' names from the .mkv file also for a Stremio stream, a media server's file and a public domain movie, not only a playlist's or an Xtream account's (#34).
+- **1.4.4.** Stalker: a big portal's movies and series are saved while they load, so closing APL TV no longer loses them; one session kept instead of a new one at each refresh; a movie the portal gives no link for is tried through its own file (#30).
 
 ## New in 1.3
 

@@ -154,7 +154,14 @@
        more than one request (1.4.2 left them out, and a film from one of them had no names, #34). Not a Stalker
        portal's: it can be good for one request only. An .mkv not read says why in the log, a link read before too. */
     function wanted(url, opts) {
-        if (!/^https?:\/\/[^?#]+\.mkv([?#]|$)/i.test(String(url || "")) || (opts && opts.live)) return false;
+        if (opts && opts.live) return false;
+        if (!/^https?:\/\/[^?#]+\.mkv([?#]|$)/i.test(String(url || ""))) {
+            // what the link ends with, so a film that should have been read can be told (#34: a second film, from the same
+            // Xtream account, had no "mkv:" line at all)
+            var tail = String(url || "").split(/[?#]/)[0].split("/").pop();
+            TV.log("mkv: track names not read (the link ends with \"" + (tail.indexOf(".") >= 0 ? tail.slice(tail.lastIndexOf(".")) : "no extension") + "\", not .mkv)");
+            return false;
+        }
         if (/^stalker:/.test((opts && opts._via) || "")) { TV.log("mkv: track names not read (a portal's link can be good for one request only)"); return false; }
         if (url in known) {
             var k = known[url];

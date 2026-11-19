@@ -1,8 +1,8 @@
 {
- "version": "1.4.3",
+ "version": "1.4.4",
  "loader": 1,
  "reinstall": "1.0.1",
- "notes": "On Samsung, subtitle names from the .mkv file also for Stremio streams, media servers and public domain movies",
+ "notes": "Stalker: a big portal's titles kept when APL TV closes, one session, movies tried through their file",
  "platforms": {
   "tizen": {
    "reinstall": "1.0.1"

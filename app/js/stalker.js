@@ -104,9 +104,11 @@
     /* ---------- the session ---------- */
     // Of the addresses tried, the error that tells the most: a MAC refused, then a portal that answered, then a 404
     function worth(e) { return !e ? 0 : /refused this MAC/.test(e.message || "") ? 3 : e.status === 404 || /\b404\b/.test(e.message || "") ? 1 : 2; }
+    /* The session of this portal and MAC address: one changed in Settings needs a new handshake */
+    function sameKey(s, src) { return !!s && s.key === normPortal(src.portal) + "|" + normMac(src.mac); }
     function login(src, fresh) {
         var s = sessions[src.id];
-        if (s && !fresh && Date.now() - s.at < 20 * 60000) return Promise.resolve(s);
+        if (s && !fresh && sameKey(s, src) && Date.now() - s.at < 20 * 60000) return Promise.resolve(s);
         /* Eight requests at a time: when the token runs out they all ask again. One handshake for all of them,
            or each new token could end the one just given to the others. */
         if (logins[src.id]) return logins[src.id];
@@ -128,7 +130,7 @@
                                "&device_id2=" + encodeURIComponent(src.id2 || "") + "&signature=&auth_second_step=1&hw_version=1.7-BD-00&not_valid_token=0&timestamp=" + Math.floor(Date.now() / 1000) + "&api_signature=262&prehash=0";
                     return req(src, api, prof, token, 20000).then(function (p) {
                         if (p && (p.status === 1 || p.blocked === "1") && !p.id) throw new Error(T("The portal refused this MAC address."));
-                        var ses = { api: api, token: token, at: Date.now(), profile: p || {} };
+                        var ses = { api: api, token: token, at: Date.now(), profile: p || {}, key: normPortal(src.portal) + "|" + normMac(src.mac) };
                         sessions[src.id] = ses;
                         TV.log("stalker: connected (" + api.replace(/^https?:\/\/[^\/]+/, "") + ")");
                         return ses;
@@ -235,7 +237,7 @@
                 if (out.movies.items.length >= MAX_ITEMS) return;
                 var name = m.name || m.o_name || "", t = S.title(name);
                 out.movies.items.push({
-                    id: src.id + "|m" + m.id, src: src.id, sid: m.id, url: addr(src, "vod", m.cmd), kind: "movie", name: name, title: t.title !== name ? t.title : undefined,
+                    id: src.id + "|m" + m.id, src: src.id, sid: m.id, url: addr(src, "vod", m.cmd) + "::m" + encodeURIComponent(m.id), kind: "movie", name: name, title: t.title !== name ? t.title : undefined,
                     year: t.year || parseInt(m.year, 10) || 0, poster: img(src, m.screenshot_uri || m.cover_big), cat: ct.id, rating: parseFloat(m.rating_imdb || m.rating_kinopoisk) || 0,
                     added: Date.parse(String(m.added || "").replace(" ", "T")) / 1000 || 0, ext: "mp4"
                 });
@@ -258,7 +260,10 @@
         function seriesParams(ct) { return "type=series&action=get_ordered_list&category=" + encodeURIComponent(ct.id.split(":").pop().replace(/^s/, "")) + "&genre=*&sortby=added&fav=0"; }
         var restM = [], restS = [];
         progress(T("Connecting to {name}…", { name: src.name }));
-        return login(src, true).then(function (ses) {
+        /* The session of a few minutes ago when there is one (same portal, same MAC): a new handshake at each refresh
+           ended the token a channel or a movie was using, whose requests then made one more, ending this one's (#30:
+           three handshakes in 12 s, then "refused this MAC" on 48 pages and 0 movies) */
+        return login(src).then(function (ses) {
             return call(src, "type=account_info&action=get_main_info").then(function (a) {
                 var exp = a && (a.end_date || a.phone || "");
                 var t = Date.parse(String(exp).replace(" ", "T"));
@@ -336,24 +341,46 @@
 
     /* The real link of a "stalker:" address, asked just before playing (a portal's links expire quickly) */
     function resolve(url) {
-        var m = String(url).match(/^stalker:([^:]+):(itv|vod):([^:]*)(?::(\d+))?$/);
+        var m = String(url).match(/^stalker:([^:]+):(itv|vod):([^:]*)(?::(\d*))?(?::m([^:]+))?$/);     // a movie: its id after "::m"
         if (!m) return Promise.reject(new Error("bad stalker address"));
         var src = TV.data.sources().filter(function (s) { return s.id === m[1]; })[0];
         if (!src) return Promise.reject(new Error(T("This playlist is no longer there.")));
-        var cmd = decodeURIComponent(m[3]);
-        return call(src, "type=" + m[2] + "&action=create_link&cmd=" + encodeURIComponent(cmd) + "&series=" + (m[4] || "") + "&forced_storage=0&disable_ad=0&download=0&force_ch_link_check=0", 30000).then(function (j) {
+        var cmd = decodeURIComponent(m[3]), movieId = m[5] ? decodeURIComponent(m[5]) : "";
+        function ask(c, series) {
+            return call(src, "type=" + m[2] + "&action=create_link&cmd=" + encodeURIComponent(c) + "&series=" + (series || "") + "&forced_storage=0&disable_ad=0&download=0&force_ch_link_check=0", 30000);
+        }
+        function linkOf(j, c) {
             var link = String((j && j.cmd) || "").replace(/^(ffmpeg|ffrt\d*|auto|rtsp)\s+/i, "").trim();
-            if (!/^(https?|rtsp|rtmp):\/\//i.test(link)) {
-                // some portals give the link directly in the channel's own cmd
-                link = cmd.replace(/^(ffmpeg|ffrt\d*|auto)\s+/i, "").trim();
-                if (!/^https?:\/\//i.test(link) || /localhost/i.test(link)) {
-                    // what the portal said, for the log and the report (#30: movies a portal gave no link for)
-                    var said = "";
-                    try { TV.log("stalker: no link in the portal's answer: " + JSON.stringify(j).slice(0, 400)); said = j && (j.error || j.msg) ? String(j.error || j.msg).slice(0, 80) : ""; } catch (e) {}
-                    throw new Error((m[2] === "itv" ? T("The portal gave no link for this channel.") : T("The portal gave no link for this video.")) + (said ? " (" + said + ")" : ""));
-                }
-            }
-            return link;
+            if (/^(https?|rtsp|rtmp):\/\//i.test(link)) return link;
+            // some portals give the link directly in the channel's own cmd
+            link = String(c || "").replace(/^(ffmpeg|ffrt\d*|auto)\s+/i, "").trim();
+            return /^https?:\/\//i.test(link) && !/localhost/i.test(link) ? link : "";
+        }
+        function said(j) { try { return j && (j.error || j.msg) ? String(j.error || j.msg).slice(0, 80) : ""; } catch (e) { return ""; } }
+        function fail(j) {
+            var s = said(j);
+            return new Error((m[2] === "itv" ? T("The portal gave no link for this channel.") : T("The portal gave no link for this video.")) + (s ? " (" + s + ")" : ""));
+        }
+        function shown(x) { try { return JSON.stringify(x).slice(0, 400); } catch (e) { return String(x); } }
+        return ask(cmd, m[4]).then(function (j) {
+            var link = linkOf(j, cmd);
+            if (link) return link;
+            // what the portal said and what was asked, for the log and the report (#30: movies a portal gave no link for)
+            TV.log("stalker: no link in the portal's answer: " + shown(j) + " (cmd " + TV.redact(cmd).slice(0, 120) + ")");
+            /* A movie the portal keeps as files (#30: "nothing_to_play", id 0, for every movie it listed): its own list
+               is asked, and the link of its first file */
+            if (m[2] !== "vod" || !movieId || m[4]) throw fail(j);
+            return call(src, "type=vod&action=get_ordered_list&movie_id=" + encodeURIComponent(movieId) + "&season_id=0&episode_id=0&p=1", 30000).then(function (f) {
+                var list = (f && f.data) || [], file = list.filter(function (x) { return x && x.cmd && x.cmd !== cmd; })[0];
+                TV.log("stalker: the movie's own list: " + list.length + " items" + (file ? ", cmd " + TV.redact(file.cmd).slice(0, 120) : ""));
+                if (!file) throw fail(j);
+                return ask(file.cmd, "").then(function (j2) {
+                    var l2 = linkOf(j2, file.cmd);
+                    if (l2) { TV.log("stalker: link found through the movie's file"); return l2; }
+                    TV.log("stalker: no link for the movie's file either: " + shown(j2));
+                    throw fail(j2);
+                });
+            }, function () { throw fail(j); });
         });
     }
 
