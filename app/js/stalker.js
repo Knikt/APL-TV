@@ -22,7 +22,8 @@
     var UA = "Mozilla/5.0 (QtEmbedded; U; Linux; C) AppleWebKit/533.3 (KHTML, like Gecko) MAG200 stbapp ver: 2 rev: 250 Safari/533.3";
     var sessions = {};            // source id -> { api, token, at }
     var logins = {};              // source id -> the connection being made (one at a time: a new token can end the others)
-    var MAX_PAGES = 60, JOBS = 8, MAX_ITEMS = 40000;
+    // 80,000 movies and as many series (#30: a portal with more than 40,000 movies); 40,000 on a device with little memory
+    var MAX_PAGES = 60, JOBS = 8, MAX_ITEMS = TV.SMALL ? 40000 : 80000;
 
     /* "00:1a:79:12:34:56", "001A79123456" -> "00:1A:79:12:34:56" */
     function normMac(m) {
@@ -353,7 +354,15 @@
             }
             return pageOf(1).then(function () { return out; }, function (e) { TV.log("stalker: episodes of season " + sn + " of " + mid + ": " + e.message); return out; });
         }
-        return listOf("&season_id=0&episode_id=0&p=1").then(function (j) {
+        /* Every page of the seasons (#30: a series of 17 seasons showed 4 to 17, its first three on page 2) */
+        function allSeasons(p, acc) {
+            return listOf("&season_id=0&episode_id=0&p=" + p).then(function (j) {
+                var d = (j && j.data) || [], total = parseInt(j && j.total_items, 10) || 0, per = parseInt(j && j.max_page_items, 10) || d.length || 14;
+                acc = acc.concat(d);
+                return d.length && p < 10 && p * per < total ? allSeasons(p + 1, acc) : { data: acc };
+            });
+        }
+        return allSeasons(1, []).then(function (j) {
             var seasons = {}, bare = [];
             ((j && j.data) || []).forEach(function (se, si) {
                 var sn = num(se, ["season_number"], si);
@@ -380,6 +389,78 @@
        channels play directly). Samsung and LG; a helper too old for it (before 1.4.6) leaves the link as it is, and the
        log says the new install is needed. */
     var relayOld = false;
+    /* The ways to ask a video's link, tried until its server lets one in (#30: 1.4.6 played through the helper with every
+       MAG header and the server still answered 403). makers: [{ name, make() -> a link or "", once }]. Each link is
+       tried through the helper with three sets of headers (all the portal's, a MAG box's name and the portal's cookie,
+       the name alone): only the answer's status, the connection cut at once. The first that is let in is asked again for
+       a fresh link (a portal's link may be good once, unless "once") and played with those headers. Every way refused:
+       the first link through the helper, so the error and the report say what happened. */
+    function status(u) {
+        return new Promise(function (resolve) {
+            var x = null, over = false;
+            function end(st) { if (over) return; over = true; clearTimeout(t); try { if (x) x.abort(); } catch (e) {} resolve(st); }
+            var t = setTimeout(function () { end(-1); }, 10000);
+            try {
+                x = new XMLHttpRequest();
+                x.open("GET", u, true);
+                x.onreadystatechange = function () { if (x.readyState >= 2) end(x.status); };
+                x.onerror = function () { end(0); };
+                x.send();
+            } catch (e) { end(0); }
+        });
+    }
+    function playable(src, makers, fail) {
+        var i = 0, first = "", s = sessions[src.id], full = headers(src, s && s.token);
+        var sets = [["all the portal's", full], ["a MAG box's name and the portal's cookie", { "User-Agent": full["User-Agent"], "Cookie": full.Cookie }], ["a MAG box's name", { "User-Agent": full["User-Agent"] }]];
+        var relay = !TV.ANDROID && !relayOld && TV.helper && TV.helper.relay;
+        function nextMaker() {
+            if (i >= makers.length) {
+                if (!first) throw fail;
+                if (relay) TV.log("stalker: every way to this video was refused by its server");
+                return relay ? viaRelay(src, first) : first;
+            }
+            var mk = makers[i++];
+            return Promise.resolve().then(mk.make).then(function (link) {
+                if (!link) return nextMaker();
+                if (!first) first = link;
+                if (!relay || relayOld) return link;                       // no relay (Android, an old helper): the first link, as before
+                var k = 0;
+                function nextSet() {
+                    if (k >= sets.length) return nextMaker();
+                    var set = sets[k++], id = src.id + "-" + k;
+                    return TV.helper.relay(link, id, set[1]).then(function (u) {
+                        return status(u).then(function (st) {
+                            TV.log("stalker: " + mk.name + ", with " + set[0] + " headers: " + (st > 0 ? "HTTP " + st : st === 0 ? "no answer" : "too slow"));
+                            if (st !== 200 && st !== 206) return nextSet();
+                            if (mk.once) return u;
+                            return Promise.resolve().then(mk.make).then(function (fresh) {
+                                return fresh && fresh !== link ? TV.helper.relay(fresh, id, set[1]) : u;
+                            }, function () { return u; });
+                        });
+                    }, function (e) {
+                        if (e && e.old) { relayOld = true; TV.log("stalker: the installed helper can't relay a portal's videos: install the latest APL TV once (APL Launcher Setup, the .ipk)"); return link; }
+                        TV.log("stalker: relay: " + (e && e.message));
+                        return nextSet();
+                    });
+                }
+                return nextSet();
+            }, function (e) { TV.log("stalker: " + mk.name + ": " + (e && e.message)); return nextMaker(); });
+        }
+        return nextMaker();
+    }
+    /* A video's files (a movie's, an episode's): the ways they give, the file's id first ("/media/file_<id>.mpg", how a MAG
+       box asks for a file), then its own cmd, then its own address as it is */
+    function fileWays(file, ask, linkFrom2) {
+        var out = [];
+        if (!file) return out;
+        if (file.id !== undefined && file.id !== "") out.push({ name: "the file's id", make: function () { var c = "/media/file_" + file.id + ".mpg"; return ask(c).then(function (j) { return linkFrom2(j, ""); }); } });
+        if (file.cmd) out.push({ name: "the file's cmd", make: function () { return ask(file.cmd).then(function (j) { return linkFrom2(j, ""); }); } });
+        if (/^https?:\/\//i.test(String(file.cmd || ""))) out.push({ name: "the file's own address", once: true, make: function () { return String(file.cmd).replace(/^(ffmpeg|ffrt\d*|auto)\s+/i, "").trim(); } });
+        return out;
+    }
+    function fileLog(what, list, file) {
+        TV.log("stalker: " + what + ": " + list.length + " files" + (file ? ", id " + file.id + ", fields " + Object.keys(file).slice(0, 16).join(",") + ", cmd " + TV.redact(String(file.cmd || "")).slice(0, 100) : ""));
+    }
     function viaRelay(src, link) {
         if (TV.ANDROID || relayOld || !TV.helper || !TV.helper.relay || !/^https?:\/\//i.test(link)) return Promise.resolve(link);
         var s = sessions[src.id];
@@ -407,14 +488,12 @@
         function noLink(j) { var s = j && (j.error || j.msg) ? " (" + String(j.error || j.msg).slice(0, 80) + ")" : ""; return new Error(T("The portal gave no link for this video.") + s); }
         return call(src, "type=" + type + "&action=get_ordered_list&movie_id=" + encodeURIComponent(mid) + "&season_id=" + encodeURIComponent(sid) + "&episode_id=" + encodeURIComponent(eid) + "&p=1", 30000)
             .then(function (j) { return (j && j.data) || []; }, function () { return []; }).then(function (files) {
-                var file = files.filter(function (x) { return x && x.cmd; })[0], c = file ? file.cmd : own;
-                TV.log("stalker: episode " + eid + ": " + files.length + " files" + (c ? ", cmd " + TV.redact(c).slice(0, 120) : ", no cmd"));
-                if (!c) throw noLink(null);
-                return ask(c).then(function (j) {
-                    var link = linkFrom(j, c);
-                    if (!link) { try { TV.log("stalker: no link for the episode: " + JSON.stringify(j).slice(0, 300)); } catch (e) {} throw noLink(j); }
-                    return viaRelay(src, link);
-                });
+                var file = files.filter(function (x) { return x && x.cmd; })[0];
+                fileLog("episode " + eid, files, file);
+                var ways = fileWays(file, ask, function (j) { return linkFrom(j, ""); });
+                if (own) ways.push({ name: "the episode's cmd", make: function () { return ask(own).then(function (j) { return linkFrom(j, own); }); } });
+                if (!ways.length) throw noLink(null);
+                return playable(src, ways, noLink(null));
             });
     }
     function resolve(url) {
@@ -441,6 +520,25 @@
             return new Error((m[2] === "itv" ? T("The portal gave no link for this channel.") : T("The portal gave no link for this video.")) + (s ? " (" + s + ")" : ""));
         }
         function shown(x) { try { return JSON.stringify(x).slice(0, 400); } catch (e) { return String(x); } }
+        if (m[2] === "vod") {
+            var lastAnswer = null, filesP = null;
+            var ways = [{ name: "the video's cmd", make: function () { return ask(cmd, m[4]).then(function (j) {
+                var l = linkOf(j, cmd);
+                if (!l) { lastAnswer = j; TV.log("stalker: no link in the portal's answer: " + shown(j) + " (cmd " + TV.redact(cmd).slice(0, 120) + ")"); }
+                return l;
+            }); } }];
+            /* A movie the portal keeps as files (#30: "nothing_to_play", id 0, for every movie it listed): its own list is
+               asked once, and its first file's ways come next */
+            if (movieId && !m[4]) ways.push({ name: "the movie's files", make: function () {
+                filesP = filesP || call(src, "type=vod&action=get_ordered_list&movie_id=" + encodeURIComponent(movieId) + "&season_id=0&episode_id=0&p=1", 30000).then(function (f) {
+                    var list = (f && f.data) || [], file = list.filter(function (x) { return x && x.cmd && x.cmd !== cmd; })[0];
+                    fileLog("the movie's own list", list, file);
+                    fileWays(file, function (c) { return ask(c, ""); }, function (j) { return linkOf(j, ""); }).forEach(function (w) { ways.push(w); });
+                }, function () {});
+                return filesP.then(function () { return ""; });
+            } });
+            return playable(src, ways, fail(null)).catch(function (e) { throw lastAnswer && e && /no link/.test(e.message) ? fail(lastAnswer) : e; });
+        }
         var found = ask(cmd, m[4]).then(function (j) {
             var link = linkOf(j, cmd);
             if (link) return link;
@@ -461,7 +559,7 @@
                 });
             }, function () { throw fail(j); });
         });
-        return m[2] === "vod" ? found.then(function (l) { return viaRelay(src, l); }) : found;
+        return found;
     }
 
     /* The short guide of a channel (the channels on screen, like Xtream's get_short_epg) */

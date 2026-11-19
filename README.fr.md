@@ -33,6 +33,7 @@ Créé par **Knikt** (Gero Corp.), l'auteur d'[APL Launcher](https://github.com/
 - **1.4.4.** Stalker : les films et séries d'un gros portail sont enregistrés pendant leur chargement, fermer APL TV ne les perd plus ; une seule connexion gardée au lieu d'une nouvelle à chaque mise à jour ; un film pour lequel le portail ne donne pas de lien est essayé par son propre fichier (#30).
 - **1.4.5.** Stalker : les épisodes des séries dont les saisons arrivent sans eux, les catégories de séries rangées dans les films chargées en entier, plus de rechargement de tout le portail toutes les 10 minutes quand il n'a pas de section Séries, et le journal dit ce que répond le lien d'un film qui ne démarre pas (#30).
 - **1.4.6.** Stalker : un portail dont les films ne s'ouvrent que pour un boîtier MAG (HTTP 403 pour le lecteur de la TV) les lit maintenant : le helper d'APL TV les demande avec les en-têtes MAG du portail et les passe au lecteur. Il faut installer une fois la nouvelle version (LG : le .ipk ou le Homebrew Channel ; Samsung : APL Launcher Setup) (#30).
+- **1.4.7.** Stalker : quand le serveur vidéo d'un portail refuse un film, APL TV essaie les façons dont un boîtier MAG le demande (l'identifiant du fichier d'abord) avec plusieurs jeux d'en-têtes, et lit la première acceptée ; toutes les pages des saisons d'une série ; 80 000 films et séries au lieu de 40 000 (#30).
 
 ## Nouveau dans la 1.3
 
