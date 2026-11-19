@@ -11,7 +11,7 @@ Créé par **Knikt** (Gero Corp.), l'auteur d'[APL Launcher](https://github.com/
 
 ![APL TV : l'accueil, la fiche d'un titre, la TV en direct et le lecteur](docs/images/home.jpg)
 
-[Sports](#nouveau-dans-la-11--sports) · [Fonctions](#fonctions) · [Captures](#captures-décran) · [Ta TV](#samsung-lg-ou-android) · [Installation](#installation) · [Ajouter ta playlist](#ajouter-ta-playlist) · [APL Launcher](#par-lauteur-dapl-launcher) · [Vie privée](#vie-privée-et-sécurité) · [English](README.md)
+[Sports](#sports) · [Fonctions](#fonctions) · [Captures](#captures-décran) · [Ta TV](#samsung-lg-ou-android) · [Installation](#installation) · [Ajouter ta playlist](#ajouter-ta-playlist) · [APL Launcher](#par-lauteur-dapl-launcher) · [Vie privée](#vie-privée-et-sécurité) · [English](README.md)
 
 </div>
 
@@ -19,37 +19,19 @@ Créé par **Knikt** (Gero Corp.), l'auteur d'[APL Launcher](https://github.com/
 
 > **APL TV est seulement un lecteur.** Il ne contient aucune chaîne, aucune playlist et aucun fournisseur : tu ajoutes les tiens. Utilise-le uniquement avec des contenus que tu as le droit de regarder.
 
-## Nouveau dans la 1.4
+## Nouveautés
 
-- **Stremio dans les Versions.** Réglages › Ajouter une playlist › Ton serveur multimédia › Stremio : relie ton compte Stremio avec un code. Les flux de tes addons s'affichent dans les Versions de chaque film et épisode, à côté de ceux de ta playlist, et les titres qu'ils lisent rejoignent les listes d'APL TV. Sur Samsung, les torrents se lisent avec le moteur de l'app Stremio (installe Stremio depuis le store Samsung) ; les liens que donnent tes addons (un service de débridage, par exemple) se lisent partout.
-- **Films libres de droit.** Réglages › Ajouter une playlist › Films libres de droit : 2 700 films, courts métrages et dessins animés sans droits, de l'Internet Archive et de Wikimedia Commons, dans Films.
-- **APL TV en espagnol et en italien.** L'italien grâce à @beLikeJo (#31).
-- **Rapports de plantage.** Si APL TV s'est arrêté sans prévenir, le démarrage suivant propose d'envoyer un rapport au développeur. Jamais sans ton accord (Réglages › À propos › Rapports de plantage).
-- **Mode léger sur Android TV et Fire TV.** Avec 1 Go de mémoire, APL TV s'allège tout seul : 2 catalogues sur l'accueil, des affiches plus légères, la playlist rafraîchie seulement quand rien ne joue, le guide TV et les animations coupés la première fois. Réglages › Affichage › Mode léger le force sur une TV qui rame, ou le coupe.
-- **Corrections.** Le lecteur de Samsung est fermé en arrière-plan et quand un flux ne peut pas se lire (#27). Une roue de chargement sans fin rouvre la chaîne (#30). Fire TV : le direct en HLS par défaut, et un gros guide ou une grosse playlist ne ferme plus l'app. Tes guides reconnaissent aussi une chaîne par son identifiant de guide (#32). La recherche s'écrit avec le clavier de la TV. Pologne : Tauron Liga, PGE Basket Liga et le set en cours dans Sports (#28).
-- **1.4.1.** Réglages › À propos › Envoyer un rapport : juste après un problème, envoie au développeur ce qu'APL TV vient de faire, et donne le code affiché avec ton issue sur GitHub. Stalker : les séries qu'un portail range dans ses films vont dans Séries avec leurs épisodes, et une vidéo pour laquelle le portail ne donne pas de lien affiche la raison du portail (#30). Samsung : le helper démarre même quand Apps2Samsung a donné un autre identifiant à APL TV, et le message dit quand une autre app occupe son port (#22).
-- **1.4.2.** Les portails Stalker se chargent de nouveau : la 1.4.1 envoyait à certains portails des centaines de demandes en trop, et ils répondaient HTTP 429. Un portail qui dit recevoir trop de demandes est maintenant redemandé, plus lentement (#30). Samsung : les sous-titres que la TV laisse sans langue prennent la langue et le nom écrits dans le fichier .mkv (#34).
-- **1.4.3.** Samsung : les noms des sous-titres lus dans le fichier .mkv aussi pour un flux Stremio, un fichier de serveur multimédia et un film libre de droit, pas seulement pour une playlist ou un compte Xtream (#34).
-- **1.4.4.** Stalker : les films et séries d'un gros portail sont enregistrés pendant leur chargement, fermer APL TV ne les perd plus ; une seule connexion gardée au lieu d'une nouvelle à chaque mise à jour ; un film pour lequel le portail ne donne pas de lien est essayé par son propre fichier (#30).
-- **1.4.5.** Stalker : les épisodes des séries dont les saisons arrivent sans eux, les catégories de séries rangées dans les films chargées en entier, plus de rechargement de tout le portail toutes les 10 minutes quand il n'a pas de section Séries, et le journal dit ce que répond le lien d'un film qui ne démarre pas (#30).
-- **1.4.6.** Stalker : un portail dont les films ne s'ouvrent que pour un boîtier MAG (HTTP 403 pour le lecteur de la TV) les lit maintenant : le helper d'APL TV les demande avec les en-têtes MAG du portail et les passe au lecteur. Il faut installer une fois la nouvelle version (LG : le .ipk ou le Homebrew Channel ; Samsung : APL Launcher Setup) (#30).
-- **1.4.7.** Stalker : quand le serveur vidéo d'un portail refuse un film, APL TV essaie les façons dont un boîtier MAG le demande (l'identifiant du fichier d'abord) avec plusieurs jeux d'en-têtes, et lit la première acceptée ; toutes les pages des saisons d'une série ; 80 000 films et séries au lieu de 40 000 (#30).
+- **Les portails Stalker, même les gros.** L'adresse du portail et une adresse MAC : les chaînes et les nouveautés de chaque catégorie en quelques secondes, le reste en arrière-plan, gardé même si tu fermes APL TV. Les séries qu'un portail range dans ses films vont dans Séries, avec toutes leurs saisons et leurs épisodes. Les films des serveurs qui n'acceptent qu'un boîtier MAG se lisent par le helper d'APL TV, sur Samsung et LG.
+- **Stremio dans les Versions.** Relie ton compte Stremio avec un code : les flux de tes addons s'affichent dans les Versions de chaque film et épisode, à côté de ceux de ta playlist. Sur Samsung, les torrents se lisent avec le moteur de l'app Stremio.
+- **Films libres de droit.** 2 700 films, courts métrages et dessins animés sans droits, de l'Internet Archive et de Wikimedia Commons, dans Films.
+- **Envoyer un rapport.** Quand quelque chose ne marche pas, Réglages › À propos › Envoyer un rapport envoie au développeur ce qu'APL TV vient de faire et affiche un code à donner sur GitHub. Après un arrêt inattendu, le démarrage suivant propose d'envoyer un rapport de plantage. Jamais sans ton accord.
+- **Des sous-titres avec leur nom.** Sur Samsung, quand la TV ne donne pas la langue des sous-titres d'un fichier .mkv, APL TV lit leur langue et leur nom dans le fichier lui-même (« English SDH », « Forced »…).
+- **En espagnol et en italien**, l'italien grâce à @beLikeJo.
+- **Mode léger sur Android TV et Fire TV**, pour les appareils avec 1 Go de mémoire.
 
-## Nouveau dans la 1.3
+Tous les changements, version par version, sont dans les [Releases](../../releases).
 
-- **Les portails Stalker prêts en quelques secondes.** Les chaînes et les titres les plus récents de chaque catégorie arrivent d'abord, et le reste des films et séries continue d'arriver en arrière-plan pendant que tu utilises l'app. Un gros portail prenait plusieurs minutes.
-- **Tes propres guides TV.** Réglages › Guide TV › Tes guides : ajoute l'adresse d'un guide XMLTV (.xml ou .xml.gz). Ses programmes complètent les chaînes qui manquent au guide de ton fournisseur, ou le remplacent pour celles qu'il connaît.
-- **Cacher Sports.** Réglages › Affichage › Onglet Sports : désactivé, l'onglet quitte la barre du haut et Sports ne charge plus rien.
-- **Android : le format du flux reste le tien.** Après une mise en veille, la TV en direct ne passe plus toute seule en HLS.
-
-## Nouveau dans la 1.2
-
-- **Des sous-titres qui se calent tout seuls.** Les sous-titres OpenSubtitles faits à partir de ton fichier arrivent en tête, marqués « Fait pour ce fichier », synchronisés de la première à la dernière réplique. Ceux faits pour une copie à une autre vitesse (une copie européenne à 25 images par seconde) sont recalés sur ta vidéo. Et Caler sur une réplique : OK au moment où tu entends la réplique affichée, et le décalage est réglé.
-- **Fluide sur LG.** Sports et l'accueil se redessinent beaucoup moins sur webOS : sur une LG OLED G5, 91 à 99 % des images à l'heure dans Sports au lieu de 59 à 71 %.
-- **Films classiques et plateformes.** Films classiques (tous les films de ta playlist jusqu'à 1975), les années 70, 80 et 90, Séries cultes, et Netflix, Apple TV, Prime Video, Disney+, HBO Max, Paramount+ et Canal+ aussi pour les films, comme chaque service les propose dans ton pays.
-- **Masquer une chaîne**, les **chaînes de A à Z**, le **football universitaire** et les **diffuseurs canadiens de la NHL** dans Sports.
-
-## Nouveau dans la 1.1 : Sports
+## Sports
 
 ![Sports : le prochain match de ton équipe, avec une photo de son stade](docs/images/sports.jpg)
 
@@ -68,28 +50,33 @@ Un onglet entier pour le sport, dans le style d'Apple TV et d'Apple Sports : les
 | ![Résultats](docs/images/sports-results.jpg) **Résultats :** tes équipes d'abord, puis chaque jour, compétition par compétition. | ![La page d'un match](docs/images/sports-match.jpg) **La page d'un match :** le score, le résumé vidéo, les statistiques, les compositions et le classement. |
 | ![Calendrier](docs/images/sports-calendar.jpg) **Calendrier :** tes compétitions jour par jour, une étoile quand ton équipe joue. | ![Favoris](docs/images/sports-favorites.jpg) **Favoris :** sports, compétitions, clubs et sélections. |
 
-Aussi nouveau dans la 1.1 : donner tes propres noms aux chaînes, le replay du fournisseur dans le guide TV, les genres dans une seule liste dans Films et Séries, un clavier de recherche arabe, le polonais, et ta progression synchronisée avec Jellyfin et Emby.
 
 ## Fonctions
 
 La même app sur chaque TV : même look, mêmes fonctions, mêmes mises à jour.
 
-- **Sports.** Les scores en direct, tes équipes, les chaînes de ta playlist qui montrent chaque match, les résumés vidéo officiels lus dans l'app, les résultats, un calendrier (voir [plus haut](#nouveau-dans-la-11--sports)).
+- **Sports.** Les scores en direct, tes équipes, les chaînes de ta playlist qui montrent chaque match, les résumés vidéo officiels lus dans l'app, les résultats, un calendrier (voir [plus haut](#sports)).
 - **Accueil façon Apple TV.** Un grand titre à la une parmi ce que tout le monde regarde cette semaine (image de fond, logo du titre, âge conseillé, note IMDb, résumé), puis Reprendre, À suivre pour tes séries, Chaînes favorites avec ce qui passe, Ma liste, Films et Séries tendance, les nouveautés, Les mieux notés et des rangées par genre (anime, K-drama, studios comme Ghibli ou Pixar, séries Netflix, HBO…).
 - **TV en direct.** La chaîne sur laquelle tu es passe en plein écran derrière l'interface, avec son programme, le temps restant et la suite. Catégories (Favoris, Récentes, tes propres groupes, puis celles de ton fournisseur, ta langue d'abord, et toutes dans une liste par pays), touches numériques, chaîne précédente, et les versions 4K / FHD / HD d'une chaîne sur une seule carte. OK maintenu sur une chaîne pour l'ajouter à un de tes groupes, choisir son guide TV ou la **renommer** (ton nom s'affiche partout et reste quand ta playlist se met à jour). **Mets le direct en pause et reviens en arrière** (timeshift) : APL TV garde la chaîne à partir du moment où tu mets en pause, jusqu'à une heure, puis ◀ ▶ reculent ou avancent de 10 s, et ▲ puis OK sur **Revenir au direct** (ou Stop) rattrape le direct.
-- **Guide TV** en grille, depuis le guide XMLTV de ton fournisseur (ou le guide court d'Xtream), avec epg.pw et iptv-epg.org pour les chaînes qui n'en ont pas. Un interrupteur le désactive sur une TV lente.
+- **Guide TV** en grille, depuis le guide XMLTV de ton fournisseur (ou le guide court d'Xtream), avec epg.pw et iptv-epg.org pour les chaînes qui n'en ont pas, et **tes propres guides** (Réglages › Guide TV › Tes guides : l'adresse d'un guide XMLTV, .xml ou .xml.gz) pour les chaînes que les autres oublient. Un interrupteur le désactive sur une TV lente.
 - **Le replay du fournisseur.** Quand ton fournisseur garde les programmes passés d'une chaîne (l'archive Xtream, ou les balises de replay d'une playlist M3U), ils portent une petite marque de replay dans le guide TV : OK en lance un, depuis son début, avec pause et avance. Pendant que tu regardes une telle chaîne, son menu propose Depuis le début.
 - **Films et séries.** Nouveautés, Mieux notés, Ma liste, puis les genres (horreur, comédie, anime, studios…) et les catégories de ton fournisseur dans une seule liste, les affiches avec leur note IMDb, et une page par titre : le vrai résumé dans ta langue (TMDB), les saisons et épisodes avec ceux que tu as vus cochés, la saga du film, Titres similaires pris dans ton propre catalogue, le réalisateur et les acteurs, et une page pour chaque acteur. Les versions d'un même titre (langues, 4K) sont regroupées : celle dans ta langue, dans la meilleure qualité que ton écran affiche, est choisie, et celle que tu choisis est retenue. Un bouton Trier (ajoutés récemment, de A à Z, année, note).
 - **Le lecteur.** Menus Sous-titres et Audio pendant la lecture (films, séries et chaînes en direct), téléchargement OpenSubtitles avec réglage du décalage (jamais choisi par défaut), style des sous-titres, avance et retour précis (par 10 s, plus vite en restant appuyé), épisode précédent et suivant, une carte « Épisode suivant » avec une image qui ne dévoile rien, une minuterie de mise en veille, le format de l'image (adapter, remplir l'écran, format d'origine). Infos du flux (résolution, codec, débit, images par seconde, son, vitesse de connexion, mémoire tampon, images perdues) et Qualité (les versions 4K / FHD / HD d'une chaîne, ou les qualités d'un flux qui en a plusieurs). Les flux à plusieurs qualités démarrent à la meilleure. Le menu Audio peut faire de la langue que tu entends celle où démarrent les films et séries. Quand un film ou un épisode n'a pas le son dans ta langue mais qu'une autre version l'a (VF, MULTI…), APL TV propose d'y passer, au même moment. Rien ne se lance tout seul, sauf si tu actives la lecture automatique. Sur Android, un décalage du son (AV Sync) de -1000 à +1000 ms. Les sous-titres et pistes audio portent le nom de leur langue dans ta langue.
+- **Des sous-titres qui se calent tout seuls.** Les sous-titres d'OpenSubtitles faits pour ton fichier passent en premier (« Fait pour ce fichier »), ceux calés sur une copie à une autre vitesse sont étirés à ta vidéo, et Caler sur une réplique règle le décalage : OK au moment où tu entends la réplique affichée.
 - **Reprendre là où tu t'es arrêté.** À l'ouverture, APL TV te propose le film ou l'épisode que tu regardais, à la minute où tu t'es arrêté, ou la dernière chaîne.
 - **Protection des écrans OLED.** APL TV reconnaît une TV OLED (LG le dit lui-même ; les Samsung, Sony et Philips OLED par leur modèle) et la protège du marquage : l'interface se décale de quelques pixels toutes les 2 minutes, et après 5 minutes sans télécommande quand rien ne joue, un économiseur montre des images de ton catalogue qui défilent lentement, avec l'heure dans un coin qui change toutes les quelques minutes. Réglages › Protection de l'écran (Automatique, Activée, Désactivée).
 - **L'âge conseillé selon les règles de ton pays** (France -12 / -16, États-Unis PG-13 / R, Allemagne FSK 16…), converti depuis les pays voisins quand le tien n'en a pas.
 - **Masquer ce que tu ne veux pas voir.** Les catégories adultes sont masquées par défaut. Dans les Réglages, tu peux masquer des thèmes entiers (violence, horreur, drogues, gore… 20 thèmes, reconnus grâce aux mots-clés TMDB et aux noms de catégories de ton fournisseur) et des titres un par un : ils disparaissent partout, recherche et tendances comprises. Les pays et les catégories aussi : Réglages > Pays et catégories liste les pays et régions de tes playlists, tu masques tout un pays ou seulement certaines de ses catégories (ou OK maintenu sur une catégorie). Tes chaînes favorites restent.
 - **Ta playlist telle quelle, ou rangée.** Au premier démarrage, APL TV demande : ranger les catégories (ta langue d'abord, `EU| FR| Sport` est lu comme français), nettoyer les noms (étiquettes de pays et de qualité comme `FR|` ou `FHD` retirées) et regrouper les versions HD / FHD / 4K d'une chaîne, ou garder ta playlist exactement comme ton fournisseur l'a faite. Réglages › Lecture le change quand tu veux. Les séparateurs sont toujours ignorés.
+- **Portails Stalker (MAG / Ministra).** L'adresse du portail et une adresse MAC. Les chaînes et les nouveautés arrivent en quelques secondes et le reste en arrière-plan ; les séries rangées dans les films vont dans Séries ; un portail dont les films n'acceptent qu'un boîtier MAG est lu par le helper d'APL TV (Samsung, LG).
+- **Stremio.** Ton compte relié avec un code : les flux de tes addons dans les Versions de chaque titre, tes addons gérés dans les Réglages. Les torrents se lisent sur Samsung avec le moteur de l'app Stremio ; ailleurs, il faut un serveur de streaming Stremio sur ton réseau.
+- **Films libres de droit.** Réglages › Ajouter une playlist › Films libres de droit : 2 700 titres sans droits, en un appui, rien à taper.
 - **Ton propre serveur multimédia.** Jellyfin et Emby (l'adresse du serveur, ton nom d'utilisateur et ton mot de passe) et Plex (un code que tu tapes sur plex.tv/link) : tes films et séries, une catégorie par bibliothèque, avec les images et résumés du serveur, lus directement depuis lui. Chaque serveur a **son propre onglet** après Séries (Plex, Jellyfin, Emby), comme l'Accueil mais avec ce serveur seulement : ses derniers titres, Reprendre, Ajoutés récemment et une rangée par bibliothèque. Ses bibliothèques sont aussi des catégories dans Films et Séries. Avec Jellyfin et Emby, là où tu t'es arrêté et ce que tu as vu se synchronisent dans les deux sens avec le serveur.
 - **Recherche** dans les chaînes, films et séries avec un clavier à l'écran disposé comme celui d'un ordinateur (AZERTY en français, QWERTY sinon, dans l'ordre alphabétique, ou arabe), ou le clavier de la TV elle-même (Gboard sur Android TV). Accents et majuscules ne comptent pas.
 - **À la voix avec Alexa.** La petite [skill APL TV](alexa-skill/) amène tes recherches et tes chaînes dans APL TV, sur n'importe quelle TV : « Alexa, demande à APL TV de chercher les films Dragon Ball » et les résultats sont à l'écran ; « Alexa, demande à APL TV de mettre M6 » et la chaîne démarre. Sur Samsung, l'Alexa de l'écran arrive aussi directement dans APL TV pour « Alexa, pause », lecture, avance et épisode suivant.
 - **Configuration depuis le téléphone.** La TV affiche un QR code ; ton téléphone ouvre une page servie par la TV elle-même sur ton Wi-Fi (aucun site extérieur), protégée par un code à usage unique. La télécommande marche aussi. Ton téléphone peut aussi **modifier ta playlist** : masquer et ranger tes catégories, faire tes groupes de chaînes, ranger tes favoris et renommer des chaînes, puis tout envoyer à la TV (Réglages › Modifier sur ton téléphone).
+- **Films classiques et plateformes.** Films classiques (tous les films de ta playlist jusqu'à 1975), Les années 70, 80 et 90, Séries classiques, et des rangées Netflix, Apple TV, Prime Video, Disney+, HBO Max, Paramount+ et Canal+, selon ce que chaque service a dans ton pays. Réglages › Affichage › Onglet Sports masque Sports.
+- **Envoyer un rapport et rapports de plantage.** Réglages › À propos › Envoyer un rapport, et un rapport proposé après un arrêt inattendu : les dernières lignes du journal d'APL TV, le modèle de la TV et la version de l'app, jamais de mot de passe ni d'adresse de fournisseur.
 - **Mises à jour automatiques.** APL TV regarde ce dépôt toutes les 6 heures et se met à jour tout seul (code, style, textes), puis redémarre quand rien n'est en lecture. Tes playlists et tes réglages restent. Chaque TV ne prend que les mises à jour prêtes pour elle ; quand sa partie installée change, elle demande une fois une nouvelle installation. Réglages › Mises à jour.
 - En français, en anglais, en espagnol, en polonais et en italien (suit la langue de la TV).
 
@@ -116,15 +103,33 @@ Les captures n'utilisent que du contenu de démonstration : des films libres de 
 | Multiview (plusieurs chaînes) | Oui | Pas encore | Non |
 | Top Shelf d'APL Launcher | Oui | Non (APL Launcher est pour Samsung) | Non |
 | Télécommande | Toutes les touches | Toutes les touches ; le pointeur de la Magic Remote n'est pas encore utilisé | Toutes les touches |
-| Sous-titres intégrés à la vidéo | Oui | Oui, affichés par la TV | Oui |
+| Sous-titres intégrés à la vidéo | Oui, leurs noms lus dans le fichier .mkv quand la TV n'en donne pas | Oui, affichés par la TV | Oui |
 | Pause du direct (timeshift) | Oui | Oui | Oui |
 | Replay du fournisseur | Oui | Oui | Oui |
 | Sports, résumés vidéo dans l'app | Oui | Oui | Oui |
 | Décalage du son (AV Sync) | Les réglages de son de la TV | Les réglages de son de la TV | Oui, dans APL TV |
 | Plex, Jellyfin, Emby | Oui | Oui | Oui |
-| Testé sur | Smart Monitor M8 (Tizen 9) | OLED G5 (webOS 25) | Android TV 14 (émulateur) |
+| Portails Stalker | Oui | Oui | Oui |
+| Films d'un portail réservés aux boîtiers MAG | Oui, par le helper d'APL TV | Oui, par le helper d'APL TV | Pas encore |
+| Stremio | Oui, torrents par l'app Stremio | Oui ; torrents avec un serveur de streaming Stremio | Oui ; torrents avec un serveur de streaming Stremio |
+| Mode léger (1 Go de mémoire) | Non | Non | Oui |
 
 Dis-nous dans une [issue](../../issues/new/choose) comment ça tourne sur la tienne : le formulaire demande ta TV, et chaque issue et pull request reçoit l'étiquette de sa TV. Issues pour [Samsung](../../issues?q=is%3Aissue+label%3Asamsung), [LG](../../issues?q=is%3Aissue+label%3Alg-webos), [Android TV](../../issues?q=is%3Aissue+label%3Aandroid-tv) ; pull requests pour [Samsung](../../pulls?q=is%3Apr+label%3Asamsung), [LG](../../pulls?q=is%3Apr+label%3Alg-webos), [Android TV](../../pulls?q=is%3Apr+label%3Aandroid-tv).
+
+### Ça marche sur…
+
+Ce que les gens nous ont dit de leur propre TV, dans les issues et sur Reddit. Parle-nous de la tienne.
+
+| TV | Système | Ce qui marche | Problèmes connus |
+|---|---|---|---|
+| Samsung Smart Monitor M8 | Tizen 9 | Tout (l'écran du développeur) | |
+| Samsung QE65S90C | Tizen 7 | Playlists, films et séries ; noms des sous-titres des fichiers .mkv | |
+| Samsung Q70C | Tizen 7 | | « helper unavailable » sur certaines installations ([#22](../../issues/22)) |
+| Samsung Freestyle+ (projecteur) | Tizen | Installé et en marche | |
+| LG OLED G5 | webOS 25 | Tout (l'écran du développeur) | |
+| LG 43UR7500PSC | webOS 23 | La TV en direct d'un gros portail Stalker, ses films, séries et épisodes affichés | Le serveur de ses films n'accepte qu'un boîtier MAG : en cours ([#30](../../issues/30)) |
+| Fire TV Stick (3e génération), 1 Go | Fire OS 7 | TV en direct et films, avec le mode léger | |
+| Fire TV Stick 4K Plus | Fire OS | TV en direct et films | Le son MP2 n'a pas de décodeur ([#33](../../issues/33)) |
 
 Facultatif sur chaque TV, mais conseillé : une [clé API TMDB](https://www.themoviedb.org/settings/api) gratuite pour les affiches, résumés, acteurs, âges conseillés, tendances et Titres similaires. Sans elle, APL TV lit tout quand même, avec les affiches de ton fournisseur. Tape-la dans APL TV › Réglages › Clé TMDB.
 
