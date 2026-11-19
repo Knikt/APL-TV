@@ -116,6 +116,16 @@
                 var e = new Error("HTTP " + r.status); e.status = r.status; e.body = r.text; throw e;
             });
         },
+        /* A Stalker portal's movie through the helper, asked with the portal's headers (#30: its server refused the TV's
+           own player, HTTP 403). Gives the address to play; a helper from before 1.4.6 doesn't have it (e.old). */
+        relay: function (url, id, headers) {
+            return call("/px/hd", { method: "POST", body: JSON.stringify({ id: id, headers: headers || {} }), timeout: 5000 }).then(function (r) {
+                if (r.status === 404) { var n = new Error("helper too old"); n.old = true; throw n; }
+                if (r.status !== 200) throw new Error("relay: HTTP " + r.status);
+                var name = String(url).split(/[?#]/)[0].split("/").pop().replace(/[^A-Za-z0-9._-]/g, "").slice(-60) || "x";     // index.m3u8: HLS to the player
+                return hosts()[baseIndex] + "/px/f/" + name + "?h=" + encodeURIComponent(id) + "&u=" + encodeURIComponent(url);
+            });
+        },
         fetch: function (url, timeout) {
             return call("/fetch?u=" + encodeURIComponent(url) + "&t=" + (timeout || 120000), { timeout: (timeout || 120000) + 5000 }).then(function (r) {
                 if (r.status >= 200 && r.status < 300) return r.text;

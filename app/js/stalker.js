@@ -375,6 +375,23 @@
     }
 
     /* The real link of a "stalker:" address, asked just before playing (a portal's links expire quickly) */
+    /* A movie's or an episode's link played through the helper, asked with the portal's headers as a MAG box asks for it
+       (#30: the portal's server refused the TV's own player with HTTP 403, even under other players' names, while its
+       channels play directly). Samsung and LG; a helper too old for it (before 1.4.6) leaves the link as it is, and the
+       log says the new install is needed. */
+    var relayOld = false;
+    function viaRelay(src, link) {
+        if (TV.ANDROID || relayOld || !TV.helper || !TV.helper.relay || !/^https?:\/\//i.test(link)) return Promise.resolve(link);
+        var s = sessions[src.id];
+        return TV.helper.relay(link, src.id, headers(src, s && s.token)).then(function (u) {
+            TV.log("stalker: the video plays through the helper, with the portal's headers");
+            return u;
+        }, function (e) {
+            if (e && e.old) { relayOld = true; TV.log("stalker: the installed helper can't relay a portal's videos: install the latest APL TV once (APL Launcher Setup, the .ipk)"); }
+            else TV.log("stalker: relay: " + (e && e.message));
+            return link;
+        });
+    }
     /* An episode asked season by season (seriesInfo): its own list of files first, the first file's link; else its own cmd */
     function linkFrom(j, c) {
         var link = String((j && j.cmd) || "").replace(/^(ffmpeg|ffrt\d*|auto|rtsp)\s+/i, "").trim();
@@ -396,7 +413,7 @@
                 return ask(c).then(function (j) {
                     var link = linkFrom(j, c);
                     if (!link) { try { TV.log("stalker: no link for the episode: " + JSON.stringify(j).slice(0, 300)); } catch (e) {} throw noLink(j); }
-                    return link;
+                    return viaRelay(src, link);
                 });
             });
     }
@@ -424,7 +441,7 @@
             return new Error((m[2] === "itv" ? T("The portal gave no link for this channel.") : T("The portal gave no link for this video.")) + (s ? " (" + s + ")" : ""));
         }
         function shown(x) { try { return JSON.stringify(x).slice(0, 400); } catch (e) { return String(x); } }
-        return ask(cmd, m[4]).then(function (j) {
+        var found = ask(cmd, m[4]).then(function (j) {
             var link = linkOf(j, cmd);
             if (link) return link;
             // what the portal said and what was asked, for the log and the report (#30: movies a portal gave no link for)
@@ -444,6 +461,7 @@
                 });
             }, function () { throw fail(j); });
         });
+        return m[2] === "vod" ? found.then(function (l) { return viaRelay(src, l); }) : found;
     }
 
     /* The short guide of a channel (the channels on screen, like Xtream's get_short_epg) */

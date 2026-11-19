@@ -22,7 +22,7 @@ var zlib = require("zlib");
 var os = require("os");
 var crypto = require("crypto");
 
-var PORT = 8765, VERSION = "1.4.5";
+var PORT = 8765, VERSION = "1.4.6";
 var IDLE_MS = 15 * 60 * 1000, SESSION_MS = 20 * 60 * 1000;
 var UA = "APL TV/" + VERSION + " (" + (global.APLTV_PLATFORM || "Tizen") + ")";
 
@@ -144,6 +144,81 @@ function get(target, timeoutMs, cb, hops, insecure, extra) {
             finish(e);
         });
     } catch (e) { finish(e); }
+}
+
+/* ---------- the relay of a Stalker portal's movies (#30) ----------
+   Some portals give movie links that only a MAG box may open: the TV's own player was refused (HTTP 403), as the
+   server wants a MAG box's name and the portal's cookie, which a TV's player can't send. The app gives the portal's
+   headers once (POST /px/hd), then plays http://127.0.0.1:8765/px?h=<id>&u=<link>: the service asks with them, and
+   in an HLS playlist every address (the next playlists, the pieces, the keys) comes back through here too. A piece
+   or a file is passed on as it comes, its range included (seeking). Local requests only. */
+var pxHeaders = {};
+/* The address keeps the file's own name (index.m3u8, 0001.ts): a TV's player knows HLS by it */
+function pxName(u) { var n = String(u).split(/[?#]/)[0].split("/").pop().replace(/[^A-Za-z0-9._-]/g, "").slice(-60); return n || "x"; }
+function pxPath(u, h) { return "/px/f/" + pxName(u) + "?h=" + encodeURIComponent(h) + "&u=" + encodeURIComponent(u); }
+function pxRewrite(text, base, h) {
+    return String(text).split(/\r?\n/).map(function (line) {
+        var t = line.trim();
+        if (!t) return line;
+        try {
+            if (t.charAt(0) === "#") return line.replace(/URI="([^"]+)"/g, function (m, u) { return 'URI="' + pxPath(new URL(u, base).toString(), h) + '"'; });
+            return pxPath(new URL(t, base).toString(), h);
+        } catch (e) { return line; }
+    }).join("\n");
+}
+/* One request with those headers, redirects followed: the answer as it comes, and the address it came from (the
+   base of a playlist's relative addresses) */
+function pxGet(target, hd, cb, hops) {
+    hops = hops || 0;
+    var lib = /^https:/i.test(target) ? https : http, done = false, rq;
+    function finish(err, res, url) { if (done) return; done = true; clearTimeout(timer); cb(err, res, url); }
+    var timer = setTimeout(function () { try { rq.destroy(); } catch (e) {} finish(new Error("timeout")); }, 30000);
+    try {
+        var h = { "User-Agent": UA, "Accept": "*/*" };
+        Object.keys(hd || {}).forEach(function (k) { h[k] = hd[k]; });
+        rq = lib.get(target, { headers: h, rejectUnauthorized: false }, function (res) {
+            if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location && hops < 6) {
+                res.resume(); done = true; clearTimeout(timer);
+                pxGet(new URL(res.headers.location, target).toString(), hd, cb, hops + 1);
+                return;
+            }
+            finish(null, res, target);
+        });
+        rq.on("error", function (e) { finish(e); });
+    } catch (e) { finish(e); }
+}
+function pxServe(req, res, q) {
+    if (!isLocal(req) || !/^https?:\/\//i.test(q.u || "")) { send(res, 400, { error: "bad request" }); return; }
+    var hd = {}, saved = pxHeaders[q.h] || {};
+    Object.keys(saved).forEach(function (k) { hd[k] = saved[k]; });
+    // "from the start" is the same as no range: the whole answer, its length known (a 206 for it ended ffmpeg with an error)
+    if (req.headers.range && !/^bytes=0-$/.test(req.headers.range)) hd.Range = req.headers.range;
+    pxGet(q.u, hd, function (err, up, url) {
+        if (err) { log("relay failed " + redact(q.u) + ": " + err.message); send(res, 502, { error: err.message }); return; }
+        var type = String(up.headers["content-type"] || "");
+        var playlist = /mpegurl/i.test(type) || /\.m3u8?(\?|$)/i.test(url.split("#")[0]);
+        cors(res);
+        if (up.statusCode >= 400) log("relay: HTTP " + up.statusCode + " for " + redact(url).replace(/^(https?:\/\/[^\/]+).*?([^\/?]*)(\?.*)?$/, "$1/.../$2"));
+        if (playlist && up.statusCode < 400) {
+            var chunks = [];
+            up.on("data", function (c) { chunks.push(c); });
+            up.on("end", function () {
+                var text = Buffer.concat(chunks).toString("utf8");
+                // rewritten, so whole: 200 even when the player asked a range of it (206 with another length broke ffmpeg)
+                var body = Buffer.from(/^\s*#EXTM3U/.test(text) ? pxRewrite(text, url, q.h) : text, "utf8");
+                res.writeHead(200, { "Content-Type": "application/vnd.apple.mpegurl", "Content-Length": body.length, "Cache-Control": "no-store" });
+                res.end(body);
+            });
+            up.on("error", function () { try { res.end(); } catch (e) {} });
+            return;
+        }
+        var out = { "Cache-Control": "no-store" };
+        ["content-type", "content-length", "content-range", "accept-ranges"].forEach(function (k) { if (up.headers[k]) out[k] = up.headers[k]; });
+        res.writeHead(up.statusCode, out);
+        up.pipe(res);
+        up.on("error", function () { try { res.end(); } catch (e) {} });
+        res.on("close", function () { try { up.destroy(); } catch (e) {} });
+    });
 }
 
 /* ---------- timeshift: the live channel kept in a buffer, to pause it and go back in it ----------
@@ -1268,6 +1343,20 @@ function handler(req, res) {
     }
     /* A request with the headers a Stalker (MAG) portal wants: the TV's browser refuses to send a Cookie or
        a User-Agent of its own. Body: { url, headers }. Local only, like everything here. */
+    if (path === "/px/hd" && req.method === "POST") {
+        if (!isLocal(req)) { send(res, 403, { error: "local only" }); return; }
+        readBody(req, 20000, function (body) {
+            var b = null;
+            try { b = JSON.parse(body); } catch (e) {}
+            if (!b || !b.id) { send(res, 400, { error: "bad request" }); return; }
+            var hd = {};
+            Object.keys(b.headers || {}).forEach(function (k) { if (/^(cookie|user-agent|x-user-agent|authorization|referer|accept-language)$/i.test(k)) hd[k] = String(b.headers[k]).slice(0, 2000); });
+            pxHeaders[String(b.id).slice(0, 80)] = hd;
+            send(res, 200, { ok: 1 });
+        });
+        return;
+    }
+    if (path === "/px" || path.indexOf("/px/f/") === 0) { pxServe(req, res, q); return; }
     if (path === "/sget" && req.method === "POST") {
         readBody(req, 20000, function (body) {
             var b = null;

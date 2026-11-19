@@ -1,8 +1,8 @@
 {
- "version": "1.4.5",
+ "version": "1.4.6",
  "loader": 1,
  "reinstall": "1.0.1",
- "notes": "Stalker: series episodes season by season, full series categories, no reload loop",
+ "notes": "Stalker movies that only open for a MAG box now play through APL TV's helper (needs the new install once)",
  "platforms": {
   "tizen": {
    "reinstall": "1.0.1"

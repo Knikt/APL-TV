@@ -1104,5 +1104,7 @@ window.TV_LANG_PL = {
     "Give this code with your issue on GitHub: {code}": "Podaj ten kod w swoim zgłoszeniu na GitHubie: {code}",
     "The portal gave no link for this video.": "Portal nie podał linku do tego filmu.",
     /* A Stalker portal that says too many requests (#30) */
-    "The portal says it is getting too many requests. Wait a few minutes, then try again.": "Portal informuje, że otrzymuje zbyt wiele żądań. Odczekaj kilka minut i spróbuj ponownie."
+    "The portal says it is getting too many requests. Wait a few minutes, then try again.": "Portal informuje, że otrzymuje zbyt wiele żądań. Odczekaj kilka minut i spróbuj ponownie.",
+    /* A portal's movies that need the helper's relay (#30) */
+    "This portal's movies only open for a MAG box. Install the latest APL TV once (LG: the .ipk or the Homebrew Channel; Samsung: APL Launcher Setup), then they play.": "Filmy z tego portalu otwierają się tylko na dekoderze MAG. Zainstaluj raz najnowsze APL TV (LG: plik .ipk lub Homebrew Channel; Samsung: APL Launcher Setup), a potem będą się odtwarzać."
 };

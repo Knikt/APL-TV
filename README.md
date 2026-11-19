@@ -32,6 +32,7 @@ Created by **Knikt** (Gero Corp.), the maker of [APL Launcher](https://github.co
 - **1.4.3.** Samsung: the subtitles' names from the .mkv file also for a Stremio stream, a media server's file and a public domain movie, not only a playlist's or an Xtream account's (#34).
 - **1.4.4.** Stalker: a big portal's movies and series are saved while they load, so closing APL TV no longer loses them; one session kept instead of a new one at each refresh; a movie the portal gives no link for is tried through its own file (#30).
 - **1.4.5.** Stalker: episodes of series whose seasons come without them, series categories filed among the movies loaded in full, no more reload of the whole portal every 10 minutes when it has no series section, and the log says what a movie's link answers when it doesn't start (#30).
+- **1.4.6.** Stalker: a portal whose movies only open for a MAG box (HTTP 403 to the TV's player) now plays them: APL TV's helper asks for them with the portal's MAG headers and passes them on to the player. It needs the new install once (LG: the .ipk or the Homebrew Channel; Samsung: APL Launcher Setup) (#30).
 
 ## New in 1.3
 
