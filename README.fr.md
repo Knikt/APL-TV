@@ -26,6 +26,9 @@ Créé par **Knikt** (Gero Corp.), l'auteur d'[APL Launcher](https://github.com/
 - **Films libres de droit.** 2 700 films, courts métrages et dessins animés sans droits, de l'Internet Archive et de Wikimedia Commons, dans Films.
 - **Envoyer un rapport.** Quand quelque chose ne marche pas, Réglages › À propos › Envoyer un rapport envoie au développeur ce qu'APL TV vient de faire et affiche un code à donner sur GitHub. Après un arrêt inattendu, le démarrage suivant propose d'envoyer un rapport de plantage. Jamais sans ton accord.
 - **Des sous-titres avec leur nom.** Sur Samsung, quand la TV ne donne pas la langue des sous-titres d'un fichier .mkv, APL TV lit leur langue et leur nom dans le fichier lui-même (« English SDH », « Forced »…).
+- **Bandes-annonces.** Un bouton Bande-annonce sur la fiche de chaque film et série, dans ta langue d'abord, lue dans l'app.
+- **Playlists activées ou désactivées.** Désactive une playlist et ses chaînes, films et séries quittent APL TV ; réactive-la et ils reviennent comme avant. Sa date de fin d'abonnement s'affiche, et où en est le chargement d'un gros portail.
+- **Garder la chaîne dans le guide.** La chaîne que tu regardais continue derrière le guide TV pendant que tu regardes les autres.
 - **En espagnol et en italien**, l'italien grâce à @beLikeJo.
 - **Mode léger sur Android TV et Fire TV**, pour les appareils avec 1 Go de mémoire.
 
@@ -124,10 +127,10 @@ Ce que les gens nous ont dit de leur propre TV, dans les issues et sur Reddit. P
 |---|---|---|---|
 | Samsung Smart Monitor M8 | Tizen 9 | Tout (l'écran du développeur) | |
 | Samsung QE65S90C | Tizen 7 | Playlists, films et séries ; noms des sous-titres des fichiers .mkv | |
-| Samsung Q70C | Tizen 7 | | « helper unavailable » sur certaines installations ([#22](../../issues/22)) |
+| Samsung Q70C | Tizen 7 | Playlists, TV en direct | Avant que le helper puisse prendre un autre port, « helper unavailable » ([#22](../../issues/22)) |
 | Samsung Freestyle+ (projecteur) | Tizen | Installé et en marche | |
 | LG OLED G5 | webOS 25 | Tout (l'écran du développeur) | |
-| LG 43UR7500PSC | webOS 23 | La TV en direct d'un gros portail Stalker, ses films, séries et épisodes affichés | Le serveur de ses films n'accepte qu'un boîtier MAG : en cours ([#30](../../issues/30)) |
+| LG 43UR7500PSC | webOS 23 | Un gros portail Stalker : TV en direct, films et séries, par le helper d'APL TV pour ses films réservés aux MAG | |
 | Fire TV Stick (3e génération), 1 Go | Fire OS 7 | TV en direct et films, avec le mode léger | |
 | Fire TV Stick 4K Plus | Fire OS | TV en direct et films | Le son MP2 n'a pas de décodeur ([#33](../../issues/33)) |
 

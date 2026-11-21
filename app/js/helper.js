@@ -20,14 +20,23 @@
     }
     function why(e) { return e ? (e.name && e.name !== "Error" ? e.name + ": " : "") + (e.message || e) : "?"; }
 
+    /* The helper listens on 8765, or the next free port up to 8769 when another program holds it (#22: SmartThings on a
+       Samsung on Tizen 9). The port that answered last time is tried first. */
+    var PORTS = [8765, 8766, 8767, 8768, 8769];
+    try { var lastPort = parseInt(global.localStorage.getItem("apltv.helperPort"), 10); if (PORTS.indexOf(lastPort) > 0) PORTS = [lastPort].concat(PORTS.filter(function (p) { return p !== lastPort; })); } catch (e) {}
     function hosts() {
         if (bases) return bases;
-        var list = ["http://127.0.0.1:" + PORT];
-        try { var ip = global.webapis && global.webapis.network && global.webapis.network.getIp(); if (ip) list.push("http://" + ip + ":" + PORT); } catch (e) {}
-        if (TV.PREVIEW) list = ["http://" + (global.location.hostname || "127.0.0.1") + ":" + PORT];
+        var ip = "", list = [];
+        try { ip = (global.webapis && global.webapis.network && global.webapis.network.getIp()) || ""; } catch (e) {}
+        PORTS.forEach(function (p) {
+            if (TV.PREVIEW) { list.push("http://" + (global.location.hostname || "127.0.0.1") + ":" + p); return; }
+            list.push("http://127.0.0.1:" + p);
+            if (ip) list.push("http://" + ip + ":" + p);
+        });
         bases = list;
         return list;
     }
+    function portOf(base) { var m = /:(\d+)$/.exec(base || ""); return m ? parseInt(m[1], 10) : PORT; }
 
     /* On LG (webOS) the same helper runs as the app's JS service (com.knikt.apltv.service). The app stays
        subscribed to it: webOS keeps a service alive only while someone listens. */
@@ -68,7 +77,9 @@
        listens on 8765 too), said in the error. */
     function ping(base) {
         return TV.http(base + "/ping", { timeout: 1500 }).then(function (r) {
-            if (r.status !== 200) { if (r.status) lastAnswer = "port " + PORT + ": HTTP " + r.status + ", another app?"; throw new Error("no"); }
+            if (r.status !== 200) { if (r.status) lastAnswer = "port " + portOf(base) + ": HTTP " + r.status + ", another app?"; throw new Error("no"); }
+            // APL TV's own answer ({"ok":1,"v":…}): another program can answer 200 on one of these ports too
+            if (r.text && !/"ok"\s*:\s*1/.test(r.text)) { lastAnswer = "port " + portOf(base) + ": another app answers"; throw new Error("no"); }
             return base;
         });
     }
@@ -83,7 +94,14 @@
                         return;
                     }
                     var b = list[i++];
-                    ping(b).then(function () { baseIndex = list.indexOf(b); resolve(); }, tryNext);
+                    ping(b).then(function () {
+                        baseIndex = list.indexOf(b);
+                        var p = portOf(b);
+                        if (p !== PORT) TV.log("helper on port " + p + " (8765 is held by another program)");
+                        PORT = p; if (TV.helper) TV.helper.PORT = p;
+                        try { global.localStorage.setItem("apltv.helperPort", String(p)); } catch (e) {}
+                        resolve();
+                    }, tryNext);
                 })();
             })();
         });

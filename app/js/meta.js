@@ -105,7 +105,7 @@
 
     function details(kind, id) {
         var lang = TV.locale;
-        return tmdb("/" + kind + "/" + id, "language=" + lang + "&append_to_response=credits,external_ids,images,videos,keywords&include_image_language=" + TV.lang + ",en,null").then(function (d) {
+        return tmdb("/" + kind + "/" + id, "language=" + lang + "&append_to_response=credits,external_ids,images,videos,keywords&include_image_language=" + TV.lang + ",en,null&include_video_language=" + TV.lang + ",en,null").then(function (d) {
             var needEn = !d.overview && TV.lang !== "en";
             return (needEn ? tmdb("/" + kind + "/" + id, "language=en-US").then(function (en) { d.overview = en.overview; d.tagline = d.tagline || en.tagline; return d; }, function () { return d; }) : Promise.resolve(d));
         }).then(function (d) {
@@ -115,7 +115,10 @@
                 var directors = crew.filter(function (c) { return c.job === "Director"; }).slice(0, 2);
                 if (!directors.length && d.created_by) directors = d.created_by.slice(0, 2);
                 var director = directors.map(function (c) { return c.name; });
-                var trailer = (d.videos && d.videos.results || []).filter(function (v) { return v.site === "YouTube" && v.type === "Trailer"; })[0];
+                /* The trailer in your language first, then its teaser, then the English trailer (#39) */
+                var vids = (d.videos && d.videos.results || []).filter(function (v) { return v.site === "YouTube"; });
+                var pick = function (lang, type) { return vids.filter(function (v) { return v.type === type && (!lang || v.iso_639_1 === lang); }).sort(function (a, b) { return (b.official ? 1 : 0) - (a.official ? 1 : 0); })[0]; };
+                var trailer = pick(TV.lang, "Trailer") || pick(TV.lang, "Teaser") || pick("en", "Trailer") || pick("", "Trailer") || pick("", "Teaser");
                 return {
                     tmdbId: d.id, kind: kind, title: d.title || d.name || "", original: d.original_title || d.original_name || "",
                     overview: d.overview || "", tagline: d.tagline || "",

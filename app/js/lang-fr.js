@@ -1083,5 +1083,17 @@ window.TV_LANG_FR = {
     /* A Stalker portal that says too many requests (#30) */
     "The portal says it is getting too many requests. Wait a few minutes, then try again.": "Le portail dit qu'il reçoit trop de demandes. Attends quelques minutes, puis réessaie.",
     /* A portal's movies that need the helper's relay (#30) */
-    "This portal's movies only open for a MAG box. Install the latest APL TV once (LG: the .ipk or the Homebrew Channel; Samsung: APL Launcher Setup), then they play.": "Les films de ce portail ne s'ouvrent que pour un boîtier MAG. Installe une fois la dernière version d'APL TV (LG : le .ipk ou le Homebrew Channel ; Samsung : APL Launcher Setup), ensuite ils se lisent."
+    "This portal's movies only open for a MAG box. Install the latest APL TV once (LG: the .ipk or the Homebrew Channel; Samsung: APL Launcher Setup), then they play.": "Les films de ce portail ne s'ouvrent que pour un boîtier MAG. Installe une fois la dernière version d'APL TV (LG : le .ipk ou le Homebrew Channel ; Samsung : APL Launcher Setup), ensuite ils se lisent.",
+    /* Keep the Channel in the Guide (#35) */
+    "Keep the Channel in the Guide": "Garder la chaîne dans le guide",
+    "In the TV Guide, the channel you were watching keeps playing behind it while you look at the others. OK changes the channel.": "Dans le guide TV, la chaîne que tu regardais continue derrière pendant que tu regardes les autres. OK change de chaîne.",
+    /* Playlists turned off and on, their subscription's end, the background loading (#36) */
+    "Use This Playlist": "Utiliser cette playlist",
+    "Off: its channels, movies and series leave APL TV until you turn it on again. Nothing is deleted.": "Désactivée : ses chaînes, films et séries quittent APL TV jusqu'à ce que tu la réactives. Rien n'est effacé.",
+    "Loading in the Background": "Chargement en arrière-plan",
+    "Loading {p} %": "Chargement {p} %",
+    "Subscription ends {d}": "Abonnement jusqu'au {d}",
+    /* A title's trailer (#39) */
+    "Trailer": "Bande-annonce",
+    "OK pause · ◀ ▶ 10 s · Back to the title": "OK pause · ◀ ▶ 10 s · Retour à la fiche"
 };

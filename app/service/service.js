@@ -22,7 +22,7 @@ var zlib = require("zlib");
 var os = require("os");
 var crypto = require("crypto");
 
-var PORT = 8765, VERSION = "1.4.7";
+var PORT = 8765, VERSION = "1.4.8";
 var IDLE_MS = 15 * 60 * 1000, SESSION_MS = 20 * 60 * 1000;
 var UA = "APL TV/" + VERSION + " (" + (global.APLTV_PLATFORM || "Tizen") + ")";
 
@@ -1492,8 +1492,21 @@ function start() {
         try { if (devHandler(req, res)) return; handler(req, res); }
         catch (e) { log("error " + e.message); try { send(res, 500, { error: e.message }); } catch (e2) {} }
     });
-    server.on("error", function (e) { log("server: " + e.message); });
-    server.listen(PORT, "0.0.0.0", function () { log("listening on " + PORT); });
+    /* 8765 first; when another program holds it, the next free one up to 8769 (#22: on a Samsung on Tizen 9, SmartThings
+       itself listens on 8765). The app looks for the helper on the same ports (js/helper.js). */
+    var tries = 0;
+    server.on("error", function (e) {
+        if (e && e.code === "EADDRINUSE" && tries < 4) {
+            tries++;
+            log("port " + PORT + " is taken by another program: " + (PORT + 1) + " instead");
+            PORT++;
+            setTimeout(function () { try { server.listen(PORT, "0.0.0.0"); } catch (x) { log("server: " + x.message); } }, 50);
+            return;
+        }
+        log("server: " + e.message);
+    });
+    server.on("listening", function () { log("listening on " + PORT); });
+    server.listen(PORT, "0.0.0.0");
     stopLater();
 }
 

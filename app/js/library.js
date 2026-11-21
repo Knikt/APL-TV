@@ -162,7 +162,9 @@
         function scrollTo() {
             var inRows = zone >= 0 && !!strips[zone];
             page.classList.toggle("is-rows", inRows);
-            document.body.classList.toggle("in-rows", inRows && visible);
+            /* The top bar hides only while you are in the rows: with the focus on the tabs it stays (#37, #36: a Home with no
+               featured title yet, a big catalog still loading, kept the rows' zone and hid the bar over the tabs) */
+            document.body.classList.toggle("in-rows", inRows && visible && !!TV.shell && TV.shell.focusOn() === "view");
             if (!inRows) { page.style.transform = "translateY(0)"; return; }
             page.style.transform = "translateY(" + Math.min(0, -(strips[zone].root.offsetTop - 360)) + "px)";
         }

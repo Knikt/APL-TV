@@ -589,12 +589,39 @@
         var ct = D.catOf(ch);
         return !!ct && !ct.off && (!ct.adult || TV.pref("showAdult"));
     }
-    function langOf(ch) {
+    function ownLang(ch) {
         var t = S.channel(ch.raw || ch.name);
         if (t.lang) return t.lang;
         var ct = D.catOf(ch);
         return (ct && ct.lang) || "";
     }
+    /* A channel with no language of its own (a "4K" category with no country, #38: Sky Sports Main Event 4K under
+       "Other") takes the language of the channels of the same name that have one */
+    var keyLangs = null, keyLangsOf = null;
+    function langOf(ch) {
+        var l = ownLang(ch);
+        if (l) return l;
+        var cat = D.catalog();
+        if (keyLangsOf !== cat) {
+            keyLangsOf = cat; keyLangs = {};
+            var votes = {};
+            ((cat && cat.live && cat.live.chans) || []).forEach(function (c) {
+                var k = nameKey(c), cl = k && ownLang(c);
+                if (!cl) return;
+                var v = votes[k] = votes[k] || {};
+                v[cl] = (v[cl] || 0) + 1;
+            });
+            Object.keys(votes).forEach(function (k) {
+                var v = votes[k], best = "", n = 0;
+                Object.keys(v).forEach(function (x) { if (v[x] > n) { best = x; n = v[x]; } });
+                keyLangs[k] = best;
+            });
+        }
+        var nk = nameKey(ch);
+        return (nk && keyLangs[nk]) || "";
+    }
+    // the name part of a channel's key ("en:skysportsmainevent" and ":skysportsmainevent" are the same channel)
+    function nameKey(ch) { return String(ch.key || "").replace(/^[^:]*:/, ""); }
 
     /* ---------- who shows it, weeks ahead: the broadcaster ----------
        France, Ligue 1 and Ligue 2: the league's own site's API (ma-api.ligue1.fr, no key) gives each game week's
@@ -839,11 +866,12 @@
         }
         sliced(ms, index, function () { sliced(ms, broadcaster, byName); });
     }
-    /* One line per channel (its best quality), grouped by language, yours first */
+    /* One line per channel and quality, grouped by language, yours first */
     function arrange(list) {
         var byKey = {}, langs = {}, order = [], n = 0, now = Date.now();
         list.forEach(function (x) {
-            var k = x.ch.key || x.ch.id, o = byKey[k];
+            // one line per channel and quality: its 4K beside its HD (#38), each the best way it was found
+            var k = (x.ch.key || x.ch.id) + "|" + (x.ch.q || ""), o = byKey[k];
             if (!o || HOW[x.how] > HOW[o.how] || (HOW[x.how] === HOW[o.how] && S.qualityRank(x.ch.q) > S.qualityRank(o.ch.q))) byKey[k] = x;
         });
         Object.keys(byKey).forEach(function (k) {
@@ -2001,7 +2029,7 @@
         if (now) now.textContent = mmss(yt.t);
         if (len) len.textContent = yt.d ? mmss(yt.d) : "";
         if (bar) bar.style.width = yt.d ? Math.min(100, 100 * yt.t / yt.d).toFixed(2) + "%" : "0";
-        if (hint) hint.textContent = yt.muted ? T("Press OK for the sound") : yt.st === 2 ? T("Paused · OK to play") : T("OK pause · ◀ ▶ 10 s · Back to the match");
+        if (hint) hint.textContent = yt.muted ? T("Press OK for the sound") : yt.st === 2 ? T("Paused · OK to play") : (yt.v && yt.v.hint) || T("OK pause · ◀ ▶ 10 s · Back to the match");
     }
     // the bar comes up with each press and goes after a few seconds, unless paused or muted
     function ytBar() {
@@ -2043,6 +2071,8 @@
         ok: function () { ytCmd("toggle"); ytBar(); },
         tiles: null
     };
+    /* The same player for the rest of the app: a title's trailer (js/detail.js, #39). v: { id, title, channel, hint } */
+    TV.video = { play: function (v) { openVideo(v); } };
     function openVideoApp(v) {
         var url = "https://www.youtube.com/watch?v=" + v.id, A = global.APLAndroid;
         if (TV.ANDROID) { if (!(A && A.openLink && A.openLink(url))) TV.toast(T("Install the new APL TV for Android to open videos.")); return; }

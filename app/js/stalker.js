@@ -205,10 +205,12 @@
             }, function (e) { TV.log("stalker: " + ct.name + ": " + e.message); });
         }).then(function () { return rest; });
     }
-    function restPages(src, rest, add, full) {
+    /* done(): one page more, for the share loaded so far (Settings shows it, #36) */
+    function restPages(src, rest, add, full, done) {
         return eachLimit(rest, JOBS, function (r) {
-            if (full(r)) return;
-            return page(src, r.params, r.p).then(function (j) { add((j && j.data) || [], r.ct); }, function (e) { TV.log("stalker: " + r.ct.name + " page " + r.p + ": " + e.message); });
+            if (full(r)) { if (done) done(); return; }
+            return page(src, r.params, r.p).then(function (j) { add((j && j.data) || [], r.ct); }, function (e) { TV.log("stalker: " + r.ct.name + " page " + r.p + ": " + e.message); })
+                .then(function () { if (done) done(); });
         });
     }
     /* The catalog. onFirst(out), when given, is called once the channels and the first page of every category
@@ -309,11 +311,13 @@
         }).then(function () {
             TV.log("stalker: " + out.live.chans.length + " channels, first pages: " + out.movies.items.length + " movies, " + out.series.items.length + " series; " + (restM.length + restS.length) + " pages left");
             if (onFirst && restM.length + restS.length) onFirst(out);
+            var all = restM.length + restS.length, got = 0;
+            var tick = function () { got++; if (progress.share && all) progress.share(got / all); };
             /* A movie category stops once the movies are full; one that holds series goes on while the series aren't (#30:
                40,000 movies reached early, and every series category, filed among the movies, kept its first 14 shows) */
-            return restPages(src, restM, addMovies, function (r) { return r.ct.hasSeries ? out.series.items.length >= MAX_ITEMS : out.movies.items.length >= MAX_ITEMS; });
+            return restPages(src, restM, addMovies, function (r) { return r.ct.hasSeries ? out.series.items.length >= MAX_ITEMS : out.movies.items.length >= MAX_ITEMS; }, tick)
+                .then(function () { return restPages(src, restS, addSeries, function () { return out.series.items.length >= MAX_ITEMS; }, tick); });
         }).then(function () {
-            return restPages(src, restS, addSeries, function () { return out.series.items.length >= MAX_ITEMS; });
         }).then(function () {
             TV.log("stalker: " + out.live.chans.length + " channels, " + out.movies.items.length + " movies, " + out.series.items.length + " series");
             return out;

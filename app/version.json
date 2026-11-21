@@ -1,8 +1,8 @@
 {
- "version": "1.4.7",
+ "version": "1.4.8",
  "loader": 1,
  "reinstall": "1.0.1",
- "notes": "Stalker: a refused movie is asked the ways a MAG box asks for it, every season page, 80,000 titles",
+ "notes": "Trailers, playlists on and off, keep the channel in the guide, the helper on another port when 8765 is taken, fixes",
  "platforms": {
   "tizen": {
    "reinstall": "1.0.1"

@@ -257,7 +257,10 @@
     function scrollTo() {
         var inRows = zone >= 0 && !!strips[zone];
         page.classList.toggle("is-rows", inRows && featured.length > 0);
-        document.body.classList.toggle("in-rows", inRows && visible);
+        /* The top bar hides only while you are in the rows: with the focus on the tabs it stays (#37, #36: a Home with no
+           featured title yet, a big catalog still loading, kept the rows' zone and hid the bar over the tabs) */
+        // and with no featured title, the first row stays under the bar (the start lands there)
+        document.body.classList.toggle("in-rows", inRows && visible && !!TV.shell && TV.shell.focusOn() === "view" && (featured.length > 0 || zone > 0));
         if (!inRows) { page.style.transform = "translateY(0)"; return; }
         var top = strips[zone].root.offsetTop;
         page.style.transform = "translateY(" + Math.min(0, -(top - (featured.length ? 360 : 170))) + "px)";

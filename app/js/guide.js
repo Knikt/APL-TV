@@ -134,7 +134,8 @@
     function schedulePreview() {
         clearTimeout(previewTimer);
         var ch = chans[row];
-        if (!ch || playingId === ch.id || !TV.pref("autoPreview")) return;
+        // Keep the Channel in the Guide: the one you were watching goes on behind, OK changes it (#35)
+        if (!ch || playingId === ch.id || !TV.pref("autoPreview") || TV.pref("guideKeep")) return;
         previewTimer = setTimeout(function () {
             if (!visible) return;
             playingId = ch.id;
@@ -168,6 +169,10 @@
             visible = true;
             document.body.classList.add("in-guide");
             load();
+            if (TV.pref("guideKeep")) {
+                var last = D.channel(TV.pref("lastChannel"));
+                if (last && playingId !== last.id) { playingId = last.id; TV.live.playChannel(last, RECT); }
+            }
         },
         hide: function () {
             visible = false; clearTimeout(previewTimer);

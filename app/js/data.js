@@ -173,11 +173,17 @@
        pages are in, then every 3 minutes when it grew by a third), marked unfinished: the next start shows it at
        once and loads the portal again. Never over a fuller copy from before (a refresh keeps the old one until the
        end). */
+    var loading = {};            // source id -> { text, share } while a Stalker portal loads
     function count(c) { return c ? (c.movies && c.movies.items ? c.movies.items.length : 0) + (c.series && c.series.items ? c.series.items.length : 0) : 0; }
     function loadStalker(src, progress, onFirst) {
         if (!TV.stalker) return Promise.reject(new Error("no Stalker support"));
         var out = { id: src.id, v: CATALOG_V, at: Date.now(), type: "stalker", live: { cats: [], chans: [] }, movies: { cats: [], items: [] }, series: { cats: [], items: [] }, failed: {} };
         var before = count(cats[src.id]), savedN = 0, timer = null;
+        // how far the loading has got, for Settings (#36): the message, and the share of the background pages
+        var info = loading[src.id] = { text: "", share: 0, at: Date.now() };
+        var shown = progress;
+        progress = function (m) { info.text = m || info.text; shown(m); };
+        progress.share = function (r) { info.share = r; };
         function snap() {
             var n = count(out);
             if (!stillThere(src.id) || n <= before || n < savedN * 1.3) return;
@@ -191,7 +197,7 @@
             snap();
             timer = setInterval(snap, 3 * 60000);
         });
-        p.then(function () { clearInterval(timer); }, function () { clearInterval(timer); });
+        p.then(function () { clearInterval(timer); delete loading[src.id]; }, function () { clearInterval(timer); delete loading[src.id]; });
         return p;
     }
 
@@ -315,7 +321,7 @@
         var myNames = TV.pref("chanNames") || {};
         list.forEach(function (src) {
             var c = cats[src.id];
-            if (!c) return;
+            if (!c || src.off) return;                 // a playlist turned off: its catalog is kept, not shown (#36)
             // the Public Domain Movies are shown like a playlist's: in Movies, with the other categories
             var media = isMedia(src) && src.type !== "free";
             ["live", "movies", "series"].forEach(function (k) {
@@ -546,8 +552,9 @@
                 if (c) cats[s.id] = c;
             });
         })); }).then(function () {
-            var missing = list.filter(function (s) { return !cats[s.id]; });
-            var partial = list.filter(function (s) { return cats[s.id] && (!cats[s.id].movies || !cats[s.id].series); });
+            // a playlist turned off keeps its saved catalog, read here, but is never loaded nor refreshed (#36)
+            var missing = list.filter(function (s) { return !s.off && !cats[s.id]; });
+            var partial = list.filter(function (s) { return !s.off && cats[s.id] && (!cats[s.id].movies || !cats[s.id].series); });
             list.forEach(function (s) { var c = cats[s.id]; if (c) { c.movies = c.movies || { cats: [], items: [] }; c.series = c.series || { cats: [], items: [] }; } });
             if (partial.length) setTimeout(function () {
                 TV.log("movies and series: loading again in the background (" + partial.length + ")");
@@ -559,7 +566,7 @@
                 .then(rebuild);
         }).then(function () {
             // and the ones saved unfinished (closed while a big portal was loading, or its movies did not come)
-            var old = sources().filter(function (s) { return cats[s.id] && (cats[s.id].unfinished || Date.now() - (cats[s.id].at || 0) > MAX_AGE || (cats[s.id].v || 1) < CATALOG_V); });
+            var old = sources().filter(function (s) { return !s.off && cats[s.id] && (cats[s.id].unfinished || Date.now() - (cats[s.id].at || 0) > MAX_AGE || (cats[s.id].v || 1) < CATALOG_V); });
             if (old.length) whenQuiet(function () { refresh(old, function () {}, TV.SMALL); });
         });
     }
@@ -580,7 +587,7 @@
         })();
     }
     function refresh(list, progress, liveOnly) {
-        list = list || sources();
+        list = (list || sources()).filter(function (s) { return !s.off; });
         return sequence(list, function (s) { return loadSource(s, progress || function () {}, false, liveOnly).catch(function (e) { TV.log("refresh " + s.name + ": " + e.message); }); }).then(rebuild);
     }
     function sequence(items, fn) {
@@ -1470,7 +1477,7 @@
     restoreThemes();            // the titles already known for your hidden themes, before anything is drawn
     TV.data = {
         sources: sources, addSource: addSource, removeSource: removeSource, updateSource: updateSource, normServer: normServer, xtreamFromUrl: xtreamFromUrl,
-        loadSource: loadSource, start: start, refresh: refresh, onChange: onChange, rebuild: rebuild, xAuth: xAuth, regroup: function () { groupCache = {}; },
+        loadSource: loadSource, start: start, refresh: refresh, loadingOf: function (id) { return loading[id] || null; }, catalogOf: function (id) { return cats[id] || null; }, onChange: onChange, rebuild: rebuild, xAuth: xAuth, regroup: function () { groupCache = {}; },
         stillComing: function (id) { return !!behind[id]; },
         catalog: function () { return merged; },
         channelsIn: channelsIn, channelsNamed: channelsNamed, channel: channel, streamUrl: streamUrl, catOf: catOf, sourceOf: sourceOf,

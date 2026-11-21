@@ -27,6 +27,9 @@
 
     /* ---------- pages ---------- */
     function fmtCount(src) {
+        if (src.off) return T("Off");
+        var ld = D.loadingOf && D.loadingOf(src.id);
+        if (ld && ld.share) return T("Loading {p} %", { p: Math.round(ld.share * 100) });
         if (src.type === "stremio" && !src.error) return T("{n} addons", { n: (src.addons || []).length });
         if (src.error) return T("Error");
         var c = src.counts;
@@ -51,7 +54,8 @@
         var rows = [{ section: T("Playlists") }];
         D.sources().forEach(function (s) {
             rows.push({ label: s.name, value: fmtCount(s), acc: "chevron", icon: typeIcon(s),
-                desc: typeLabel(s) + (s.error ? "\n" + s.error : "") + (s.at ? "\n" + T("Updated {d}", { d: new Date(s.at).toLocaleString(TV.locale) }) : ""),
+                desc: typeLabel(s) + (s.error ? "\n" + s.error : "") + (s.at ? "\n" + T("Updated {d}", { d: new Date(s.at).toLocaleString(TV.locale) }) : "") +
+                      (s.account && s.account.exp ? "\n" + T("Subscription ends {d}", { d: new Date(s.account.exp).toLocaleDateString(TV.locale) }) : ""),
                 run: function () { push(sourcePage(s.id)); } });
         });
         if (D.sources().length) rows.push({ label: T("Edit on Your Phone"), acc: "chevron", icon: "phone", desc: T("Hide and order your categories, make your groups of channels, order your favorites, rename or hide channels on your phone, then send it all to the TV."),
@@ -59,6 +63,7 @@
         rows.push({ label: T("Add a Playlist"), acc: "chevron", icon: "plus", desc: T("Your M3U playlist, your Xtream account, a Stalker portal, or your own media server (Jellyfin, Emby, Plex)."), run: function () { push(addPage()); } });
         rows.push({ section: T("Playback") });
         rows.push(toggleRow(T("Automatic Preview"), "autoPreview", T("In Live TV, staying on a channel plays it behind the list. Off: a channel only plays when you press OK.")));
+        rows.push(toggleRow(T("Keep the Channel in the Guide"), "guideKeep", T("In the TV Guide, the channel you were watching keeps playing behind it while you look at the others. OK changes the channel.")));
         rows.push(toggleRow(T("Sort the Categories"), "tidyCats", T("Your screen's language first, adult ones last. Off: the order of your playlist."), function () { D.rebuild(); }));
         rows.push(toggleRow(T("Tidy the Names"), "tidyNames", T("Country and quality tags (FR|, FHD, 4K…) taken out of the names. Off: the names of your playlist."), function () { D.rebuild(); }));
         rows.push(toggleRow(T("Group HD, FHD and 4K"), "mergeQuality", T("One line per channel, the best quality first. Hold OK on it to choose another."), function () { D.rebuild(); }));
@@ -336,6 +341,19 @@
         var s = D.sources().filter(function (x) { return x.id === id; })[0];
         if (!s) return mainPage();
         var rows = [];
+        /* Off: its channels, movies and series leave APL TV, its catalog stays saved and comes back as it was (#36) */
+        rows.push({ label: T("Use This Playlist"), value: s.off ? T("Off") : T("On"),
+            desc: T("Off: its channels, movies and series leave APL TV until you turn it on again. Nothing is deleted."),
+            run: function () {
+                var off = !s.off; s.off = off;
+                D.updateSource(id, { off: off });
+                D.rebuild();
+                if (!off && !D.catalogOf(id)) loadWithProgress(s, function () { replaceTop(sourcePage(id)); });
+                else replaceTop(sourcePage(id));
+            } });
+        // how far a big portal has got in the background (#36): drawn again every 2 seconds while it loads
+        var ld = D.loadingOf && D.loadingOf(id);
+        if (ld) rows.push({ label: T("Loading in the Background"), value: ld.share ? Math.round(ld.share * 100) + " %" : "…", desc: ld.text || "" });
         rows.push({ label: T("Name"), value: s.name, acc: "chevron", run: function (row) {
             edit(row, { value: s.name, onDone: function (v) { if (v) { D.updateSource(id, { name: v }); D.rebuild(); } redraw(); } });
         } });
@@ -343,10 +361,7 @@
             rows.push({ label: T("Server"), value: s.server });
             rows.push({ label: T("Username"), value: s.user });
             rows.push({ label: T("Password"), value: "••••••••", secret: true });
-            if (s.account) {
-                if (s.account.exp) rows.push({ label: T("Subscription Ends"), value: new Date(s.account.exp).toLocaleDateString(TV.locale) });
-                if (s.account.max) rows.push({ label: T("Screens at Once"), value: String(s.account.max) });
-            }
+            if (s.account && s.account.max) rows.push({ label: T("Screens at Once"), value: String(s.account.max) });
         } else if (s.type === "stalker") {
             rows.push({ label: T("Portal Address"), value: String(s.portal || "").replace(/^(https?:\/\/[^\/]+).*$/, "$1/…") });
             rows.push({ label: T("MAC Address"), value: s.mac || "" });
@@ -398,6 +413,8 @@
         if (!ownLibrary(s)) rows.push({ label: T("TV Guide Address"), value: s.epg ? s.epg.replace(/^(https?:\/\/[^\/]+).*$/, "$1/…") : (s.type === "xtream" ? T("From the server") : T("From the playlist")), acc: "chevron",
             desc: T("An XMLTV address (.xml or .xml.gz), if your provider gives you one."),
             run: function (row) { edit(row, { value: s.epg || "", url: true, onDone: function (v) { D.updateSource(id, { epg: v }); D.rebuild(); TV.epg.loadAll(true); redraw(); } }); } });
+        // the subscription's end, for every playlist that gives it (Xtream, Stalker), as OTT Navigator shows it (#36)
+        if (s.account && s.account.exp) rows.push({ label: T("Subscription Ends"), value: new Date(s.account.exp).toLocaleDateString(TV.locale) });
         rows.push({ label: fmtCount(s), desc: s.error || "" });
         rows.push({ label: T("Refresh Now"), icon: "refresh", run: function () {
             // asked for here: a Jellyfin or Emby server that refused the password gets one more try (even when the
@@ -409,7 +426,12 @@
             TV.alert({ title: T("Delete “{name}”?", { name: s.name }), message: T("Its channels, favorites and guide will be removed from APL TV."), buttons: [
                 { label: T("Cancel") }, { label: T("Delete"), danger: true, run: function () { D.removeSource(id); pop(); } }] });
         } });
-        return { title: s.name, icon: typeIcon(s), desc: typeLabel(s), rows: rows };
+        var page = { title: s.name, icon: typeIcon(s), desc: typeLabel(s), rows: rows };
+        if (ld) {
+            var again = setTimeout(function () { if (pages[pages.length - 1] === page) replaceTop(sourcePage(id)); }, 2000);
+            page.onLeave = function () { clearTimeout(again); };
+        }
+        return page;
     }
 
     function addPage() {

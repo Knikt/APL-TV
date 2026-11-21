@@ -233,6 +233,10 @@
         if (plVers.length + stVers.length + stOthers.length > 1) {
             add("", TV.icon("quality", 28) + esc(T("Versions ({n})", { n: plVers.length + stVers.length + stOthers.length })), function () { versionsMenu(it, plVers, stVers, stOthers); });
         }
+        // its trailer, from TMDB, played inside the app (#39)
+        if (m.trailer && TV.video) add("", TV.icon("film", 28) + esc(T("Trailer")), function () {
+            TV.video.play({ id: m.trailer, title: m.title || it.title || it.name, channel: T("Trailer"), hint: T("OK pause · ◀ ▶ 10 s · Back to the title") });
+        });
         var inl = D.inMyList(it.id);
         add("", TV.icon(inl ? "check" : "plus", 28) + esc(T("My List")), function () {
             var on = D.toggleMyList(it.id);
