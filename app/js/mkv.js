@@ -140,7 +140,10 @@
                 x.setRequestHeader("Range", "bytes=0-" + (MAX - 1));             // a server that ignores it is cut at 1 MB
                 x.onreadystatechange = function () {
                     if (over) return;
-                    if (x.readyState >= 2 && x.status && x.status !== 200 && x.status !== 206) { end(null, "HTTP " + x.status); return; }
+                    if (x.readyState >= 2 && x.status && x.status !== 200 && x.status !== 206) {
+                        if (/^(401|403|429|458|509)$/.test(String(x.status))) busyHosts[hostOf(url)] = 1;
+                        end(null, "HTTP " + x.status); return;
+                    }
                     if (x.readyState === 3) look(false);
                     else if (x.readyState === 4) { if (!x.status) end(null, "refused"); else look(true); }
                 };
@@ -154,8 +157,13 @@
        just before playing for a Stremio stream, a media server's file or a public domain movie: those are good for
        more than one request (1.4.2 left them out, and a film from one of them had no names, #34). Not a Stalker
        portal's: it can be good for one request only. An .mkv not read says why in the log, a link read before too. */
+    /* A server that answered "too many connections" or refused the read (#27: HTTP 458 on an account for one screen): its
+       files are no longer read first, the player alone asks for them */
+    var busyHosts = {};
+    function hostOf(u) { var m = /^https?:\/\/([^\/?#]+)/i.exec(String(u || "")); return m ? m[1].toLowerCase() : ""; }
     function wanted(url, opts) {
         if (opts && opts.live) return false;
+        if (busyHosts[hostOf(url)]) { TV.log("mkv: track names not read (this server refused it before, the player alone asks)"); return false; }
         if (!/^https?:\/\/[^?#]+\.mkv([?#]|$)/i.test(String(url || ""))) {
             // what the link ends with, so a film that should have been read can be told (#34: a second film, from the same
             // Xtream account, had no "mkv:" line at all)

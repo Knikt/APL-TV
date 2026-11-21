@@ -125,9 +125,15 @@
        of good playback the count starts again. Nothing is reopened while the picture moves. */
     var tickAt = 0, started = false, attempts = 0, goodSince = 0, stallTimer = null, retryTimer = null, bufAt = 0, userPaused = false;
     var DELAYS = [800, 2000, 4000, 6000, 8000];
+    /* The provider refused the connection (#27: an account for one screen, the stream just closed still counted by the
+       provider for a while, at the next episode or after a stutter): longer waits, about a minute in all */
+    var BUSY_DELAYS = [3000, 6000, 10000, 15000, 20000];
+    function refusedConn(why) { return /CONNECTION_FAILED|InvalidAccess|CONNECTION/i.test(String(why || "")); }
+    var retrying = null;          // the stream a retry is already planned for: its other errors of the moment count once
     /* A stream given up: Samsung's player is closed at once, never left open behind the message. A player left in
        error could keep the TV's decoder, and every app failed to play until the TV was restarted (#27). */
     function fail(why) {
+        if (cur && cur.failed) return;                         // one message for one stream given up
         if (cur) cur.failed = true;
         clearTimeout(watchdog); clearTimeout(retryTimer);
         closeAv();
@@ -136,13 +142,19 @@
     function reconnect(why) {
         if (!cur) return;
         var c = cur;
-        if (attempts >= DELAYS.length) { TV.log("giving up after " + attempts + " reconnections (" + why + ")"); fail(why); return; }
-        var wait = DELAYS[attempts++];
+        // Samsung's player says one failure two or three times (an error, then the prepare failing): one try (#27: the five
+        // tries were used up in 8 s)
+        if (retrying === c || c.failed) return;               // and once given up, the rest of its errors are not said again
+        var list = refusedConn(why) ? BUSY_DELAYS : DELAYS;
+        if (attempts >= list.length) { TV.log("giving up after " + attempts + " reconnections (" + why + ")"); fail(why); return; }
+        var wait = list[attempts++];
+        retrying = c;
         TV.log("reconnecting (" + why + "), attempt " + attempts + " in " + wait + " ms");
         emit("onReconnect", attempts);
         closeAv();
         clearTimeout(retryTimer);
         retryTimer = setTimeout(function () {
+            retrying = null;
             if (cur !== c) return;
             var o = c.opts;
             if (!o.live && lastTime > 0) o.start = lastTime / 1000;
@@ -323,7 +335,8 @@
                 onerror: function (type) {
                     if (!cur || cur.token !== my) return;
                     TV.log("avplay error " + type);
-                    if (started || opts.live) reconnect(String(type)); else fail(String(type));
+                    // a movie's first open the provider refused (the episode before still counted): tried again too (#27)
+                    if (started || opts.live || refusedConn(type)) reconnect(String(type)); else fail(String(type));
                 },
                 onevent: function (type, data) { if (type !== "PLAYER_MSG_RESOLUTION_CHANGED") TV.log("avplay event " + type + " " + (data || "")); },
                 onsubtitlechange: function (dur, text) { if (cur && cur.token === my) emit("onSubtitle", { text: text, dur: +dur || 0 }); },
@@ -353,7 +366,7 @@
                 var why = String(err && (err.name || err.message) || err);
                 TV.log("prepare failed " + why);
                 // a movie that cannot open: its error stays, the start timer does not add a "timeout" later
-                if (again || opts.live) reconnect("prepare " + why); else fail(why);
+                if (again || opts.live || refusedConn(why)) reconnect("prepare " + why); else fail(why);
             });
         } catch (e) {
             TV.log("open failed " + e.message);

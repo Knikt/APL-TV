@@ -1,8 +1,8 @@
 {
- "version": "1.4.8",
+ "version": "1.4.9",
  "loader": 1,
  "reinstall": "1.0.1",
- "notes": "Trailers, playlists on and off, keep the channel in the guide, the helper on another port when 8765 is taken, fixes",
+ "notes": "Steadier playback on accounts for one screen: a refused connection is waited out, one failure counted once",
  "platforms": {
   "tizen": {
    "reinstall": "1.0.1"

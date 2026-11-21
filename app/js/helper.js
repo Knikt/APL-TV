@@ -10,6 +10,9 @@
     var TV = global.TV;
     var PORT = 8765;
     var bases = null, baseIndex = 0, starting = null, lastAnswer = "";
+    /* A helper that didn't start is not asked to start again for 10 minutes: each try took 17 s of the TV's time, and
+       every guide and every lookup tried again (#27: a Tizen 6.0 TV where it never starts, tried every 20 s) */
+    var deadUntil = 0, deadWhy = null;
 
     /* Samsung: the service is "<package>.Helper". Apps2Samsung can give the package another id on a TV (#22: an id
        blocked there, or taken by another app) and rewrites it in the installed files, not in the code that comes
@@ -54,6 +57,7 @@
     }
     function startService() {
         if (starting) return starting;
+        if (Date.now() < deadUntil) return Promise.reject(deadWhy || new Error("helper unavailable"));
         lastAnswer = "";
         starting = new Promise(function (resolve) {
             if (TV.WEBOS) { startWebos(resolve); return; }
@@ -70,7 +74,7 @@
             try { T.application.launchAppControl(new T.ApplicationControl("http://tizen.org/appcontrol/operation/service"), id, resolve, plain); }
             catch (e) { plain(e); }
         }).then(function () { return waitUp(Date.now() + 12000); });
-        starting.then(function () { starting = null; }, function () { starting = null; });
+        starting.then(function () { starting = null; deadUntil = 0; }, function (e) { starting = null; deadUntil = Date.now() + 10 * 60000; deadWhy = e; });
         return starting;
     }
     /* /ping answers 200 from APL TV's helper. Any other answer is another app on the port (#22: Tizenfy's phone page
