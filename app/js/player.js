@@ -158,6 +158,9 @@
             if (cur !== c) return;
             var o = c.opts;
             if (!o.live && lastTime > 0) o.start = lastTime / 1000;
+            /* A portal's stream is asked for again: its link's token was spent or ran out, and reopening it gave "start
+               timeout" five times (#36: a channel or an episode stopped, and only changing channel and back played it) */
+            if (/^stalker:/.test(o._via || "")) { TV.log("asking the portal for a new link"); play(o._via, o); return; }
             open(c.url, o, true);
         }, wait);
     }

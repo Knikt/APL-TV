@@ -185,9 +185,19 @@
        the helper at once). A page that fails is asked once more by call(): a page lost was 14 titles missing
        until the next refresh. */
     function page(src, params, p) { return call(src, params + "&p=" + p, 60000); }
+    /* While a video plays, the pages left come one at a time, 1.5 s apart: thousands of requests at once made the portal
+       answer 429 to everything, and the video being watched stopped with them (#36) */
+    var calm = Promise.resolve();
+    function playing() { var c = TV.player && TV.player.current && TV.player.current(); return !!c && !(TV.player.state && /paus/i.test(String(TV.player.state()))); }
     function eachLimit(list, n, fn) {
         var i = 0;
-        function next() { if (i >= list.length) return Promise.resolve(); var it = list[i++]; return Promise.resolve(fn(it)).then(next, next); }
+        function next() {
+            if (i >= list.length) return Promise.resolve();
+            var it = list[i++];
+            var go = function () { return Promise.resolve(fn(it)); };
+            var turn = playing() ? (calm = calm.then(function () { return new Promise(function (r) { setTimeout(r, 1500); }); }).then(go)) : go();
+            return turn.then(next, next);
+        }
         var jobs = [];
         for (var k = 0; k < Math.min(n, list.length); k++) jobs.push(next());
         return Promise.all(jobs);
@@ -269,9 +279,15 @@
            three handshakes in 12 s, then "refused this MAC" on 48 pages and 0 movies) */
         return login(src).then(function (ses) {
             return call(src, "type=account_info&action=get_main_info").then(function (a) {
-                var exp = a && (a.end_date || a.phone || "");
-                var t = Date.parse(String(exp).replace(" ", "T"));
-                out.account = { exp: isNaN(t) ? 0 : t, max: 1, formats: [] };
+                /* The subscription's end, where portals write it (#36: none shown for a portal): the account's end_date,
+                   expire_billing_date or phone, or the profile's; "2026-12-31 23:59:59", "December 31, 2026, 12:00 am",
+                   "31.12.2026" or a Unix time */
+                var p = (ses && ses.profile) || {}, raw = "";
+                [a && a.end_date, a && a.expire_billing_date, a && a.exp_date, a && a.phone, p.expire_billing_date, p.end_date, p.tariff_expired_date, p.exp_date]
+                    .forEach(function (v) { if (!raw && v && v !== "0" && v !== "0000-00-00 00:00:00") raw = String(v); });
+                var t = endDate(raw);
+                if (!t) TV.log("stalker: no end date (" + (raw ? "\"" + raw.slice(0, 40) + "\"" : "account fields " + Object.keys(a || {}).slice(0, 15).join(",")) + ")");
+                out.account = { exp: t, max: 1, formats: [] };
             }, function () {});
         }).then(function () {
             progress(T("Loading channels…"));
@@ -324,6 +340,16 @@
         });
     }
 
+    function endDate(s) {
+        s = String(s || "").trim();
+        if (!s) return 0;
+        if (/^\d{9,11}$/.test(s)) return parseInt(s, 10) * 1000;
+        var m = /^(\d{1,2})[.\/-](\d{1,2})[.\/-](\d{4})/.exec(s);
+        if (m) return new Date(+m[3], +m[2] - 1, +m[1], 23, 59).getTime();
+        var t = Date.parse(s.replace(/^(\d{4}-\d{2}-\d{2}) /, "$1T"));
+        if (isNaN(t)) t = Date.parse(s.replace(/,(?=\s*\d{1,2}:)/, "").replace(/\s*(am|pm)$/i, " $1"));
+        return isNaN(t) || t < 946684800000 ? 0 : t;
+    }
     /* "Show S02", "Season 2": its season; 1 otherwise */
     function seasonOf(name) {
         var m = /\bS(\d{1,2})(?:\b|E\d)|\b(?:season|saison|temporada|staffel|stagione|sezon)\s*(\d{1,2})\b/i.exec(String(name || ""));

@@ -1009,7 +1009,7 @@
         if (!vod || vod.noResume) return;
         var pos = TV.player.position(), dur = TV.player.duration();
         if (!dur || pos < 5) return;
-        var done = ended || pos > dur * 0.94, base = { item: vod.item.id, ep: vod.ep ? vod.ep.id : null };
+        var done = ended || (D.finished ? D.finished(pos, dur, !vod.ep) : pos > dur * 0.94), base = { item: vod.item.id, ep: vod.ep ? vod.ep.id : null };
         if (done) D.setResume(vod.resumeKey, { pos: dur, dur: dur, item: base.item, ep: base.ep, done: true });
         else D.setResume(vod.resumeKey, { pos: pos, dur: dur, item: base.item, ep: base.ep, epLabel: vod.sub || "" });
         if (vod.ep) {

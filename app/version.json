@@ -1,8 +1,8 @@
 {
- "version": "1.4.9",
+ "version": "1.4.10",
  "loader": 1,
  "reinstall": "1.0.1",
- "notes": "Steadier playback on accounts for one screen: a refused connection is waited out, one failure counted once",
+ "notes": "Streams that stop ask the portal for a new link, and a movie left in its end credits counts as watched.",
  "platforms": {
   "tizen": {
    "reinstall": "1.0.1"

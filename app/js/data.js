@@ -20,6 +20,9 @@
 
     /* ---------- sources ---------- */
     function sources() { return TV.load("sources", []) || []; }
+    /* Watched: 94 % of an episode; a movie in its last 10 minutes or past 90 % (#42: leaving a movie in its end credits,
+       9 minutes long, kept it in Continue Watching) */
+    function finished(pos, dur, movie) { return !!dur && (pos > dur * (movie ? 0.9 : 0.94) || (movie && dur > 40 * 60 && dur - pos <= 10 * 60)); }
     function saveSources(list) { TV.save("sources", list); }
 
     function normServer(s) {
@@ -1094,7 +1097,7 @@
             var e = r[k];
             if (!e || !e.item || e.manual) return;
             // a series whose episode is over: its next episode waits here ("up next")
-            if (!e.upNext && (e.pos < 60 || e.done || (e.dur && e.pos > e.dur * 0.94))) return;
+            if (!e.upNext && (e.pos < 60 || e.done || finished(e.pos, e.dur, !e.series && !e.ep))) return;
             var it = (merged && (merged.movies.byId[e.item] || merged.series.byId[e.item])) || virtualById(e.item);
             if (it && !isHidden(it)) out.push({ item: it, resume: e, key: k });
         });
@@ -1477,7 +1480,7 @@
     restoreThemes();            // the titles already known for your hidden themes, before anything is drawn
     TV.data = {
         sources: sources, addSource: addSource, removeSource: removeSource, updateSource: updateSource, normServer: normServer, xtreamFromUrl: xtreamFromUrl,
-        loadSource: loadSource, start: start, refresh: refresh, loadingOf: function (id) { return loading[id] || null; }, catalogOf: function (id) { return cats[id] || null; }, onChange: onChange, rebuild: rebuild, xAuth: xAuth, regroup: function () { groupCache = {}; },
+        loadSource: loadSource, finished: finished, start: start, refresh: refresh, loadingOf: function (id) { return loading[id] || null; }, catalogOf: function (id) { return cats[id] || null; }, onChange: onChange, rebuild: rebuild, xAuth: xAuth, regroup: function () { groupCache = {}; },
         stillComing: function (id) { return !!behind[id]; },
         catalog: function () { return merged; },
         channelsIn: channelsIn, channelsNamed: channelsNamed, channel: channel, streamUrl: streamUrl, catOf: catOf, sourceOf: sourceOf,
