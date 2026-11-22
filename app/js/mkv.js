@@ -197,8 +197,12 @@
         /* The file's subtitles that match the TV's list: all of them, or the text ones (the TV skips pictures: PGS,
            VobSub), or the ones not turned off. None the same length (#34: 2 in the file, 1 on the TV): when they all
            speak one language, that language goes on every one the TV lists, without a name. */
+        /* Or the plain text ones (SRT, WebVTT): a Samsung TV skips the styled ASS and SSA ones too (#34: German in ASS and
+           English in SRT in the file, the TV's one subtitle was the English one) */
         var isText = function (x) { return /^S_TEXT\//.test(x.codec); }, isOn = function (x) { return x.on !== false; };
-        var ways = [info.subs, info.subs.filter(isText), info.subs.filter(function (x) { return isText(x) && isOn(x); }), info.subs.filter(isOn)];
+        var isPlain = function (x) { return /^S_TEXT\/(UTF8|ASCII|WEBVTT)$/i.test(x.codec); };
+        var ways = [info.subs, info.subs.filter(isText), info.subs.filter(function (x) { return isText(x) && isOn(x); }), info.subs.filter(isPlain),
+            info.subs.filter(function (x) { return isPlain(x) && isOn(x); }), info.subs.filter(isOn)];
         for (var w = 0; w < ways.length; w++) if (ways[w].length === text.length) { put(text, ways[w]); return list; }
         var langs = {};
         (info.subs.filter(isText).length ? info.subs.filter(isText) : info.subs).forEach(function (x) { if (x.lang) langs[x.lang] = 1; });

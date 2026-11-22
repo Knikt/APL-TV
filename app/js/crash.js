@@ -197,6 +197,8 @@
             try { r = last(); } catch (e) { TV.log("crash check: " + e.message); }
             if (!r) { then(); return; }
             TV.log("the last session stopped on screen (" + r.kind + (r.why ? ", " + r.why : "") + ", " + Math.round(r.upFor / 60) + " min after its start)");
+            // Android closed it for memory, on a TV with little of it, Light Mode turned off (a crash report: 3 times in a row)
+            if (r.kind === "memory" && TV.ANDROID && TV.LOW_RAM && !TV.SMALL) setTimeout(function () { TV.toast(T("Android closed APL TV to free memory. Light Mode (Settings > Display) keeps it open on this TV."), true); }, 8000);
             var pref = TV.pref("crashReports") || "ask";
             if (pref === "never") { done(); then(); return; }
             if (pref === "always" && relay()) { sendNow(r, true); done(); then(); return; }

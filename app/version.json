@@ -1,8 +1,8 @@
 {
- "version": "1.4.10",
+ "version": "1.4.11",
  "loader": 1,
  "reinstall": "1.0.1",
- "notes": "Streams that stop ask the portal for a new link, and a movie left in its end credits counts as watched.",
+ "notes": "Steadier on big playlists (no more closing a minute after the start), no playlist refresh while a video plays, 4K channels the TV refuses, SRT subtitle names.",
  "platforms": {
   "tizen": {
    "reinstall": "1.0.1"

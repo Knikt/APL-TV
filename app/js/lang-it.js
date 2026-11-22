@@ -893,6 +893,7 @@ window.TV_LANG_IT = {
     "North America": "Nord America",
     "International": "Internazionale",
     "no list": "nessuna lista",
+    "Android closed APL TV to free memory. Light Mode (Settings > Display) keeps it open on this TV.": "Android ha chiuso APL TV per liberare memoria. La Modalità leggera (Impostazioni > Schermo) lo tiene aperto su questa TV.",
     "{name}: the movies did not arrive ({error}). APL TV tries again in 10 minutes.": "{name}: i film non sono arrivati ({error}). APL TV riprova tra 10 minuti.",
     "{name}: the series did not arrive ({error}). APL TV tries again in 10 minutes.": "{name}: le serie non sono arrivate ({error}). APL TV riprova tra 10 minuti.",
     "Version changed: {name}": "Versione cambiata: {name}",

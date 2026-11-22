@@ -245,7 +245,18 @@
         if (k) { names[k] = 1; (byName[k] = byName[k] || []).push(c); }
         if (c.epg) { var ik = "#id:" + String(c.epg).toLowerCase(); names[ik] = 1; (byName[ik] = byName[ik] || []).push(c); }
     }
+    var extraBusy = false;
+    /* While a video plays, 10 s between two public guides: each one is a big list to read for the TV, and back to back
+       on top of the video they were in most of the Samsung crash reports */
+    function pace() {
+        var c = TV.player && TV.player.current && TV.player.current();
+        return c ? new Promise(function (r) { setTimeout(r, 10000); }) : Promise.resolve();
+    }
     function loadExtra() {
+        extraBusy = true;
+        return loadExtraNow().then(function () { extraBusy = false; }, function () { extraBusy = false; });
+    }
+    function loadExtraNow() {
         var cat = TV.data.catalog(), g = gen;
         if (!cat || off()) return Promise.resolve();
         var by = {}, total = 0;
@@ -256,7 +267,7 @@
             countriesOf(ct).forEach(function (code) { (by[code] = by[code] || []).push(c); });
             total++;
         });
-        var codes = Object.keys(by).filter(function (k) { return by[k].length >= 3; }).sort(function (a, b) { return by[b].length - by[a].length; }).slice(0, TV.SMALL ? 2 : 30);   // little memory: the 2 main countries
+        var codes = Object.keys(by).filter(function (k) { return by[k].length >= 3; }).sort(function (a, b) { return by[b].length - by[a].length; }).slice(0, TV.SMALL || TV.LOW_RAM ? 2 : TV.data.big && TV.data.big() ? 12 : 30);   // little memory (Light Mode off too): the 2 main countries; a big account: 12
         if (!codes.length) return Promise.resolve();
         TV.log("extra guides: " + total + " channels without programmes, countries " + codes.join(" "));
         var from = Date.now() - 4 * 3600 * 1000, to = Date.now() + 26 * 3600 * 1000, found = 0;
@@ -264,7 +275,7 @@
             var urls = ["https://iptv-epg.org/files/epg-" + code + ".xml.gz"];
             if (EPGPW[code]) urls.push("https://epg.pw/xmltv/epg_" + code.toUpperCase() + ".xml.gz");
             return urls.reduce(function (p2, url) {
-                return p2.then(function () {
+                return p2.then(pace).then(function () {
                     if (g !== gen) return;
                     var still = by[code].filter(function (c) { return !has(c); });
                     if (!still.length) return;
@@ -410,6 +421,6 @@
         }
     }
 
-    TV.epg = { prune: prune, now: now, at: at, range: range, list: list, has: has, progress: progress, loadAll: loadAll, ensure: ensure, clear: clear, onUpdate: onUpdate, b64: b64, scan: scan, scanSlices: scanSlices,
+    TV.epg = { busy: function () { return extraBusy || !!loading; }, prune: prune, now: now, at: at, range: range, list: list, has: has, progress: progress, loadAll: loadAll, ensure: ensure, clear: clear, onUpdate: onUpdate, b64: b64, scan: scan, scanSlices: scanSlices,
                chosen: chosen, setChannelGuide: setChannelGuide, guideSearch: guideSearch, hasGuideList: function () { return Object.keys(guideNames).length > 0; } };
 })(window);

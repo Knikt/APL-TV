@@ -215,6 +215,13 @@
     function fp(url) { var h = 0, s = String(url); for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0; return String(h); }
     function knownUhd(url) { return !!(TV.load("uhd", {}) || {})[fp(url)]; }
     function rememberUhd(url) { var m = TV.load("uhd", {}) || {}, k = Object.keys(m); if (k.length > 400) delete m[k[0]]; m[fp(url)] = 1; TV.save("uhd", m); }
+    /* And the ones Samsung's player refused in 4K mode ("prepare failed InvalidAccessError" five times, #27: M6 and
+       France 2, named 4K, on a UA50AU7000) but played without it: opened without it next time */
+    function knownNoUhd(url) { return !!(TV.load("noUhd", {}) || {})[fp(url)]; }
+    function rememberNoUhd(url) {
+        var m = TV.load("noUhd", {}) || {}, k = Object.keys(m); if (k.length > 400) delete m[k[0]]; m[fp(url)] = 1; TV.save("noUhd", m);
+        var u = TV.load("uhd", {}) || {}; if (u[fp(url)]) { delete u[fp(url)]; TV.save("uhd", u); }
+    }
     /* LG: channels whose MPEG-TS it refused are opened in HLS straight away next time */
     function toHls(url) { return String(url).replace(/\.ts(\?|$)/i, ".m3u8$1"); }
     function knownHls(url) { return !!(TV.load("hlsOnly", {}) || {})[fp(url)]; }
@@ -238,6 +245,7 @@
         }
         attempts = 0;
         if (!opts.uhd && knownUhd(url)) opts.uhd = true;
+        if (opts.uhd && TV.TIZEN && knownNoUhd(url)) { opts.uhd = false; opts._was4k = true; }
         if (TV.WEBOS && /\.ts(\?|$)/i.test(url) && knownHls(url)) { opts._hls = true; url = toHls(url); }
         // A movie or an episode in .mkv: its tracks' languages and names read from the file first, the player closed
         // meanwhile, so the provider sees one connection at a time (js/mkv.js, #34)
@@ -319,7 +327,8 @@
                         started = true; goodSince = Date.now();
                         var si = streamInfo();
                         if (si) TV.log("picture " + si.w + "x" + si.h + " " + si.codec + " " + si.fps + "fps");
-                        if (si && si.w >= 3000 && !opts.uhd && canUhd() && TV.TIZEN) {
+                        if (opts._try2k) { opts._try2k = false; rememberNoUhd(url); TV.log("plays without the 4K mode: remembered"); }
+                        if (si && si.w >= 3000 && !opts.uhd && !opts._was4k && canUhd() && TV.TIZEN) {
                             // a 4K picture without Samsung's 4K mode: opened again in 4K mode, where it was
                             TV.log("4K stream without the 4K mode: opened again in 4K mode");
                             opts.uhd = true; rememberUhd(url);
@@ -368,6 +377,8 @@
                 if (!cur || cur.token !== my) return;
                 var why = String(err && (err.name || err.message) || err);
                 TV.log("prepare failed " + why);
+                // refused in 4K mode: the next try without it, once; remembered if it plays then (#27)
+                if (opts.uhd && TV.TIZEN && !opts._was4k) { opts.uhd = false; opts._was4k = true; opts._try2k = true; TV.log("next try without the 4K mode"); }
                 // a movie that cannot open: its error stays, the start timer does not add a "timeout" later
                 if (again || opts.live || refusedConn(why)) reconnect("prepare " + why); else fail(why);
             });
