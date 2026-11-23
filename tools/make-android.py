@@ -45,7 +45,8 @@ def skip(rel):
         return True
     if rel in ("js/keys.local.js", "js/dev.local.js", "js/keys.example.js"):
         return True
-    if release and (rel.startswith("fonts/") or rel.startswith("sounds/")) and not rel.endswith((".css", ".md", ".txt")):
+    # SF Pro (Apple's license) and the sounds stay out; Inter Display (free, fonts/Inter-OFL.txt) goes everywhere
+    if release and ((rel.startswith("fonts/") and rel.lower().endswith((".otf", ".ttf"))) or (rel.startswith("sounds/") and not rel.endswith((".css", ".md", ".txt")))):
         return True
     return False
 for base, dirs, files in os.walk(A):

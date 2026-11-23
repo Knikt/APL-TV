@@ -1,8 +1,8 @@
 {
- "version": "1.4.12",
+ "version": "1.4.13",
  "loader": 1,
  "reinstall": "1.0.1",
- "notes": "Search types smoothly on very big playlists (it froze a Fire TV), and Light Mode on the TVs Android calls low-memory.",
+ "notes": "Without SF Pro, APL TV now uses Inter Display, the free font closest to it.",
  "platforms": {
   "tizen": {
    "reinstall": "1.0.1"

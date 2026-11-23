@@ -266,7 +266,7 @@ APL TV est fait par **Knikt** (Gero Corp.)
 - Guides TV : le XMLTV de ton fournisseur, [epg.pw](https://epg.pw) et [iptv-epg.org](https://iptv-epg.org).
 - Sports : scores, photos de matchs et diffuseurs par ESPN, les autres sports par 365Scores, les chaînes de Ligue 1 et de Ligue 2 par la LFP, photos de stades de Wikipédia (Wikimedia Commons, licences libres), résumés vidéo sur YouTube depuis les chaînes officielles.
 - Sur Android, la vidéo est lue par [AndroidX Media3 / ExoPlayer](https://github.com/androidx/media) (licence Apache 2.0).
-- Le look, les sons et les polices viennent d'APL Launcher.
+- Le look, les sons et les polices viennent d'APL Launcher. Sans SF Pro, la police [Inter](https://github.com/rsms/inter) Display (licence SIL Open Font 1.1).
 
 APL TV n'est affilié ni à Apple, ni à Samsung, LG, Google, Amazon, TMDB, IMDb, OpenSubtitles, Stremio, ESPN, 365Scores, la LFP, YouTube, ni à aucune ligue, aucun club ou aucun fournisseur IPTV. Les noms et logos appartiennent à leurs propriétaires.
 

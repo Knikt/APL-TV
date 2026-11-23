@@ -12,8 +12,8 @@
 #   - js/keys.local.js is keys.example.js with an empty TMDB key. APL Launcher Setup writes the
 #     user's key in; without one, the app asks for it in Settings.
 #   - js/dev.local.js is empty: no development log, no test remote.
-#   - no SF Pro fonts and no sounds (never published): the app falls back to the screen's own
-#     font and to short synthesized clicks. APL Launcher Setup copies them from APL Launcher.
+#   - no SF Pro fonts and no sounds (never published): the app uses Inter Display (free, in
+#     fonts/) and short synthesized clicks. APL Launcher Setup copies them from APL Launcher.
 #
 # Used by CI (.github/workflows/release.yml). Needs the Tizen-Core CLI
 # ($TIZEN_SDK/tools/tizen-core/tz, default ~/tizen-sdk) with the certificate generator, rsync,
@@ -43,7 +43,7 @@ echo "== APL TV $VERSION"
 rsync -a \
     --exclude '*.wgt' --exclude '.manifest.tmp' --exclude 'author-signature.xml' --exclude 'signature1.xml' \
     --exclude '*.local.js' --exclude 'keys.example.js' \
-    --exclude 'fonts/' --exclude 'sounds/' --exclude '.DS_Store' \
+    --exclude 'fonts/*.otf' --exclude 'fonts/*.OTF' --exclude 'fonts/*.ttf' --exclude 'fonts/*.TTF' --exclude 'sounds/' --exclude '.DS_Store' \
     "$ROOT/app/" "$WORK/app/"
 
 # The keys file APL Launcher Setup fills in: its `tmdb: ""` line is the find string. Keep it.
@@ -79,6 +79,8 @@ for f in config.xml index.html icon.png version.json service/service.js js/boot.
          js/lang-fr.js js/lang-es.js js/lang-pl.js js/lang-it.js css/tv.css css/tv2.css author-signature.xml signature1.xml; do
     grep -q " $f\$" <<<"$LIST" || { echo "$f is missing from $NAME" >&2; exit 1; }
 done
-if grep -q -E " (fonts|sounds)/.+" <<<"$LIST"; then echo "fonts or sounds ended up in $NAME" >&2; exit 1; fi
+# Inter Display (free) is in it; SF Pro and the sounds never are
+if grep -q -i -E " fonts/.+[.](otf|ttf)$| sounds/.+" <<<"$LIST"; then echo "SF Pro or sounds ended up in $NAME" >&2; exit 1; fi
+grep -q " fonts/InterDisplay-Regular.woff2$" <<<"$LIST" || { echo "Inter Display is missing from $NAME" >&2; exit 1; }
 (cd "$OUT" && sha256sum apl-tv-v*.wgt > SHA256SUMS-wgt.txt)
 ls -l "$OUT"
