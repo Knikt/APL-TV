@@ -1,8 +1,8 @@
 {
- "version": "1.4.11",
+ "version": "1.4.12",
  "loader": 1,
  "reinstall": "1.0.1",
- "notes": "Steadier on big playlists (no more closing a minute after the start), no playlist refresh while a video plays, 4K channels the TV refuses, SRT subtitle names.",
+ "notes": "Search types smoothly on very big playlists (it froze a Fire TV), and Light Mode on the TVs Android calls low-memory.",
  "platforms": {
   "tizen": {
    "reinstall": "1.0.1"

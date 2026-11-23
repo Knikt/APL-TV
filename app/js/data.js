@@ -1464,12 +1464,38 @@
         return t.replace(/^[\s\-:|.]+/, "").trim();
     }
 
+    /* Each title's searchable form, made once and kept on it (#40: every letter typed folded the 174,000 titles of an
+       account again, seconds each on a Fire TV 4K Max, and its keyboard froze). Made ahead, a slice at a time, when
+       Search opens (prefold). */
+    function folded(x) {
+        var n = x.title || x.name, o = x.orig || "";
+        if (x._fn !== n || x._fo !== o) { x._f = S.fold(n) + (o ? " " + S.fold(o) : ""); x._fn = n; x._fo = o; }      // a channel you renamed: found by both names
+        return x._f;
+    }
+    var prefolding = null;
+    function prefold() {
+        if (prefolding || !merged) return;
+        var lists = [merged.live.chans, merged.movies.items, merged.series.items], li = 0, i = 0, t0 = Date.now(), m = merged;
+        prefolding = 1;
+        (function slice() {
+            if (m !== merged) { prefolding = null; return; }               // a new catalog: started again next time
+            var end = Date.now() + 25;
+            while (li < lists.length && Date.now() < end) {
+                var l = lists[li];
+                for (var k = 0; k < 200 && i < l.length; k++) folded(l[i++]);
+                if (i >= l.length) { li++; i = 0; }
+            }
+            if (li < lists.length) { setTimeout(slice, 0); return; }
+            prefolding = null;
+            TV.log("search ready: " + (lists[0].length + lists[1].length + lists[2].length) + " titles in " + (Date.now() - t0) + " ms");
+        })();
+    }
     function search(q, limit) {
         q = S.fold(q);
         if (!q || !merged) return { live: [], movies: [], series: [] };
         var words = q.split(" "), adult = TV.pref("showAdult"), hid = anyHidden();
-        function match(name, also) {
-            var f = S.fold(name) + (also ? " " + S.fold(also) : "");             // a channel you renamed: found by both names
+        function match(x) {
+            var f = folded(x);
             for (var i = 0; i < words.length; i++) if (f.indexOf(words[i]) === -1) return false;
             return true;
         }
@@ -1477,7 +1503,7 @@
             var out = [];
             for (var i = 0; i < arr.length && out.length < (limit || 40); i++) {
                 var x = arr[i];
-                if ((adult || !catOf(x).adult) && match(x.title || x.name, x.orig) && (!hid || !isHidden(x))) out.push(x);
+                if ((adult || !catOf(x).adult) && match(x) && (!hid || !isHidden(x))) out.push(x);
             }
             return out;
         }
@@ -1503,7 +1529,7 @@
     restoreThemes();            // the titles already known for your hidden themes, before anything is drawn
     TV.data = {
         sources: sources, addSource: addSource, removeSource: removeSource, updateSource: updateSource, normServer: normServer, xtreamFromUrl: xtreamFromUrl,
-        loadSource: loadSource, finished: finished, start: start, refresh: refresh, big: function () { return Object.keys(cats).some(function (k) { return big(cats[k]); }); }, loadingOf: function (id) { return loading[id] || null; }, catalogOf: function (id) { return cats[id] || null; }, onChange: onChange, rebuild: rebuild, xAuth: xAuth, regroup: function () { groupCache = {}; },
+        loadSource: loadSource, finished: finished, start: start, refresh: refresh, prefold: prefold, big: function () { return Object.keys(cats).some(function (k) { return big(cats[k]); }); }, loadingOf: function (id) { return loading[id] || null; }, catalogOf: function (id) { return cats[id] || null; }, onChange: onChange, rebuild: rebuild, xAuth: xAuth, regroup: function () { groupCache = {}; },
         stillComing: function (id) { return !!behind[id]; },
         catalog: function () { return merged; },
         channelsIn: channelsIn, channelsNamed: channelsNamed, channel: channel, streamUrl: streamUrl, catOf: catOf, sourceOf: sourceOf,

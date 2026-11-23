@@ -129,7 +129,7 @@
     }
 
     var view = {
-        show: function () { if (!root) build(); visible = true; TV.bg("", "dark"); paint(); },
+        show: function () { if (!root) build(); visible = true; TV.bg("", "dark"); paint(); if (D.prefold) D.prefold(); },
         hide: function () { visible = false; TV.$("bg").classList.remove("is-dark"); document.body.classList.remove("in-results"); },
         enter: function () { zone = "field"; paint(); },
         blur: function () { paint(); },

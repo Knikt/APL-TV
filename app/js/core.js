@@ -24,7 +24,9 @@
     TV.RAM_MB = 0;
     TV.LOW_RAM = (function () {
         try {
-            if (TV.ANDROID && global.APLAndroid.memory) { var m = JSON.parse(global.APLAndroid.memory() || "{}"); TV.RAM_MB = m.total || 0; return TV.RAM_MB > 0 && TV.RAM_MB < 1600; }
+            /* Android's own "low-RAM device" counts too (a crash report: a Hisense of 1.8 GB that Android calls low-RAM,
+               closed during a movie with Light Mode off) */
+            if (TV.ANDROID && global.APLAndroid.memory) { var m = JSON.parse(global.APLAndroid.memory() || "{}"); TV.RAM_MB = m.total || 0; return (TV.RAM_MB > 0 && TV.RAM_MB < 1600) || m.small === true; }
             // an older Android package: the browser's own figure, rounded down (1 = 1 to 2 GB)
             var dm = global.navigator.deviceMemory;
             if (TV.ANDROID && dm) { TV.RAM_MB = dm * 1024; return dm <= 1; }
