@@ -684,14 +684,22 @@
         var blocker = { key: function (code) { if (TV.isBack(code) || code === TV.KEY.CANCEL) finish(code !== TV.KEY.CANCEL && code !== 27); return true; } };
         TV.pushNav(blocker);
         var finished = false;
-        function finish(keep) {
+        /* Android with a recent .apk: the keyboard types into a field of Android's own (MainActivity typeText), which
+           sends the text here a letter at a time. A keyboard typing into the page waited for the page at every letter,
+           and Fire TV's froze while the page was busy (#40). */
+        var nat = TV.ANDROID && global.APLAndroid && typeof global.APLAndroid.typeText === "function";
+        function finish(keep, fromAndroid) {
             if (finished) return;
             finished = true;
+            if (nat) {
+                global.__aplTyped = global.__aplTypeEnd = null;
+                if (!fromAndroid) { try { global.APLAndroid.typeEnd(); } catch (e) {} }
+            }
             inp.removeEventListener("keydown", onKey);
             inp.removeEventListener("input", onInput);
             inp.removeEventListener("blur", onBlur);
             try { inp.blur(); } catch (e) {}
-            if (TV.ANDROID) { try { global.APLAndroid.editing(false); } catch (e) {} }
+            if (TV.ANDROID && !nat) { try { global.APLAndroid.editing(false); } catch (e) {} }
             TV.popNav(blocker);
             if (keep) { if (o.onDone) o.onDone(inp.value.trim()); }
             else { if (o.onInput) o.onInput(before); if (o.onCancel) o.onCancel(); }
@@ -703,6 +711,13 @@
         }
         function onInput() { if (o.onInput) o.onInput(inp.value); }
         function onBlur() { setTimeout(function () { finish(true); }, 50); }
+        if (nat) {
+            global.__aplTyped = function (v) { if (finished) return; inp.value = String(v || ""); onInput(); };
+            // OK on the keyboard's Done: its key up may still reach the page, which must not open a result
+            global.__aplTypeEnd = function (keep, v) { if (finished) return; inp.value = String(v || ""); if (TV.swallowEnter) TV.swallowEnter(); finish(keep, true); };
+            try { global.APLAndroid.typeText(before, o.secret ? "secret" : (o.url ? "url" : "text")); return; }
+            catch (e) { nat = false; global.__aplTyped = global.__aplTypeEnd = null; }
+        }
         inp.addEventListener("keydown", onKey);
         inp.addEventListener("input", onInput);
         setTimeout(function () { inp.addEventListener("blur", onBlur); }, 300);

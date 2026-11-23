@@ -118,7 +118,16 @@ public class MainActivity extends Activity {
     /* The page: the WebView and its settings (made again when Android stopped the old one, pageGone) */
     @SuppressLint({"SetJavaScriptEnabled", "AddJavascriptInterface"})
     private WebView makePage() {
-        WebView web = new WebView(this);
+        /* The page takes a keyboard only while an older page types into it (editing, without typeText). Otherwise a
+           keyboard stayed linked to the page (a WebView always says it takes text) and, with no field there, kept
+           sending Left to put its cursor back, without end, a stream the page took for the remote (#40, seen with
+           Gboard on the Android TV emulator: 23 Lefts a second) */
+        WebView web = new WebView(this) {
+            @Override public android.view.inputmethod.InputConnection onCreateInputConnection(android.view.inputmethod.EditorInfo o) {
+                return editing ? super.onCreateInputConnection(o) : null;
+            }
+            @Override public boolean onCheckIsTextEditor() { return editing && super.onCheckIsTextEditor(); }
+        };
         web.setBackgroundColor(Color.TRANSPARENT);
         web.setLayerType(View.LAYER_TYPE_HARDWARE, null);
         web.setFocusable(true);
@@ -171,6 +180,7 @@ public class MainActivity extends Activity {
         if (dead != web) { dead.destroy(); return; }
         web = null;
         editing = false;
+        endTyping(false, false);
         if (player != null) { player.page(null); player.close(); }
         dead.destroy();
         if (helper != null) helper.pageGone(why);
@@ -221,8 +231,26 @@ public class MainActivity extends Activity {
     @Override
     public boolean dispatchKeyEvent(KeyEvent e) {
         int code = KEYS.get(e.getKeyCode(), 0);
-        if (code == 0 || web == null) return super.dispatchKeyEvent(e);
-        // Typing: the keyboard and the text field have the keys (Back closes the keyboard)
+        if (web == null) return super.dispatchKeyEvent(e);
+        /* A key the screen's keyboard sends itself (an arrow to move its cursor, Enter, Delete) is never the remote:
+           it goes to the field being typed in, or nowhere. Taken for the remote, a keyboard's own arrow ended the
+           typing (#17), and a keyboard left linked to the page sent Left without end (#40). */
+        if ((e.getFlags() & KeyEvent.FLAG_SOFT_KEYBOARD) != 0 && code != 10009) return typing || editing ? super.dispatchKeyEvent(e) : true;
+        // Back's own key up after it ended the typing: the page never saw its key down
+        if (swallowBackUp && e.getKeyCode() == KeyEvent.KEYCODE_BACK) { if (e.getAction() == KeyEvent.ACTION_UP) swallowBackUp = false; return true; }
+        // Typing in Android's own field (#40): an open keyboard takes the keys before the app does. Back or an arrow
+        // that reaches the app means no keyboard is on screen any more: the typing ends there, the text kept.
+        if (typing) {
+            int k = e.getKeyCode();
+            boolean arrow = k == KeyEvent.KEYCODE_DPAD_UP || k == KeyEvent.KEYCODE_DPAD_DOWN || k == KeyEvent.KEYCODE_DPAD_LEFT || k == KeyEvent.KEYCODE_DPAD_RIGHT;
+            if (code == 10009 || arrow) {
+                if (e.getAction() == KeyEvent.ACTION_DOWN) { if (code == 10009) swallowBackUp = true; endTyping(true, true); }
+                return true;
+            }
+            return super.dispatchKeyEvent(e);
+        }
+        if (code == 0) return super.dispatchKeyEvent(e);
+        // Typing (an older page, without typeText): the keyboard and the page's text field have the keys
         if (editing && code != 10009) {
             /* An open keyboard takes the arrows before the app does (Android hands keys to the keyboard first). An
                arrow that reaches the app means no keyboard is on screen any more (Back closed it, or it never opened,
@@ -240,6 +268,80 @@ public class MainActivity extends Activity {
     }
     private void sendKey(String type, int code, boolean repeat) {
         web.evaluateJavascript("window.__aplKey&&__aplKey('" + type + "'," + code + "," + repeat + ")", null);
+    }
+
+    /* ---------- typing (#17, #40) ----------
+       The screen's keyboard types into a field of Android's own, not into the page. A keyboard asks the field it
+       types in about its text at every letter and waits for the answer; in the page, that answer waited for
+       the page, which can be busy for seconds (a list of 174,000 titles, the guides loading), and Fire TV's
+       keyboard froze until a force quit. Here the field answers at once, and what is typed reaches the page
+       a letter at a time, without anyone waiting for it. The field itself is invisible: the page shows the text. */
+    private android.widget.EditText field;
+    private volatile boolean typing = false;
+    private boolean swallowBackUp = false, quiet = false;
+    private void startTyping(String value, String kind) {
+        if (field == null) {
+            field = new android.widget.EditText(this);
+            field.setSingleLine(true);
+            field.setAlpha(0f);
+            field.setBackground(null);
+            field.setFocusableInTouchMode(true);
+            field.addTextChangedListener(new android.text.TextWatcher() {
+                @Override public void beforeTextChanged(CharSequence s, int a, int b, int c) {}
+                @Override public void onTextChanged(CharSequence s, int a, int b, int c) {}
+                @Override public void afterTextChanged(android.text.Editable s) {
+                    if (!typing || quiet || web == null) return;
+                    web.evaluateJavascript("window.__aplTyped&&__aplTyped(" + JSONObject.quote(s.toString()) + ")", null);
+                }
+            });
+            // Done, Search, Go, Enter: the typing ends with the text
+            field.setOnEditorActionListener((v, id, ev) -> {
+                if (ev != null && ev.getAction() != KeyEvent.ACTION_DOWN) return true;
+                if (typing) endTyping(true, true);
+                return true;
+            });
+            stage.addView(field, new FrameLayout.LayoutParams(600, 60, Gravity.TOP | Gravity.START));
+        }
+        int type = android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS;
+        if ("secret".equals(kind)) type = android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD;
+        else if ("url".equals(kind)) type = android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_VARIATION_URI;
+        field.setInputType(type);
+        field.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_DONE);
+        quiet = true;
+        field.setText(value == null ? "" : value);
+        field.setSelection(field.getText().length());
+        quiet = false;
+        typing = true;
+        field.setFocusable(true);
+        field.setFocusableInTouchMode(true);
+        field.requestFocus();
+        InputMethodManager im = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
+        if (im != null) {
+            im.restartInput(field);
+            im.showSoftInput(field, InputMethodManager.SHOW_IMPLICIT);
+            // a keyboard asked before the field had the window's focus doesn't open: asked again once it has
+            field.postDelayed(() -> { if (typing && field.hasFocus()) im.showSoftInput(field, InputMethodManager.SHOW_IMPLICIT); }, 250);
+        }
+    }
+    // tell: the page hears that the typing ended (it ended here: Done, Back, an arrow), with the text
+    private void endTyping(boolean keep, boolean tell) {
+        if (!typing) return;
+        typing = false;
+        String text = field == null ? "" : field.getText().toString();
+        InputMethodManager im = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
+        if (im != null && field != null) im.hideSoftInputFromWindow(field.getWindowToken(), 0);
+        if (field != null) { field.clearFocus(); field.setFocusable(false); }   // nothing gives it the focus back by itself
+        if (web != null) {
+            web.requestFocus();
+            /* The keyboard follows the focus to the page (a WebView always says it takes text): closed there too, and
+               once more after the switch, which Android finishes a moment later */
+            if (im != null) {
+                final WebView w = web;
+                im.hideSoftInputFromWindow(w.getWindowToken(), 0);
+                w.postDelayed(() -> { if (!typing && !editing) im.hideSoftInputFromWindow(w.getWindowToken(), 0); }, 200);
+            }
+            if (tell) web.evaluateJavascript("window.__aplTypeEnd&&__aplTypeEnd(" + keep + "," + JSONObject.quote(text) + ")", null);
+        }
     }
 
     /* ---------- the page's link to Android ---------- */
@@ -277,10 +379,14 @@ public class MainActivity extends Activity {
                 InputMethodManager im = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
                 WebView w = web;
                 if (im == null || w == null) return;
-                if (on) { w.requestFocus(); im.showSoftInput(w, InputMethodManager.SHOW_IMPLICIT); }
-                else im.hideSoftInputFromWindow(w.getWindowToken(), 0);
+                // the page takes a keyboard only while editing (makePage): its link is made again each way
+                if (on) { w.requestFocus(); im.restartInput(w); im.showSoftInput(w, InputMethodManager.SHOW_IMPLICIT); }
+                else { im.hideSoftInputFromWindow(w.getWindowToken(), 0); im.restartInput(w); }
             });
         }
+        /* Typing in Android's own field (#40): kind "text", "secret" or "url"; typeEnd when the page ended it (Back) */
+        @JavascriptInterface public void typeText(String value, String kind) { runOnUiThread(() -> startTyping(value, kind)); }
+        @JavascriptInterface public void typeEnd() { runOnUiThread(() -> endTyping(false, false)); }
         // The player (Player.java): the same calls as Samsung's AVPlay, through js/android.js
         @JavascriptInterface public void open(String url) { player.open(url); }
         @JavascriptInterface public void prepare() { player.prepare(); }

@@ -613,6 +613,7 @@
         return sequence(list, function (s) {
             var only = typeof liveOnly === "function" ? liveOnly(s) : liveOnly, watch = !only && big(cats[s.id]);
             if (watch) TV.save("bigRefresh", { id: s.id, at: Date.now() });       // still there at the next start: it closed APL TV
+            if (watch) unfold();                    // ~15 MB less at the refresh's peak; made again when Search opens
             return loadSource(s, progress || function () {}, false, only).then(function () { if (watch) TV.drop("bigRefresh"); }, function (e) { if (watch) TV.drop("bigRefresh"); TV.log("refresh " + s.name + ": " + e.message); });
         }).then(rebuild);
     }
@@ -1476,8 +1477,9 @@
     function prefold() {
         if (prefolding || !merged) return;
         var lists = [merged.live.chans, merged.movies.items, merged.series.items], li = 0, i = 0, t0 = Date.now(), m = merged;
-        prefolding = 1;
+        var me = prefolding = {};
         (function slice() {
+            if (prefolding !== me) return;                                 // let go (unfold): made again next time
             if (m !== merged) { prefolding = null; return; }               // a new catalog: started again next time
             var end = Date.now() + 25;
             while (li < lists.length && Date.now() < end) {
@@ -1489,6 +1491,15 @@
             prefolding = null;
             TV.log("search ready: " + (lists[0].length + lists[1].length + lists[2].length) + " titles in " + (Date.now() - t0) + " ms");
         })();
+    }
+    /* The searchable forms let go (a big account's full refresh: its memory peak closed Samsung TVs, crash report
+       #44 with 290,000 titles, and these forms are some 15 MB of it) */
+    function unfold() {
+        if (!merged) return;
+        prefolding = null;
+        [merged.live.chans, merged.movies.items, merged.series.items].forEach(function (l) {
+            for (var i = 0; i < l.length; i++) if (l[i]._f) l[i]._f = l[i]._fn = l[i]._fo = undefined;
+        });
     }
     function search(q, limit) {
         q = S.fold(q);
