@@ -185,6 +185,7 @@
         tv.forEach(function (t, i) {
             if (!t.lang && file[i].lang) t.lang = file[i].lang;
             if (!t.name && file[i].name) t.name = file[i].name;
+            if (file[i].forced) t.forced = true;           // "Forced" in the file (#45)
         });
     }
     /* The player's tracks ({ type: "AUDIO"|"TEXT", lang, name }) completed from the file: what the TV leaves empty,

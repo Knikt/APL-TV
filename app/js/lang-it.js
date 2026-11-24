@@ -1082,5 +1082,10 @@ window.TV_LANG_IT = {
     "Subscription ends {d}": "L'abbonamento scade il {d}",
     /* A title's trailer (#39) */
     "Trailer": "Trailer",
-    "OK pause · ◀ ▶ 10 s · Back to the title": "OK pausa · ◀ ▶ 10 s · Torna alla scheda"
+    "OK pause · ◀ ▶ 10 s · Back to the title": "OK pausa · ◀ ▶ 10 s · Torna alla scheda",
+    /* A provider still counting the video just left (#27) */
+    "Your provider still counts the video you just left. APL TV keeps trying for a few minutes.": "Il tuo provider conta ancora il video che hai appena lasciato. APL TV riprova per qualche minuto.",
+    "Your provider still counts the video you just left. With an account for one screen, wait a few minutes, then try again.": "Il tuo provider conta ancora il video che hai appena lasciato. Con un abbonamento per un solo schermo, aspetta qualche minuto e riprova.",
+    "Your provider still counts the video you just left.": "Il tuo provider conta ancora il video che hai appena lasciato.",
+    "With an account for one screen, wait a few minutes, then try again.": "Con un abbonamento per un solo schermo, aspetta qualche minuto e riprova."
 };

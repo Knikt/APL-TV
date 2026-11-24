@@ -1,8 +1,8 @@
 {
- "version": "1.4.14",
+ "version": "1.4.15",
  "loader": 1,
  "reinstall": "1.0.1",
- "notes": "Typing with the TV's keyboard on Android and Fire TV no longer freezes the app, and big playlists refresh with less memory.",
+ "notes": "Forced subtitles on by themselves, a channel's versions from Favorites, Back to the top in Live TV, and more patience when a provider still counts the video you just left.",
  "platforms": {
   "tizen": {
    "reinstall": "1.0.1"

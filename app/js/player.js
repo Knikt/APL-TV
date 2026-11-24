@@ -129,6 +129,14 @@
        provider for a while, at the next episode or after a stutter): longer waits, about a minute in all */
     var BUSY_DELAYS = [3000, 6000, 10000, 15000, 20000];
     function refusedConn(why) { return /CONNECTION_FAILED|InvalidAccess|CONNECTION/i.test(String(why || "")); }
+    /* #27 again: an episode left before its end (Next pressed), and the provider counted it some five minutes more. The
+       next episode was refused, then every channel of that provider, until then; APL TV gave up after a minute. Right
+       after a video of the same server was left, a refusal is tried again for about five minutes, and said. */
+    var LEFT_DELAYS = [3000, 7000, 15000, 25000, 40000, 60000, 60000, 60000];
+    var left = null;                                           // { host, at }: the last video that played, when it was closed
+    function hostOf(u) { var m = /^https?:\/\/([^\/?#]+)/i.exec(String(u || "")); return m ? m[1].toLowerCase() : ""; }
+    function noteLeft() { if (cur && started && !cur.failed && hostOf(cur.url)) left = { host: hostOf(cur.url), at: Date.now() }; }
+    function justLeft(u) { return !!left && Date.now() - left.at < 6 * 60000 && left.host === hostOf(u); }
     var retrying = null;          // the stream a retry is already planned for: its other errors of the moment count once
     /* A stream given up: Samsung's player is closed at once, never left open behind the message. A player left in
        error could keep the TV's decoder, and every app failed to play until the TV was restarted (#27). */
@@ -145,8 +153,13 @@
         // Samsung's player says one failure two or three times (an error, then the prepare failing): one try (#27: the five
         // tries were used up in 8 s)
         if (retrying === c || c.failed) return;               // and once given up, the rest of its errors are not said again
-        var list = refusedConn(why) ? BUSY_DELAYS : DELAYS;
-        if (attempts >= list.length) { TV.log("giving up after " + attempts + " reconnections (" + why + ")"); fail(why); return; }
+        var held = refusedConn(why) && justLeft(c.url), list = held ? LEFT_DELAYS : refusedConn(why) ? BUSY_DELAYS : DELAYS;
+        if (attempts >= list.length) { TV.log("giving up after " + attempts + " reconnections (" + why + ")"); fail(held ? "held " + why : why); return; }
+        if (held && !c.heldSaid) {
+            c.heldSaid = true;
+            TV.log("refused right after a video of this server was left: the provider may still count it, trying for about 5 minutes");
+            TV.toast(TV.t("Your provider still counts the video you just left. APL TV keeps trying for a few minutes."));
+        }
         var wait = list[attempts++];
         retrying = c;
         TV.log("reconnecting (" + why + "), attempt " + attempts + " in " + wait + " ms");
@@ -229,6 +242,7 @@
     function play(url, opts) {
         opts = opts || {};
         loggedTracks = false;
+        if (!cur || cur.url !== url) noteLeft();
         // A Stalker portal's channel or movie, a media server's (Jellyfin, Emby, Plex), a Stremio title or a public
         // domain movie: its real link is asked first (a portal's lasts a short time only; a server's carries its key;
         // Stremio's addons are asked for their streams, chosen in a list)
@@ -389,6 +403,7 @@
     }
 
     function stop() {
+        noteLeft();
         token++;
         clearTimeout(watchdog); clearTimeout(retryTimer); clearInterval(stallTimer);
         closeAv();

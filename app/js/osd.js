@@ -151,6 +151,8 @@
         return { label: l, sub: same ? "" : n };
     }
     function wantLang(p) { return p === "auto" ? TV.lang : p; }
+    // a subtitle track marked forced: in the file (.mkv), or in its name ("Forced", "Forcés", "Forzados", "Wymuszone")
+    function isForced(t) { return !!t.forced || /\bforc|\bforzad|\bforzat|\bwymusz/i.test(String(t.name || "")); }
 
     /* Audio and subtitles of a new video: your language first, then the second choice (never OpenSubtitles) */
     function applyTrackPrefs() {
@@ -175,11 +177,19 @@
         if (audio.length) setTimeout(function () { offerVersion(audio); }, 1500);
         if (ext) return;                                   // OpenSubtitles chosen by you stays
         var sw = [TV.pref("subLang"), TV.pref("subLang2")], picked = null, heard = chosenAudio ? norm(chosenAudio.lang) : "";
+        /* Forced subtitles (#45): only the lines in another language and the signs. A language asked for gets its full
+           subtitles first; with none asked for, the forced ones in the language you hear (or yours) come on by themselves. */
+        var full = subs.filter(function (t) { return !isForced(t); }), forced = subs.filter(isForced);
+        function first(list, lang) { var hit = null; list.forEach(function (t) { if (!hit && norm(t.lang) === lang) hit = t; }); return hit; }
         for (var j = 0; j < sw.length && !picked && subs.length; j++) {
             var s = sw[j];
             if (!s || s === "off") continue;
-            if (s === "auto") { if (heard && heard !== TV.lang) subs.forEach(function (t) { if (!picked && norm(t.lang) === TV.lang) picked = t; }); continue; }
-            subs.forEach(function (t) { if (!picked && norm(t.lang) === s) picked = t; });
+            if (s === "auto") { if (heard && heard !== TV.lang) picked = first(full, TV.lang) || first(forced, TV.lang); continue; }
+            picked = first(full, s) || first(forced, s);
+        }
+        if (!picked && forced.length) {
+            picked = first(forced, heard || TV.lang) || (heard ? null : first(forced, TV.lang));
+            if (picked) TV.log("subtitles: the forced ones (" + (picked.lang || "?") + ") on by themselves");
         }
         if (picked) { TV.player.subtitlesOff(false); TV.player.selectTrack("TEXT", picked.index); }
         else TV.player.subtitlesOff(true);
@@ -502,8 +512,32 @@
         if (!c) return [];
         if (c.variants && c.variants.length > 1) return c.variants;
         for (var i = 0; i < ctx.length; i++) if (ctx[i].variants && ctx[i].variants.some(function (v) { return v.id === c.id; })) return ctx[i].variants;
-        return [];
+        /* #44: a channel opened from Favorites (Home's row too) or Recent is one version alone: its others are found in
+           its own category, and the channels of the same name in your other categories join them (a "4K" category's
+           SKY SPORTS MAIN EVENT beside the UK one's HD and FHD), best first */
+        var cat = D.catalog();
+        if (vMemo.id === c.id && vMemo.cat === cat) return vMemo.list;
+        var mine = [c], seen = {};
+        if (TV.pref("mergeQuality") && c.cat) {
+            var g = D.channelsIn(c.cat);
+            for (var j = 0; j < g.length; j++) if (g[j].variants && g[j].variants.some(function (v) { return v.id === c.id; })) { mine = g[j].variants.slice(); break; }
+        }
+        mine.forEach(function (v) { seen[v.id] = 1; });
+        var key = c.key;
+        if (key && cat && TV.pref("mergeQuality")) {
+            var hid = D.isChanHidden;
+            cat.live.chans.forEach(function (x) {
+                if (x.key !== key || seen[x.id] || x.cat === c.cat) return;
+                var ct = D.catOf(x);
+                if (ct.off || (ct.adult && !TV.pref("showAdult")) || (hid && hid(x))) return;
+                seen[x.id] = 1; mine.push(x);
+            });
+        }
+        var rank = TV.smart && TV.smart.qualityRank ? TV.smart.qualityRank : function () { return 0; };
+        vMemo = { id: c.id, cat: cat, list: mine.length < 2 ? [] : mine.sort(function (a, b) { return rank(b.q) - rank(a.q); }) };
+        return vMemo.list;
     }
+    var vMemo = {};
     function hasQuality() { return (mode === "live" && variantsOf(ch).length > 1) || !!(streamQ && streamQ.list.length > 1); }
     function watchQualities() {
         var pc = TV.player.current();
@@ -970,6 +1004,8 @@
                 if (e === "cancelled") { finish(); return; }
                 // a format the screen cannot decode (HEVC 10-bit on a small Android box, an old Samsung…)
                 var dec = /DECOD|FORMAT_UNSUPPORTED|NOT_SUPPORTED/i.test(String(e));
+                // refused right after a video of the same provider was left (#27: Next pressed before the end)
+                if (/^held /.test(String(e))) { error(T("Your provider still counts the video you just left."), String(e), T("With an account for one screen, wait a few minutes, then try again.")); return; }
                 error(dec ? T("This screen cannot decode this video.") : T("This video cannot be played."), String(e),
                       dec ? T("Try another version of it, if there is one.") : T("Try again later, or try another version if there is one."));
             }

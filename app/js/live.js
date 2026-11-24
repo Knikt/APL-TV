@@ -246,8 +246,10 @@
                 if (more.onError && more.onError(e) === true) return;
                 if (tryTs()) return;
                 wait.classList.add("is-hidden");
-                if (TV.osd.isOpen()) TV.osd.error(T("This channel is not available right now."), String(e));
-                else TV.toast(T("This channel is not available right now."));
+                // refused right after a video of the same provider was left (#27): it is the provider still counting it
+                var msg = /^held /.test(String(e)) ? T("Your provider still counts the video you just left. With an account for one screen, wait a few minutes, then try again.") : T("This channel is not available right now.");
+                if (TV.osd.isOpen()) TV.osd.error(msg, String(e));
+                else TV.toast(msg, true);
             }
         });
     }
@@ -494,7 +496,19 @@
                 if (infoFor === cards.current()) showInfo(cards.current());
             }, 500);
         },
-        backHandled: function () { if (zone === "chips") { zone = "cards"; cards.setActive(true); paintChips(); return true; } return false; },
+        /* Back (#47, as in TiviMate): deep in a list, to its first channel; there, to All Channels; then out as before */
+        backHandled: function () {
+            if (zone === "chips") { zone = "cards"; cards.setActive(true); paintChips(); return true; }
+            if (cards.items.length && cards.index > 0) { cards.focus(0); TV.sound.tick(); return true; }
+            var all = -1;
+            for (var i = 0; i < cats.length; i++) if (cats[i].id === "all") { all = i; break; }
+            if (all >= 0 && catIndex !== all) {
+                catIndex = all; clearTimeout(chipTimer); paintChips(); loadCategory();
+                zone = cards.items.length ? "cards" : "chips"; cards.setActive(zone === "cards"); paintChips(); TV.sound.tick();
+                return true;
+            }
+            return false;
+        },
         playChannel: function (ch) { fullScreen(ch); }
     };
 
