@@ -608,8 +608,11 @@
             ((cat && cat.live && cat.live.chans) || []).forEach(function (c) {
                 var k = nameKey(c), cl = k && ownLang(c);
                 if (!cl) return;
-                var v = votes[k] = votes[k] || {};
-                v[cl] = (v[cl] || 0) + 1;
+                [k, "~" + family(c)].forEach(function (kk) {
+                    if (kk === "~") return;
+                    var v = votes[kk] = votes[kk] || {};
+                    v[cl] = (v[cl] || 0) + 1;
+                });
             });
             Object.keys(votes).forEach(function (k) {
                 var v = votes[k], best = "", n = 0;
@@ -617,8 +620,14 @@
                 keyLangs[k] = best;
             });
         }
-        var nk = nameKey(ch);
-        return (nk && keyLangs[nk]) || "";
+        var nk = nameKey(ch), fk = family(ch);
+        return (nk && keyLangs[nk]) || (fk && keyLangs["~" + fk]) || "";
+    }
+    /* A channel's family: its first two words ("TNT SPORT ULTIMATE" in a 4K category with no country, #53: no channel of
+       that exact name has a language, but TNT SPORT 1 to 4 are English) */
+    function family(ch) {
+        var w = folded(S.channel(ch.raw || ch.name).name || ch.name || "").replace(/[^a-z0-9 ]+/g, " ").split(" ").filter(function (x) { return x && !/^\d+$/.test(x); });
+        return w.length >= 2 ? w[0] + " " + w[1] : "";
     }
     // the name part of a channel's key ("en:skysportsmainevent" and ":skysportsmainevent" are the same channel)
     function nameKey(ch) { return String(ch.key || "").replace(/^[^:]*:/, ""); }
@@ -2110,7 +2119,7 @@
         var r = TV.$("match");
         if (!r) return;
         ytDrop();
-        sheet.m = m; sheet.lang = ""; sheet.zone = "btns"; sheet.open = true; sheet.el = r; sheet.tab = ""; sheet.tabIndex = 0; sheet.t0 = Date.now(); sheet.told = {};
+        sheet.m = m; sheet.lang = null; sheet.zone = "btns"; sheet.open = true; sheet.el = r; sheet.tab = ""; sheet.tabIndex = 0; sheet.t0 = Date.now(); sheet.told = {};
         r.innerHTML = "";
         r.classList.add("is-open");
         TV.pushNav(sheetScreen);
@@ -2138,7 +2147,8 @@
     sheet.drawOnce = function (first) {
         var m = sheet.m, r = sheet.el, st = statusOf(m), two = sides(m), w = where[m.id], dc = details[m.id], d = dc && dc.d;
         var keepZone = sheet.zone, keepBtn = sheet.nav ? sheet.nav.index : 0, keepCh = sheet.strip ? sheet.strip.index : 0, keepLang = sheet.lang;
-        if (w && (!sheet.lang || !w.langs[sheet.lang])) sheet.lang = w.order[0] || "";
+        // "" is a language too: Other, the channels with none (#53: Others chosen, English came back, as if nothing was)
+        if (w && (sheet.lang === null || !w.langs[sheet.lang])) sheet.lang = w.order.length ? w.order[0] : null;
         var list = w && w.langs[sheet.lang] ? w.langs[sheet.lang] : [];
         sheet.list = list;
         r.innerHTML = "";

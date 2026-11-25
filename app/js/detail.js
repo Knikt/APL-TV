@@ -30,7 +30,23 @@
         url = TV.sized(url, "w1280");
         if (!url) return;
         var im = new Image();
-        im.onload = function () { bgEl.style.backgroundImage = TV.cssUrl(url); };
+        im.onload = function () { bgEl.style.backgroundImage = TV.cssUrl(url); var c = bgEl.querySelector("canvas"); if (c) bgEl.removeChild(c); };
+        im.src = url;
+    }
+    /* No backdrop (#49: a portal's series without TMDB, the page was all black): its poster behind, drawn small and
+       stretched by the browser, blurred that way without a filter (cheap on an LG), darkened by the page's shade */
+    function posterBg(url, my) {
+        url = TV.sized(url, "w342");
+        if (!url) return;
+        var im = new Image();
+        im.onload = function () {
+            if (my !== token || bgEl.style.backgroundImage) return;
+            var c = document.createElement("canvas"), w = 24, h = Math.max(1, Math.round(w * im.height / im.width));
+            c.width = w; c.height = h; c.className = "detail__poster";
+            try { c.getContext("2d").drawImage(im, 0, 0, w, h); } catch (e) { return; }
+            var old = bgEl.querySelector("canvas"); if (old) bgEl.removeChild(old);
+            bgEl.appendChild(c);
+        };
         im.src = url;
     }
 
@@ -47,6 +63,8 @@
         root.classList.add("is-open");
         bgEl.style.backgroundImage = "";
         setBg(it.backdrop || "");
+        var oldC = bgEl.querySelector("canvas"); if (oldC) bgEl.removeChild(oldC);
+        if (!it.backdrop && it.poster) posterBg(it.poster, my);
         draw();
         TV.pushNav(screen);
         var t0 = Date.now();
@@ -310,7 +328,7 @@
         c.appendChild(el("div", "ep__t", esc(ep._name || ep.title || T("Episode {n}", { n: ep.episode }))));
         c.appendChild(el("div", "ep__d", esc(ep._plot || ep.plot || "")));
         c._art = function () {
-            var url = TV.sized(ep._still || ep.image || (meta && meta.backdrop) || item.backdrop, "w500");
+            var url = TV.sized(ep._still || ep.image || (meta && meta.backdrop) || item.backdrop || item.poster, "w500");     // the poster rather than black (#49)
             if (url) { var im = new Image(); im.onload = function () { TV.later(function () { art.style.backgroundImage = TV.cssUrl(url); }); }; im.src = url; }
         };
         return c;
@@ -356,6 +374,13 @@
     function paint() {
         if (zone === "btns") btnNav.refocus(); else btnNav.blur();
         seasonEls.forEach(function (c, i) { c.classList.toggle("is-current", i === seasonIndex); c.classList.toggle("is-focused", zone === "seasons" && i === seasonIndex); });
+        /* Many seasons (#49: 17 on a portal): the row follows the season chosen, the ones past the screen's edge came into
+           view no more, and changing season seemed to change nothing */
+        var sc = seasonEls[seasonIndex];
+        if (seasonRow && sc) {
+            var vw = 1728, x = Math.max(0, Math.min(sc.offsetLeft + sc.offsetWidth / 2 - vw / 2, seasonRow.scrollWidth - vw));
+            seasonRow.style.transform = x > 0 ? "translateX(" + (-Math.round(x)) + "px)" : "";
+        }
         if (epStrip) epStrip.setActive(zone === "eps");
         extras.forEach(function (x) { x.strip.setActive(zone === x.id); });
         if (castStrip) castStrip.setActive(zone === "cast");
